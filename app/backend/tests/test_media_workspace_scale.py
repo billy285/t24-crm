@@ -3,7 +3,7 @@
 Only fixture databases and deterministic local provider doubles are used.
 This proves completeness/query shape, not a production throughput guarantee.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from types import SimpleNamespace
 from uuid import uuid4
@@ -16,6 +16,7 @@ from models.customers import Customers
 from models.employees import Employees
 from models.google_business import GoogleBusinessSchedule as Schedule, GoogleBusinessAIDraft as Draft
 from models.media_operations import MediaOperationTask as Task
+from models.media_monthly import MediaMonthlyProfile as MonthlyProfile, MediaMonthlyRun as MonthlyRun
 from services import media_workspace as service
 from test_media_workspace import projection, seed_task, workspace, PREFIX, PERIOD, INSTANT
 from test_google_business import gbp_env, OWNER, OPS, OTHER
@@ -263,3 +264,81 @@ async def test_bulk_google_visibility_matches_native_read_authority(projection, 
                 assert exc.status_code in {403, 404, 409}
         assert set(bindings) == expected
     assert not env.fake.reads and not env.fake.writes
+
+
+async def seed_month_runs(env):
+    async with env.sessions() as db:
+        db.add(MonthlyProfile(id=901, owner_id=1, customer_id=20, revision=1, public_facts={}, rules={}, menu_item_ids=[], images=[],
+            confirmed_at=INSTANT, created_at=INSTANT, updated_at=INSTANT))
+        db.add_all([MonthlyRun(id=identity, owner_id=owner, customer_id=20, profile_id=901, request_id=str(uuid4()),
+            fingerprint="f" * 64, input_hash=str(identity).zfill(64), month=month, snapshot={}, runtime={}, consent={},
+            status="generated", revision=1, ai_used=False, message="Synthetic monthly batch", created_at=created, updated_at=created)
+            for identity, owner, month, created in [
+                (902, 1, "2026-11", datetime(2026, 10, 20, tzinfo=timezone.utc)),
+                (903, 1, "2026-12", datetime(2026, 11, 20, tzinfo=timezone.utc)),
+                (904, 9, "2026-10", INSTANT),
+                (905, 1, "2026-00", INSTANT),
+            ]])
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_monthly_review_groups_use_persisted_run_month_for_beijing_default_and_mixed_months(projection, monkeypatch):
+    from services import media_monthly as monthly
+    env = projection
+    await seed_month_runs(env)
+    async def native_rows(db, user, customer_ids, start, end, view):
+        if 20 not in customer_ids: return []
+        values = []
+        # The native adapter filters by the proposed month but labels records
+        # with creation timestamps. Titles deliberately carry a wrong month.
+        for identity, month, created in [(902, "2026-11", "2026-10-20T00:00:00Z"), (903, "2026-12", "2026-11-20T00:00:00Z")]:
+            proposed = datetime.fromisoformat(month + "-02T00:00:00+00:00")
+            if start <= proposed < end:
+                values.append(service._row("monthly_run", SimpleNamespace(id=identity), SimpleNamespace(id=20, business_name="Synthetic Monthly Merchant"),
+                    "google_business", title="2026-09 incorrect display title", status="prepared", at=datetime.fromisoformat(created.replace("Z", "+00:00"))))
+        return values
+    monkeypatch.setattr(monthly, "workspace_rows", native_rows)
+    november = {"start": "2026-10-31T16:00:00Z", "end": "2026-11-30T16:00:00Z"}
+    default = await workspace(env, **november, customer_id=20, view="review")
+    assert default.status_code == 200, default.text
+    value = default.json()
+    assert [(g["month"], g["total"]) for g in value["review_groups"]] == [("2026-11", 2)]  # task + batch
+    batch = next(r for r in value["items"] if r["kind"] == "monthly_run")
+    assert batch["review_month"] == "2026-11" and batch["at"].startswith("2026-10")
+    mixed = await workspace(env, start="2026-10-31T16:00:00Z", end="2026-12-31T16:00:00Z", customer_id=20, view="review")
+    assert mixed.status_code == 200, mixed.text
+    assert [(g["month"], g["total"]) for g in mixed.json()["review_groups"]] == [("2026-11", 2), ("2026-12", 1)]
+    assert not env.fake.reads and not env.fake.writes
+
+
+@pytest.mark.asyncio
+async def test_monthly_month_metadata_is_exact_owner_customer_bound_and_never_guessed(projection, monkeypatch):
+    from services import media_monthly as monthly
+    env = projection
+    await seed_month_runs(env)
+    async def invalid_rows(db, user, customer_ids, start, end, view):
+        # Other-owner run, malformed stored month, missing run and wrong customer.
+        return [service._row("monthly_run", SimpleNamespace(id=identity), SimpleNamespace(id=customer, business_name="Synthetic Monthly Merchant"),
+            "google_business", title="2026-11 title is not authority", status="prepared", at=INSTANT)
+            for identity, customer in [(904, 20), (905, 20), (999, 20), (902, 10)]]
+    monkeypatch.setattr(monthly, "workspace_rows", invalid_rows)
+    async with env.sessions() as db:
+        ctx = await service.context(db, env.user)
+        customers, _, _ = await service._customers(db, ctx)
+        rows, _, source, incomplete = await service._monthly(db, ctx, customers,
+            datetime(2026, 10, 31, 16, tzinfo=timezone.utc), datetime(2026, 11, 30, 16, tzinfo=timezone.utc), None, "overview")
+        assert rows == [] and incomplete is True and source["state"] == "error"
+    unresolved = service._row("monthly_run", SimpleNamespace(id=999), SimpleNamespace(id=20, business_name="Synthetic"),
+        "google_business", title="2026-11 no metadata", status="prepared", at=INSTANT)
+    assert service._review_groups([unresolved], datetime(2026, 10, 31, 16, tzinfo=timezone.utc)) == []
+    assert not env.fake.reads and not env.fake.writes
+
+
+def test_nonmonthly_review_month_matches_beijing_workspace_date_basis_not_utc_or_merchant_timezone():
+    customer = SimpleNamespace(id=10, business_name="Synthetic")
+    rows = [service._row("task", SimpleNamespace(id=identity), customer, "google_business", title="Boundary review",
+        status="in_review", at=datetime.fromisoformat(instant), timezone_name="America/Los_Angeles", review=True)
+        for identity, instant in [(1, "2026-10-31T16:00:00+00:00"), (2, "2026-11-30T15:59:59+00:00"), (3, "2026-11-30T16:00:00+00:00")]]
+    result = service._review_groups(rows, datetime(2026, 10, 31, 16, tzinfo=timezone.utc))
+    assert [(r["month"], r["total"]) for r in result] == [("2026-11", 2), ("2026-12", 1)]

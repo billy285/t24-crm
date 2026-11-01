@@ -306,7 +306,24 @@ async def _monthly(db, ctx, customers, start, end, platform, view):
     if not await tables_available(db, monthly.TABLES):
         return [], {}, _source("monthly", "missing", "月度草稿准备尚未启用"), False
     rows = await monthly.workspace_rows(db, ctx.user, customer_ids=list(customers), start=start, end=end, view=view)
-    return rows, {}, _source("monthly", message="月度日期为建议发布时间；采用为任务和内部审核均不会自动公开发布"), False
+    # A batch's editorial month is persisted on its exact run. Its creation
+    # timestamp, display title and UTC query boundary are not that month.
+    # In particular a Beijing November range starts on October31 in UTC.
+    identities = {r["source_id"] for r in rows if r["kind"] == "monthly_run" and type(r.get("source_id")) is int}
+    metadata = await _tuples(db, select(monthly.Run.id, monthly.Run.customer_id, monthly.Run.month).where(
+        monthly.Run.owner_id == ctx.identity, monthly.Run.customer_id.in_(customers), monthly.Run.id.in_(identities))) if identities else []
+    months = {(identity, customer): _review_month(month) for identity, customer, month in metadata}
+    verified, incomplete = [], False
+    for row in rows:
+        if row["kind"] == "monthly_run":
+            month = months.get((row.get("source_id"), row.get("customer_id")))
+            if month is None:
+                incomplete = True
+                continue  # No guessed month or wrong-month navigation target.
+            row = row | {"review_month": month}
+        verified.append(row)
+    message = "部分月度批次的月份资料待核对，请进入原月度计划检查" if incomplete else "月度日期为建议发布时间；采用为任务和内部审核均不会自动公开发布"
+    return verified, {}, _source("monthly", "error" if incomplete else "ready", message), incomplete
 
 
 async def _gather(db, ctx, customers, permissions, start, end, platform, view="overview"):
@@ -520,11 +537,27 @@ def _calendar_days(rows):
     return sorted(result.values(), key=lambda r: r["date"])
 
 
+def _review_month(value):
+    if not isinstance(value, str) or len(value) != 7: return None
+    try:
+        parsed = datetime.strptime(value, "%Y-%m")
+        return value if parsed.strftime("%Y-%m") == value else None
+    except ValueError:
+        return None
+
+
 def _review_groups(rows, start):
     result = {}
     for row in rows:
         if not _review_row(row): continue
-        month = (datetime.fromisoformat(row["at"]) if row["at"] and row["kind"] != "monthly_run" else start).strftime("%Y-%m")
+        if row["kind"] == "monthly_run":
+            month = _review_month(row.get("review_month"))
+            if month is None: continue
+        else:
+            if not row["at"]: continue
+            # Match the workspace date inputs/calendar/focus navigation basis,
+            # not the provider timezone or the UTC representation of the row.
+            month = datetime.fromisoformat(row["at"]).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m")
         entry = result.setdefault((row["customer_id"], month), {"customer_id": row["customer_id"], "name": row["customer_name"], "month": month, "total": 0, "in_review": 0, "platforms": set()})
         entry["total"] += 1; entry["in_review"] += int(row["status"] == "in_review"); entry["platforms"].add(row["platform"])
     return [r | {"platforms": sorted(r["platforms"])} for _, r in sorted(result.items())]
