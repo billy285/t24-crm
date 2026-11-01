@@ -1,0 +1,53 @@
+{
+  "capabilities": [
+    "Brand-template posters",
+    "Two-to-four-photo collages",
+    "Original-size basic photo enhancement",
+    "Two-to-six-photo silent MP4 slideshows"
+  ],
+  "database_revision": "f21dc345d681",
+  "deployed_receipt_sha256": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+  "existing_finance_acl_and_private_data_preserved": true,
+  "limits": [
+    "No generative image or video model introduced",
+    "Video is silent real-photo slideshow; no audio or advanced editing",
+    "Original low-resolution detail cannot be recovered",
+    "Existing monthly packet is not automatically replaced by a new asset"
+  ],
+  "no_publication_or_new_schedules": true,
+  "operator_scope": "Existing owner-only asset studio; existing material permissions retained after explicit adoption",
+  "production_frontend": "c1d87dd771d8",
+  "production_pilot": {
+    "customer_id": 20,
+    "original_month_packet_preserved": true,
+    "original_photos_preserved": true,
+    "pending_material_ids": [
+      6,
+      7
+    ],
+    "poster_and_six_second_video": true,
+    "video_actually_played_in_browser": true
+  },
+  "proof_files": {
+    "deployed.json": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+    "postpilot.json": "2d0f950d321f5aec5183f34392a86f08f23b97b598d7014f17eb705ff9d13051",
+    "production-ui-acceptance.json": "dbc7357e074f2a2bb43b33ec4d539a870ae46bd9120ec64ee615d34c1af8b8e4",
+    "production-ui-independent-review.json": "90ee8f99c5f3851f0f9ca3fec2b14095f8ec30a0ba63d976bd9f4910a6fb6353",
+    "renderer-canary-result.json": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70"
+  },
+  "real_publication_requires_separate_owner_confirmation": true,
+  "server_activation": {
+    "exit_code": 0,
+    "task_id": "t-hk071rv5kmty41s"
+  },
+  "server_readonly_postpilot": {
+    "database_writes": 0,
+    "ended_beijing": "2026-11-01 14:29:09",
+    "exit_code": 0,
+    "provider_requests": 0,
+    "started_beijing": "2026-11-01 14:29:07",
+    "task_id": "t-hk071rw7du1hwjk"
+  },
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "MEDIA_ASSET_STUDIO_DEPLOYED_AND_OWNER_PILOT_ACCEPTED"
+}

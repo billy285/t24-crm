@@ -1,0 +1,62 @@
+{
+  "browser_or_server_actions": false,
+  "files": {
+    "production-desktop-video.jpg": {
+      "actual_encoding": "JPEG",
+      "bytes": 96270,
+      "height": 900,
+      "sha256": "ad32ea7e5a57b8d5a006f3897b61ea3d23999c9d6e718c4f0b6fed570464d28c",
+      "width": 1280
+    },
+    "production-mobile-poster.jpg": {
+      "actual_encoding": "JPEG",
+      "bytes": 34341,
+      "height": 844,
+      "sha256": "0bc5a7064ce9b9571fac20a3a2b631b4155cc3b803bac7b866b36e5abd105e3f",
+      "width": 390
+    },
+    "production-mobile-video.jpg": {
+      "actual_encoding": "JPEG",
+      "bytes": 39421,
+      "height": 844,
+      "sha256": "ff58d64d40776bb862879c8e3d3a881f55299b411b40b88d71aa0a19105ffc9f",
+      "width": 390
+    }
+  },
+  "limits": [
+    "Playback progression, media SHA verification, native dimensions and persisted material identities were reported by the root live pilot; screenshots alone cannot independently establish them.",
+    "This is focused acceptance of the current result/download/adoption views at 1280 and390 widths. It does not establish full-product UI quality, every screen interaction, accessibility contrast compliance, all merchants, or a95-point score.",
+    "The real source storefront289×312 and food145×156 photos remain low resolution. Successful1080 output does not restore missing detail. The poster is a factual template composition and the six-second video a silent photo slideshow; no AI retouching, invented imagery, music or advanced video editing is claimed.",
+    "Visible previews remain pending content review. These screenshots do not authorize or prove a real Google/Facebook/Instagram publication or actual monthly schedule activation."
+  ],
+  "observed": [
+    "Desktop 1280 screenshot shows a clear creation panel and separate private-result panel. Four production modes, existing material choices, source low-resolution warnings, output format and content-title reuse controls are visibly structured. No visible horizontal clipping or overlap in this captured region.",
+    "Mobile 390 screenshots keep the private result, entire square preview, download action and original-source disclosure in one column within the page. Fixed top and bottom navigation do not overlap the preview or download control.",
+    "The actual private video displays the merchant storefront frame, an ordinary playable-video control bar and 0:00 /0:06 duration; the UI accurately labels 1080×1080, six seconds and private review.",
+    "The actual private poster displays the storefront without visibly cutting off its sign and reads Welcome to Northern Pasta with the factual storefront subtitle. Result framing and download placement match the video card.",
+    "The video adoption notice states a new pending-review team material, identifies material7 and explicitly says video is not a Google fixed image; original images and reviewed packet are not replaced. No direct social-publication control is visible in these captured result views."
+  ],
+  "real_publication_or_schedule_executed_by_reviewer": false,
+  "reviewer": "north_month_frontend",
+  "root_filename_normalization": "Root renamed screenshot suffixes from png to jpg to match verified JPEG bytes; all reviewed image SHA256 values unchanged.",
+  "root_reported_runtime_checks_not_repeated_by_reviewer": {
+    "desktop_document_width": 1280,
+    "mobile_document_width": 390,
+    "mobile_media_bounds_x": [
+      41,
+      349
+    ],
+    "poster_native_dimensions": [
+      1080,
+      1080
+    ],
+    "poster_new_material_id": 6,
+    "video_error": null,
+    "video_new_material_id": 7,
+    "video_ready_state": 4,
+    "video_time_advanced_and_ended_seconds": 6
+  },
+  "scope": "Independent visual inspection of three supplied actual production screenshot files only; no browser, source, server, Git or provider actions.",
+  "source_edited": false,
+  "status": "PASS_WITH_STATED_LIMITS"
+}

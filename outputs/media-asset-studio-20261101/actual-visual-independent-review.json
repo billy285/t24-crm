@@ -1,0 +1,25 @@
+{
+  "activation_visual_gate_clear": true,
+  "actual_bytes_complete_and_hash_verified": true,
+  "cjk_font_complete_without_overlap_or_clipping": true,
+  "extreme_copy_fits_by_reducing_font_size": true,
+  "files": {
+    "actual-synthetic-chinese-poster.png": {
+      "actual_image_viewed": true,
+      "bytes": 19940,
+      "sha256": "8cd457060049bf0803b0513070ad9a05595f654756c4e25c837d3502f005c311"
+    },
+    "actual-synthetic-collage-four.png": {
+      "actual_image_viewed": true,
+      "bytes": 21518,
+      "sha256": "740914deffb8e1df9ef6b6b8b50826915346c4bf65ab9b9ea8d3709ae1e2c2d5"
+    }
+  },
+  "first_truncated_capture_rejected_and_superseded": true,
+  "no_claim_of_new_customer_asset_or_publication": true,
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "renderer_result_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "source_or_server_changes_performed_by_review": false,
+  "stage": "ACTUAL_SYNTHETIC_RENDER_VISUALS_INDEPENDENTLY_VERIFIED",
+  "whole_four_photos_and_corner_markers_intact": true
+}

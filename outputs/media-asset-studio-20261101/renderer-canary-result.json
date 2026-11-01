@@ -1,0 +1,172 @@
+{
+  "all_private_temporary_trees_removed": true,
+  "business_writes": 0,
+  "cases": [
+    {
+      "byte_size": 190766,
+      "duration_seconds": null,
+      "height": 1080,
+      "kind": "poster",
+      "mime_type": "image/png",
+      "name": "chinese_long_poster",
+      "renderer_elapsed_seconds": 0.993,
+      "sha256": "d1691eb3630a10edc9815b55c89808bde21c70c982ac07bfc4510959ebcfbe51",
+      "whole_photo_corner_markers_verified": 4,
+      "width": 1080
+    },
+    {
+      "byte_size": 67228,
+      "duration_seconds": null,
+      "height": 900,
+      "kind": "poster",
+      "mime_type": "image/png",
+      "name": "english_address_poster",
+      "renderer_elapsed_seconds": 0.388,
+      "sha256": "17d9639bd386cf685af47069f14410a29525af307d679111ad28e4b55fab46bd",
+      "whole_photo_corner_markers_verified": 4,
+      "width": 1200
+    },
+    {
+      "byte_size": 728,
+      "duration_seconds": null,
+      "height": 137,
+      "kind": "enhance",
+      "mime_type": "image/png",
+      "name": "original_rgba_enhance",
+      "original_alpha_pixels_preserved": true,
+      "renderer_elapsed_seconds": 0.25,
+      "sha256": "cd69ce8b55924c000a444f365006c8d785cc675cd2e836bdd2e1ae8bd95ae1bb",
+      "width": 91
+    },
+    {
+      "byte_size": 51292,
+      "duration_seconds": null,
+      "height": 1080,
+      "kind": "collage",
+      "mime_type": "image/png",
+      "name": "whole_photo_collage_2",
+      "renderer_elapsed_seconds": 0.34,
+      "sha256": "1813231b21195e7ee058fbccf415faafb690b6219d9ede835222375922b4752d",
+      "whole_photo_corner_markers_verified": 8,
+      "width": 1080
+    },
+    {
+      "byte_size": 58367,
+      "duration_seconds": null,
+      "height": 1080,
+      "kind": "collage",
+      "mime_type": "image/png",
+      "name": "whole_photo_collage_3",
+      "renderer_elapsed_seconds": 0.361,
+      "sha256": "1dc2957cc06b5388b0f3af7fd3ccc59ef6b5f2fb1894dc38c871d042e9e242b0",
+      "whole_photo_corner_markers_verified": 12,
+      "width": 1080
+    },
+    {
+      "byte_size": 67592,
+      "duration_seconds": null,
+      "height": 1080,
+      "kind": "collage",
+      "mime_type": "image/png",
+      "name": "whole_photo_collage_4",
+      "renderer_elapsed_seconds": 0.381,
+      "sha256": "b236a0cd59c2ffce329aec9cc26a06460e0e50c9a543abde1b1de614b3dc0422",
+      "whole_photo_corner_markers_verified": 16,
+      "width": 1080
+    },
+    {
+      "byte_size": 40411,
+      "duration_seconds": 6,
+      "ffprobe": {
+        "codec_name": "h264",
+        "codec_type": "video",
+        "duration_seconds": 6.0,
+        "height": 1080,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "12/1",
+        "width": 1080
+      },
+      "height": 1080,
+      "kind": "video",
+      "mime_type": "video/mp4",
+      "name": "actual_h264_slideshow_2",
+      "renderer_elapsed_seconds": 1.122,
+      "sha256": "8f835919b20465d92e1a367a780104a8e731373861b8738387c738b84103b7bf",
+      "width": 1080
+    },
+    {
+      "byte_size": 121970,
+      "duration_seconds": 18,
+      "ffprobe": {
+        "codec_name": "h264",
+        "codec_type": "video",
+        "duration_seconds": 18.0,
+        "height": 1350,
+        "pix_fmt": "yuv420p",
+        "r_frame_rate": "12/1",
+        "width": 1080
+      },
+      "height": 1350,
+      "kind": "video",
+      "mime_type": "video/mp4",
+      "name": "actual_h264_slideshow_6",
+      "renderer_elapsed_seconds": 3.111,
+      "sha256": "991bf30055fa2b7395daf26a6cc014347554b25340305f74981fcf03500e3099",
+      "width": 1080
+    }
+  ],
+  "database_calls": 0,
+  "effective_child_limits": {
+    "core_bytes": 0,
+    "cpu_seconds": 22,
+    "file_bytes": 25165824,
+    "file_descriptors": 64,
+    "memory_bytes": 805306368
+  },
+  "elapsed_seconds": 9.753,
+  "one_core_low_priority_minimal_environment": true,
+  "process_launches": 9,
+  "provider_calls": 0,
+  "source_hashes": {
+    "services/media_asset_renderer.py": "a821f9767fec832687a45c7bf30ccfe25625b543893a938295a0df5e10c025bc",
+    "services/media_asset_studio.py": "3655a9cc05786d879ad7b3afb4fb71c9f7280dcf748d7661bffbc1b89c22f16a",
+    "services/media_publication_images.py": "a88ec25f09e91d1b754b5f15f24a17082e820b3af61744f3bec89c31f6ea1834"
+  },
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "FINAL_ASSET_RENDERER_OFFLINE_VERIFIED",
+  "synthetic_pixels_only": true,
+  "visual_samples": [
+    {
+      "byte_size": 19940,
+      "case": "chinese_long_poster",
+      "file_name": "chinese-poster.png",
+      "height": 360,
+      "mime_type": "image/png",
+      "original": {
+        "byte_size": 190766,
+        "height": 1080,
+        "sha256": "d1691eb3630a10edc9815b55c89808bde21c70c982ac07bfc4510959ebcfbe51",
+        "width": 1080
+      },
+      "sha256": "8cd457060049bf0803b0513070ad9a05595f654756c4e25c837d3502f005c311",
+      "synthetic_only": true,
+      "width": 360
+    },
+    {
+      "byte_size": 21518,
+      "case": "whole_photo_collage_4",
+      "file_name": "collage-four.png",
+      "height": 360,
+      "mime_type": "image/png",
+      "original": {
+        "byte_size": 67592,
+        "height": 1080,
+        "sha256": "b236a0cd59c2ffce329aec9cc26a06460e0e50c9a543abde1b1de614b3dc0422",
+        "width": 1080
+      },
+      "sha256": "740914deffb8e1df9ef6b6b8b50826915346c4bf65ab9b9ea8d3709ae1e2c2d5",
+      "synthetic_only": true,
+      "width": 360
+    }
+  ]
+}

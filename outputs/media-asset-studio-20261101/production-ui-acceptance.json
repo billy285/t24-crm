@@ -1,0 +1,98 @@
+{
+  "deployed_sha256": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+  "entry": [
+    "代运营中心",
+    "商家",
+    "北方面食",
+    "素材制作"
+  ],
+  "existing_permissions_changed": false,
+  "financial_logic_changed": false,
+  "limitations": [
+    "Real source photos are low resolution; templates do not invent image detail.",
+    "Video is a silent real-photo slideshow, not generative video or a soundtracked edit.",
+    "Only poster and video were exercised with real production data; collage and enhancement were verified in focused local and actual-server renderer tests.",
+    "This is scoped asset-studio acceptance, not a global CRM UI score."
+  ],
+  "new_external_ai_provider": false,
+  "owner_pilot": {
+    "customer_id": 20,
+    "existing_month_packet_replaced": false,
+    "new_schedules": 0,
+    "original_fixed_source_photos": 2,
+    "original_materials_replaced": false,
+    "original_month_banner_waiting_count": 1,
+    "poster": {
+      "approval_status": "pending",
+      "fixed_image": true,
+      "material_id": 6,
+      "output_dimensions": [
+        1080,
+        1080
+      ]
+    },
+    "profile_revision": 1,
+    "real_publications": 0,
+    "silent_photo_video": {
+      "actual_playback_observed": true,
+      "approval_status": "pending",
+      "browser_error": null,
+      "browser_ready_state": 4,
+      "duration_seconds": 6,
+      "ended_at": 6,
+      "fixed_google_image": false,
+      "material_id": 7,
+      "observed_playback_time": 0.3554,
+      "output_dimensions": [
+        1080,
+        1080
+      ],
+      "source_photo_count": 2
+    }
+  },
+  "private_workspace_changed": false,
+  "provider_publication_requests": 0,
+  "responsive": {
+    "desktop": {
+      "document_width": 1280,
+      "horizontal_overflow": false,
+      "viewport": [
+        1280,
+        900
+      ]
+    },
+    "mobile": {
+      "document_width": 390,
+      "horizontal_overflow": false,
+      "poster_complete": true,
+      "poster_natural_dimensions": [
+        1080,
+        1080
+      ],
+      "video_left": 41,
+      "video_right": 349,
+      "video_width": 308,
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    "temporary_viewport_reset": true
+  },
+  "screenshot_files_not_for_git": {
+    "production-desktop-video.jpg": {
+      "byte_size": 96270,
+      "sha256": "ad32ea7e5a57b8d5a006f3897b61ea3d23999c9d6e718c4f0b6fed570464d28c"
+    },
+    "production-mobile-poster.jpg": {
+      "byte_size": 34341,
+      "sha256": "0bc5a7064ce9b9571fac20a3a2b631b4155cc3b803bac7b866b36e5abd105e3f"
+    },
+    "production-mobile-video.jpg": {
+      "byte_size": 39421,
+      "sha256": "ff58d64d40776bb862879c8e3d3a881f55299b411b40b88d71aa0a19105ffc9f"
+    }
+  },
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ASSET_STUDIO_PRODUCTION_OWNER_UI_ACCEPTANCE"
+}

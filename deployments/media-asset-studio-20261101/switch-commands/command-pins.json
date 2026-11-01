@@ -1,0 +1,41 @@
+{
+  "carrier": "3056343e71487923e53afc5e1d0488a1c87e2628",
+  "command_sha256": {
+    "activate-command.sh": "d631b15269d635d98b34ab729965d612ee16164f49a274c26831e6a4d96d504c",
+    "prepare-command.sh": "34acc93069ddeea386185085f9ef14788b39ff8160cbb31d3feca30a79d9c90b",
+    "recover-command.sh": "463a50ed9c9a3102419ac38e61d671af7870af0f8e467e80374f230943067d0a"
+  },
+  "executed": false,
+  "frontend_version": "c1d87dd771d8",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "2c526c73ec63ba59603fe304956c617f936ed53390c461890e959d98d413a504",
+      146426
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "006c469c89b50217a253139c05f21a289386b521915c29bad3117238ca1afc15",
+      2263273
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9",
+      20951
+    ],
+    "release.py": [
+      "release.py",
+      "334d6bb4b5a45538d019a03df19b0cd6b2d49671969b1dd7ea288c06f0976108",
+      53628
+    ],
+    "renderer_canary.py": [
+      "renderer_canary.py",
+      "cf8961248786c816055ba62497b76e9baa515f586522903b4cbeb1bce9e04f15",
+      18546
+    ]
+  },
+  "preflight_sha256": "bed4a64393ad4940a3e3c2a583d57a02f7970ce03ba6d96bec1991f7ba3d7bd2",
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "release": "/opt/t24-crm/releases/media-asset-studio-f595f3acfb5b-20261101",
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd"
+}

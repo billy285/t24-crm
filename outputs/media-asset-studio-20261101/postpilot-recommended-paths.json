@@ -1,0 +1,27 @@
+{
+  "git_actions_performed": false,
+  "no_images_raw_customer_rows_or_credentials_included": true,
+  "paths": [
+    "deployments/media-asset-studio-20261101/make_postpilot_check.py",
+    "deployments/media-asset-studio-20261101/postpilot-commands/postpilot-command.sh",
+    "deployments/media-asset-studio-20261101/postpilot-commands/postpilot-pins.json",
+    "deployments/media-asset-studio-20261101/postpilot_check.py",
+    "deployments/media-asset-studio-20261101/test_postpilot_check.py",
+    "outputs/media-asset-studio-20261101/postpilot-actual-raw.json",
+    "outputs/media-asset-studio-20261101/postpilot-command-independent-review.json",
+    "outputs/media-asset-studio-20261101/postpilot-independent-review.json",
+    "outputs/media-asset-studio-20261101/postpilot.json"
+  ],
+  "sha256": {
+    "deployments/media-asset-studio-20261101/make_postpilot_check.py": "262ae5c42f2c9a9933c1031dc2c2ef5f9558f328e72244a500d6d0dd38f167aa",
+    "deployments/media-asset-studio-20261101/postpilot-commands/postpilot-command.sh": "95df538229c8b0dd85b3ca43b1117a65bb3256b7f6acb112d0adf9098e90135d",
+    "deployments/media-asset-studio-20261101/postpilot-commands/postpilot-pins.json": "7ae0d0c55969b96461c61d7aa1f84d21efc7d330b68bba9a4b574307725bc63d",
+    "deployments/media-asset-studio-20261101/postpilot_check.py": "407d785add00b035bd5798e33bb9b19ebb0f5042978146537f3b0695fb644241",
+    "deployments/media-asset-studio-20261101/test_postpilot_check.py": "fa4a9f47238d257aa7804f58309fa27e7a854a19aeb0de8525c22532396b0d56",
+    "outputs/media-asset-studio-20261101/postpilot-actual-raw.json": "d6214cb6c0206ee4a32a17c229dd662787e08b8ab451d8def92932f2e07acff0",
+    "outputs/media-asset-studio-20261101/postpilot-command-independent-review.json": "9e7e4283441249a711c67a022fa2fcb46c007d11441d4c720a0d867000e8492b",
+    "outputs/media-asset-studio-20261101/postpilot-independent-review.json": "213660028621e4ff21fdd2ce047768bbb1db3175a1e254fc7c864d7c33c71406",
+    "outputs/media-asset-studio-20261101/postpilot.json": "2d0f950d321f5aec5183f34392a86f08f23b97b598d7014f17eb705ff9d13051"
+  },
+  "stage": "EXPLICIT_POSTPILOT_COMMIT_PATH_RECOMMENDATION"
+}

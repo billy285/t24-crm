@@ -1,0 +1,17 @@
+{
+  "checker_bytes": 16080,
+  "checker_sha256": "407d785add00b035bd5798e33bb9b19ebb0f5042978146537f3b0695fb644241",
+  "command_bytes": 8703,
+  "command_sha256": "95df538229c8b0dd85b3ca43b1117a65bb3256b7f6acb112d0adf9098e90135d",
+  "database_writes": false,
+  "exact_runtime_and_application_source_boundary": true,
+  "executed": false,
+  "known_prior_monthly_rate_counter_forward_exception_only": true,
+  "no_raw_content_credentials_paths_or_provider_actions": true,
+  "only_known_material6_7_image_for6_and_two_audits_may_append": true,
+  "original155_shapes_and_rowhashes_checked": true,
+  "private_month_packet_and_all_finance_acl_rows_strict": true,
+  "provider_requests": false,
+  "single_read_only_database_transaction": true,
+  "stage": "FINAL_READONLY_POSTPILOT_COMMAND_INDEPENDENTLY_VERIFIED"
+}

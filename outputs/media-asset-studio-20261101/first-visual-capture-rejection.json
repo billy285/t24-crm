@@ -1,0 +1,12 @@
+{
+  "application_or_server_render_failure": false,
+  "canonical_full_renderer_result_recovered_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "captured_file": "actual-renderer-visual-export.json",
+  "captured_file_sha256": "04435c7d1d96a0319ccc5afb43998df9a9809e45f0a7e8a1184c2bae7340e832",
+  "image_bytes_accepted": false,
+  "images_saved_or_visually_accepted": false,
+  "reason": "Browser clipboard truncated24576characters; one preview missing and collage bytes incomplete. Browser JSON normalization also converted two source-declared floats to integers.",
+  "replacement_small_fixed_png_chunks_pending": true,
+  "stage": "FIRST_SYNTHETIC_VISUAL_CAPTURE_REJECTED",
+  "two_source_declared_float_fields_restored_to_reproduce_exact_hash": true
+}

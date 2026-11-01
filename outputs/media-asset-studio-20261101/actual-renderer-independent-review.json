@@ -1,0 +1,30 @@
+{
+  "actual_cjk_poster_and_whole_photo_collages_verified": true,
+  "actual_h264_mp4_duration_seconds": [
+    6,
+    18
+  ],
+  "actual_thumbnail_visual_review_pending": true,
+  "browser_number_normalization_recovered_source_declared_float_fields": [
+    "actual_h264_slideshow_2.ffprobe.duration_seconds",
+    "actual_h264_slideshow_6.ffprobe.duration_seconds"
+  ],
+  "database_provider_business_writes": 0,
+  "effective_child_limits": {
+    "core_bytes": 0,
+    "cpu_seconds": 22,
+    "file_bytes": 25165824,
+    "file_descriptors": 64,
+    "memory_bytes": 805306368
+  },
+  "eight_cases_nine_launches": true,
+  "exact_original_record_sha256_reproduced": true,
+  "original_rgba_dimensions_and_alpha_preserved": true,
+  "overall_seconds": 9.753,
+  "private_temp_cleanup_minimal_env_one_core_low_priority": true,
+  "renderer_result_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "slowest_case_seconds": 3.111,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ACTUAL_FINAL_RENDERER_RESULT_INDEPENDENTLY_VERIFIED",
+  "video_frame_rate": "12/1"
+}

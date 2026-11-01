@@ -1,0 +1,26 @@
+{
+  "adopted_job_count": 2,
+  "all155_original_shapes_and_rows_preserved_except_known_exact_appends_and_schema_head": true,
+  "application_source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "checker_sha256": "407d785add00b035bd5798e33bb9b19ebb0f5042978146537f3b0695fb644241",
+  "command_sha256": "95df538229c8b0dd85b3ca43b1117a65bb3256b7f6acb112d0adf9098e90135d",
+  "database_provider_or_credential_content_actions_by_checker": false,
+  "deployed_sha256": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+  "financial_acl_private_and_original_monthly_packet_unchanged": true,
+  "focused_postpilot_tests_passed": 19,
+  "known_existing_monthly_rate_counter_forward_exception_only": true,
+  "native_append_only_material_ids": [
+    6,
+    7
+  ],
+  "native_new_create_audit_count": 2,
+  "native_new_fixed_image_count": 1,
+  "new_materials_remain_pending": true,
+  "owner_profile_count": 1,
+  "postpilot_canonical_sha256": "2d0f950d321f5aec5183f34392a86f08f23b97b598d7014f17eb705ff9d13051",
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "real_video_duration_seconds": 6,
+  "request_receipt_count": 5,
+  "runtime_source_and_private_boundary_unchanged": true,
+  "stage": "ACTUAL_POSTPILOT_AGGREGATE_INDEPENDENTLY_VERIFIED"
+}

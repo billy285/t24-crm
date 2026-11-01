@@ -1,0 +1,9 @@
+{
+  "checker_bytes": 16080,
+  "checker_sha256": "407d785add00b035bd5798e33bb9b19ebb0f5042978146537f3b0695fb644241",
+  "command_bytes": 8703,
+  "command_sha256": "95df538229c8b0dd85b3ca43b1117a65bb3256b7f6acb112d0adf9098e90135d",
+  "database_writes": false,
+  "executed": false,
+  "provider_requests": false
+}

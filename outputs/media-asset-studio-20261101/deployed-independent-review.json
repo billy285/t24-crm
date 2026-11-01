@@ -1,0 +1,26 @@
+{
+  "actual8case_renderer_and_two_visuals_verified": true,
+  "asset_worker_enabled_without_env_change": true,
+  "crm": {
+    "config": "8f1a8d57d968282bcbb1659613c386d123d97235407ab72ebbd9c4484ce33107",
+    "id": "8671f4b6bf4d43ee2db2d86ec9f9632edab01725c822cadac9c860b8a647e2b4",
+    "image": "sha256:3b203190c499b7e3f886f15156358403f7d10bd548df8a2ccc627f518f730b3a",
+    "restart": 0,
+    "started": "2026-11-01T06:17:46.343971823Z"
+  },
+  "database_restore_or_container_deletion": false,
+  "deployed_sha256": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+  "effective_csp_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+  "exact_canonical_raw_capture": true,
+  "existing_full_env_credentials_private_google_cutoff_meta_policy_preserved": true,
+  "frontend_version": "c1d87dd771d8",
+  "local_release_tests_passed": 246,
+  "new3_tables_empty_at_acceptance": true,
+  "old155_tables_including_private_monthly_packet_preserved_at_acceptance": true,
+  "owner_private_ui_pilot_is_separate_postdeployment_activity": true,
+  "privacy_headers_callbacks_and_noncapability_checks_passed": true,
+  "public_or_financial_actions_performed": false,
+  "schema_revision": "f21dc345d681",
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ACTUAL_ASSET_STUDIO_DEPLOYMENT_INDEPENDENTLY_VERIFIED"
+}

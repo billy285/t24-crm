@@ -1,0 +1,28 @@
+{
+  "activation_is_deployment_not_social_publication": true,
+  "all155_rows_three_new_empty_prepared": true,
+  "canonical_actual_prepared_reviewed": true,
+  "carrier": "3056343e71487923e53afc5e1d0488a1c87e2628",
+  "command_bytes": {
+    "activate-command.sh": 2228,
+    "prepare-command.sh": 3325,
+    "recover-command.sh": 2227
+  },
+  "command_sha256": {
+    "activate-command.sh": "d631b15269d635d98b34ab729965d612ee16164f49a274c26831e6a4d96d504c",
+    "prepare-command.sh": "34acc93069ddeea386185085f9ef14788b39ff8160cbb31d3feca30a79d9c90b",
+    "recover-command.sh": "463a50ed9c9a3102419ac38e61d671af7870af0f8e467e80374f230943067d0a"
+  },
+  "forward_only_recovery_no_database_restore": true,
+  "frontend_version": "c1d87dd771d8",
+  "note": "Independently reproduced all command and canonical pin bytes in memory against immutable carrier and actual server prepared hash. Reviewed activate/recover source guards, exact candidate/toolchain/schema identities, existing full environment/private boundary, Google cutoff+MetaOFF, reversible six-directive CSP update and no database restore. Root still performs separate actual synthetic visual review before activation.",
+  "owner_acl_finance_private_boundaries_preserved": true,
+  "pins_sha256": "e094870b77de0a797ffd43a2ac67d89ea4e056dd6815c2a7946f9e59ab4fed7e",
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "real_publication_or_schedule_executed": false,
+  "release_sha256": "334d6bb4b5a45538d019a03df19b0cd6b2d49671969b1dd7ea288c06f0976108",
+  "reviewer": "north_month_frontend",
+  "server_actions_by_reviewer": false,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "status": "PASS"
+}

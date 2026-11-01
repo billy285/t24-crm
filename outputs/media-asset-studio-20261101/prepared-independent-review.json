@@ -1,0 +1,21 @@
+{
+  "actual_final_renderer_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "actual_frozen_renderer_executed": true,
+  "all_offline_workers_off": true,
+  "candidate_image": "sha256:3b203190c499b7e3f886f15156358403f7d10bd548df8a2ccc627f518f730b3a",
+  "credentials_absent": true,
+  "empty_new_tables": 3,
+  "exact_six_csp_and_static_root_replacements": true,
+  "existing_full_environment_and_ops_credentials_preserved": true,
+  "existing_google_cutoff_and_meta_policy_preserved": true,
+  "frontend_version": "c1d87dd771d8",
+  "prepared_private_monthly_packet_preserved": true,
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "preserved_original_tables": 155,
+  "production_database_written": false,
+  "provider_or_publication_actions": false,
+  "schema_revision": "f21dc345d681",
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ASSET_STUDIO_ACTUAL_PREPARED_INDEPENDENTLY_VERIFIED",
+  "synthetic_visual_inspection_pending": true
+}

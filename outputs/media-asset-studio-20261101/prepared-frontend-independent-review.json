@@ -1,0 +1,20 @@
+{
+  "all155_original_rows_preserved_and_three_new_empty": true,
+  "all_prepared_true_and_false_flags_verified": true,
+  "candidate_image": "sha256:3b203190c499b7e3f886f15156358403f7d10bd548df8a2ccc627f518f730b3a",
+  "canonical_prepared_bytes": 3217,
+  "canonical_prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "frontend_version": "c1d87dd771d8",
+  "nginx_exact_csp_directive_count": 6,
+  "note": "Independently removed only transport receipt_sha256 and reproduced exact server canonical SHA; validated current frozen prepared schema, all offline guard flags, original runtime hash and candidate/toolchain/canary pins. This verifies actual prepare receipt; no production activation performed by reviewer.",
+  "offline_actual_python310_and_final_renderer_reported_verified": true,
+  "old_runtime_exact_capture_match": true,
+  "production_database_written": false,
+  "real_publication_or_schedule_executed": false,
+  "renderer_canary_result_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "reviewer": "north_month_frontend",
+  "server_actions_by_reviewer": false,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "status": "PASS",
+  "toolchain_receipt_sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d"
+}

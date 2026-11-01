@@ -1,0 +1,12 @@
+{
+  "command_bytes": 4424,
+  "command_sha256": "fa3d906524b909681833a564f07692a14d3376300a6231040d5e9c92f077e10f",
+  "executed": false,
+  "no_server_provider_git_or_business_changes": true,
+  "only_exact_render_result_and_fixed_two_synthetic_pngs": true,
+  "prepared_sha256": "aaded73460dff6689af78c5b7f90f6d4f39024c340bcde1e0bdfa2713308a274",
+  "renderer_result_sha256": "e408b382c193e9e87cefdcd019213b7a96f98d37bd2cfdc8f828fe130f0f1c70",
+  "root600_stable_identity_hash_and_png_dimensions_checked": true,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "SYNTHETIC_VISUAL_EXPORT_INDEPENDENT_REVIEW_PASSED"
+}
