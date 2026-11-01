@@ -13,10 +13,10 @@ class Facts(Input):
 
 
 class Rules(Input):
-    timezone: Literal["America/Chicago"]
-    weekdays: list[int] = Field(min_length=3, max_length=3)
-    local_time: Literal["11:00"]
-    posts_per_week: Literal[3]
+    timezone: str = Field(min_length=1, max_length=80)
+    weekdays: list[int] = Field(min_length=1, max_length=7)
+    local_time: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    posts_per_week: int = Field(ge=1, le=7)
     language: Literal["en", "zh_en"]
     include_prices: StrictBool = False
     generic_mode: StrictBool = False
@@ -49,7 +49,7 @@ class Consent(Input):
 class Generate(Input):
     request_id: str = Field(min_length=36, max_length=36)
     expected_profile_revision: int = Field(ge=1)
-    month: Literal["2026-11"]
+    month: str = Field(pattern=r"^[0-9]{4}-(?:0[1-9]|1[0-2])$")
     input_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     consent: Consent
 
@@ -65,4 +65,10 @@ class Adopt(Input):
     request_id: str = Field(min_length=36, max_length=36)
     expected_revision: int = Field(ge=1)
     preview_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    confirmed: StrictBool
+
+
+class Archive(Input):
+    request_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=1)
     confirmed: StrictBool

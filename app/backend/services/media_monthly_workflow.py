@@ -10,7 +10,7 @@ from uuid import uuid5, NAMESPACE_URL
 from fastapi import HTTPException
 from sqlalchemy import select
 from models.media_monthly_workflow import MediaMonthlyWorkflow as Workflow, MediaMonthlyWorkflowRequest as Request
-from models.media_monthly import MediaMonthlyProfile as Profile, MediaMonthlyItem as Item
+from models.media_monthly import MediaMonthlyProfile as Profile, MediaMonthlyItem as Item, MediaMonthlyRun as Run
 from models.media_operations import MediaOperationTask as Task
 from models.media_publication_images import MediaPublicationImage as Image
 from models.google_business import GoogleBusinessBinding as Binding, GoogleBusinessConnection as Connection, GoogleBusinessSchedule as Schedule, GoogleBusinessAction as Action
@@ -32,26 +32,22 @@ def key(kind, owner, run, item, revision):
     return (SCHEDULE_PREFIX if kind == "schedule" else TASK_PREFIX if kind == "task" else value[:9]) + value[9:]
 
 
-async def context(db, user, *, write=False):
-    if write:
-        ctx, customer = await monthly.context(db, user, write=True)
-    else:
-        # Historical exceptions remain visible after cooperation stops. This is
-        # still the same active owner and existing customer read authorization.
-        if monthly.normalized_role(user) != "super_admin": raise HTTPException(403, "月度流程仅老板可查看")
-        ctx = await media.context(db, user)
-        actor = await db.get(Employees, ctx.identity, populate_existing=True)
-        if not actor or actor.status not in {"active", "probation"} or monthly.normalized_role(SimpleNamespace(role=actor.role)) != "super_admin":
-            raise HTTPException(403, "当前老板身份已失效，请重新登录")
-        customer, _ = await media._customer(db, ctx, 20)
-        await require_tables(db, monthly.TABLES)
+async def context(db, user, *, customer_id=None, run_id=None, write=False):
+    # Resolve the persisted run's customer before applying existing owner and
+    # customer module rules. A caller-controlled default can never cross-bind.
+    ctx, _ = await monthly.context(db, user, None)
+    if run_id is not None:
+        run = await monthly._owned_run(db, ctx, run_id)
+        if customer_id is not None and customer_id != run.customer_id: raise HTTPException(404, "月度批次不存在")
+        customer_id = run.customer_id
+    ctx, customer = await monthly.context(db, user, customer_id, write=write)
     await require_tables(db, TABLES)
     return ctx, customer
 
 
 async def _load(db, ctx, run_id, lock=False):
     run = await monthly._owned_run(db, ctx, run_id, lock=lock)
-    if run.status != "generated": raise HTTPException(409, "本流程只接收尚未采用的12篇月度草案；已有任务请管理原任务")
+    if run.status != "generated": raise HTTPException(409, "本流程只接收尚未采用的月度草案；已有任务请管理原任务")
     query = select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id == run.id).execution_options(populate_existing=True)
     if lock: query = query.with_for_update()
     return run, await db.scalar(query)
@@ -70,11 +66,14 @@ async def _binding(db, ctx, customer):
 
 async def _sources(db, ctx, customer, run, choices=None):
     entries = list((await db.scalars(select(Item).where(Item.run_id == run.id).order_by(Item.slot_id).execution_options(populate_existing=True))).all())
-    if len(entries) != 12 or any(item.task_id for item in entries): raise HTTPException(409, "本月候选数量或原任务状态已变化，请核对原批次")
+    expected_slots = monthly.slots(run.month, run.snapshot["rules"])
+    expected = {slot["slot_id"]: slot for slot in expected_slots}
+    if (len(entries) != len(expected_slots) or {item.slot_id for item in entries} != set(expected)
+        or any(item.task_id or monthly.iso(item.proposed_publish_at) != expected[item.slot_id]["proposed_publish_at"] or item.timezone != expected[item.slot_id]["timezone"] for item in entries)): raise HTTPException(409, "本月候选数量或原任务状态已变化，请核对原批次")
     menus, materials, versions = await monthly._sources(db, ctx, customer)
     material_map = {row["id"]: row for row in materials}; menu_map = {row["id"]: row for row in menus}
     selected = {row["item_id"]: row for row in choices} if choices else {}
-    if choices is not None and (len(choices) != 12 or set(selected) != {item.id for item in entries}): raise HTTPException(422, "请逐一核对这12篇草案，不可遗漏或重复篇目")
+    if choices is not None and (len(choices) != len(entries) or set(selected) != {item.id for item in entries}): raise HTTPException(422, "请逐一核对本月全部草案，不可遗漏或重复篇目")
     output = []; source_items = []
     for item in entries:
         choice = selected.get(item.id, {"image_version_id": item.image_version_id, "rights_confirmed": False})
@@ -195,19 +194,19 @@ async def _view(db, ctx, customer, run, workflow):
     expired = bool(workflow and monthly.aware(workflow.expires_at) <= monthly.now())
     binding_ready = bool(customer.status == "closed" and binding and binding["active"] and binding["lifecycle"] == "active" and binding["connection_active"] and not binding["needs_reconnect"] and binding["primary_operator_id"])
     future = all(monthly.aware(monthly.datetime.fromisoformat(item["proposed_publish_at"])) > monthly.now() for item in items)
-    checks = [{"key": "materials", "state": "blocked" if warnings else "ready", "message": "请补齐每篇合格配图及本批使用权确认" if warnings else "12篇固定配图与本批使用权已核对"},
+    checks = [{"key": "materials", "state": "blocked" if warnings else "ready", "message": "请补齐每篇合格配图及本批使用权确认" if warnings else "全部固定配图与本批使用权已核对"},
         {"key": "binding", "state": "ready" if binding_ready else "blocked", "message": "门店与现有主要运营已核对" if binding_ready else "请核对现有门店连接、合作状态和主要运营，不会自动分配权限"},
         {"key": "delivery", "state": "ready" if delivery["enabled"] else "pending", "message": "图片投递已启用" if delivery["enabled"] else "图片投递未启用；可先内部准备，真实发布前由老板另行确认"},
         {"key": "scheduler", "state": "ready" if configuration["enabled"] else "pending", "message": "定时服务已启用；只有明确确认的排期会执行" if configuration["enabled"] else "定时服务未启用"},
         {"key": "source", "state": "blocked" if stale else "ready", "message": "本批来源已变化，请重新准备；原文案会保留" if stale else "当前文案、菜单、图片及门店版本一致"},
         {"key": "expiry", "state": "pending" if expired and workflow.status != "scheduled" else "ready", "message": "确认预览已过期，请重新准备后核对" if expired and workflow.status != "scheduled" else "确认预览仍有效；正式排期后按已确认日期执行"},
         {"key": "dates", "state": "ready" if future else "blocked", "message": "建议日期均在未来" if future else "部分建议日期已过去，不会自动补发历史内容"}]
-    task_ready = not workflow or workflow.status != "reviewed" or len(workflow.task_refs) == 12 and all(
+    task_ready = not workflow or workflow.status != "reviewed" or len(workflow.task_refs) == len(items) and all(
         _task_matches(tasks.get(ref["task_id"]), ref, next(item for item in workflow.snapshot["items"] if item["item_id"] == ref["item_id"]), workflow) for ref in workflow.task_refs)
     alert_rows = await _alerts(db, workflow, stale, schedules, tasks)
     counts = {"total": len(items), **{state: sum(row.status == state for row in schedules.values()) for state in ("scheduled", "succeeded", "blocked", "unknown", "missed", "cancelled")}}
     can_prepare = customer.status == "closed" and (not workflow or workflow.status in {"prepared", "cancelled"} and not await _nonrebuildable(db, workflow, schedules))
-    return {"run_id": run.id, "customer_id": customer.id, "month": run.month, "run_revision": run.revision, "source_stale": stale,
+    return {"run_id": run.id, "customer_id": customer.id, "month": run.month, "rules": run.snapshot["rules"], "run_revision": run.revision, "source_stale": stale,
         "workflow": ({"id": workflow.id, "revision": workflow.revision, "status": workflow.status, "preview_hash": workflow.preview_hash,
             "source_hash": workflow.source_hash, "expires_at": monthly.iso(workflow.expires_at), "reviewed_at": monthly.iso(workflow.reviewed_at),
             "created_at": monthly.iso(workflow.created_at), "updated_at": monthly.iso(workflow.updated_at)} if workflow else None),
@@ -220,7 +219,7 @@ async def _view(db, ctx, customer, run, workflow):
 
 
 async def get_workflow(db, user, run_id):
-    ctx, customer = await context(db, user); run, workflow = await _load(db, ctx, run_id)
+    ctx, customer = await context(db, user, run_id=run_id); run, workflow = await _load(db, ctx, run_id)
     return await _view(db, ctx, customer, run, workflow)
 
 
@@ -234,6 +233,8 @@ async def _replay(db, ctx, request_id, kind, run_id, body):
         if row.run_id != run_id or row.kind != kind or row.fingerprint != _fingerprint(kind, run_id, body): raise HTTPException(409, "此请求编号对应不同月度操作，请读取原结果")
         await _receipt_current(db, ctx, row)
         return row.result
+    if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, (Run.request_id == identity) | (Run.adopt_request_id == identity)).limit(1)):
+        raise HTTPException(409, "此请求编号已用于其他月度操作，请读取原结果")
     return None
 
 
@@ -257,11 +258,11 @@ async def _receipt(db, ctx, customer, run, workflow, request_id, kind, body):
 
 
 async def prepare(db, user, run_id, *, request_id, expected_run_revision, expected_workflow_revision, items, facts_confirmed):
-    ctx, customer = await context(db, user, write=True); request_id = media._key(request_id)
+    ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_run_revision": expected_run_revision, "expected_workflow_revision": expected_workflow_revision, "items": items, "facts_confirmed": facts_confirmed}
-    if facts_confirmed is not True or any(row.get("rights_confirmed") is not True for row in items): raise HTTPException(422, "请核对本月事实、12篇具体配图与使用权；本步骤不代表公开发布授权")
+    if facts_confirmed is not True or any(row.get("rights_confirmed") is not True for row in items): raise HTTPException(422, "请核对本月事实、全部具体配图与使用权；本步骤不代表公开发布授权")
     async with media._write(db):
-        ctx, customer = await context(db, user, write=True)
+        ctx, customer = await context(db, user, run_id=run_id, write=True)
         replay = await _replay(db, ctx, request_id, "prepare", run_id, body)
         if replay is not None: return replay
         run, workflow = await _load(db, ctx, run_id, True)
@@ -281,7 +282,7 @@ async def prepare(db, user, run_id, *, request_id, expected_run_revision, expect
 
 async def _confirmed(db, ctx, customer, run, workflow, expected_revision, preview_hash, status):
     if not workflow or workflow.revision != expected_revision or workflow.status != status or workflow.preview_hash != preview_hash:
-        raise HTTPException(409, "整月确认版本或状态已变化，请重新读取具体12篇内容")
+        raise HTTPException(409, "整月确认版本或状态已变化，请重新读取具体整月内容")
     if monthly.aware(workflow.expires_at) <= monthly.now(): raise HTTPException(409, "确认预览已过期，请重新准备；原文案会保留")
     if not await _fresh(db, ctx, customer, run, workflow): raise HTTPException(409, "文案、素材、菜单、门店或负责人已变化，请撤销旧确认后重新准备")
     if any(item["quality_warnings"] or not item["image_version_id"] for item in workflow.snapshot["items"]): raise HTTPException(409, "本批仍有素材或图片使用权问题，请先补齐")
@@ -293,16 +294,16 @@ async def _confirmed(db, ctx, customer, run, workflow, expected_revision, previe
 
 
 async def review(db, user, run_id, *, request_id, expected_revision, preview_hash, confirmed):
-    ctx, customer = await context(db, user, write=True); request_id = media._key(request_id)
+    ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_revision": expected_revision, "preview_hash": preview_hash, "confirmed": confirmed}
     if confirmed is not True: raise HTTPException(422, "请逐篇核对具体文字、图片和日期，仅确认内部审核；本步骤不公开发布")
     async with media._write(db):
-        ctx, customer = await context(db, user, write=True)
+        ctx, customer = await context(db, user, run_id=run_id, write=True)
         replay = await _replay(db, ctx, request_id, "review", run_id, body)
         if replay is not None: return replay
         run, workflow = await _load(db, ctx, run_id, True)
         binding = await _confirmed(db, ctx, customer, run, workflow, expected_revision, preview_hash, "prepared")
-        other = await db.scalar(select(Workflow.id).where(Workflow.customer_id == customer.id, Workflow.run_id != run.id, Workflow.status.in_(("reviewed", "scheduled"))).limit(1))
+        other = await db.scalar(select(Workflow.id).join(Run, Run.id == Workflow.run_id).where(Workflow.customer_id == customer.id, Run.month == run.month, Workflow.run_id != run.id, Workflow.status.in_(("reviewed", "scheduled"))).limit(1))
         if other: raise HTTPException(409, "此客户已有整月审核批次，请管理原批次，避免重复发布")
         old_refs = {row["item_id"]: row for row in workflow.task_refs}; task_refs = []
         for item in workflow.snapshot["items"]:
@@ -342,11 +343,11 @@ async def review(db, user, run_id, *, request_id, expected_revision, preview_has
 
 
 async def schedule(db, user, run_id, *, request_id, expected_revision, preview_hash, publication_confirmed, confirmation_version):
-    ctx, customer = await context(db, user, write=True); request_id = media._key(request_id)
+    ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_revision": expected_revision, "preview_hash": preview_hash, "publication_confirmed": publication_confirmed, "confirmation_version": confirmation_version}
-    if publication_confirmed is not True or confirmation_version != PUBLIC_NOTICE_VERSION: raise HTTPException(422, "请另行确认本月具体12篇文字、实际配图、门店与日期，将在到期时公开发布")
+    if publication_confirmed is not True or confirmation_version != PUBLIC_NOTICE_VERSION: raise HTTPException(422, "请另行确认本月具体文字、实际配图、门店与日期，将在到期时公开发布")
     async with media._write(db):
-        ctx, customer = await context(db, user, write=True)
+        ctx, customer = await context(db, user, run_id=run_id, write=True)
         replay = await _replay(db, ctx, request_id, "schedule", run_id, body)
         if replay is not None: return replay
         run, workflow = await _load(db, ctx, run_id, True)
@@ -370,12 +371,12 @@ async def schedule(db, user, run_id, *, request_id, expected_revision, preview_h
 
 
 async def cancel(db, user, run_id, *, request_id, expected_revision, reason):
-    ctx, customer = await context(db, user); request_id = media._key(request_id)
+    ctx, customer = await context(db, user, run_id=run_id); request_id = media._key(request_id)
     reason = monthly._clean(reason, 200, required=True)
     if len(reason) < 3: raise HTTPException(422, "请填写至少3字的撤销原因")
     body = {"expected_revision": expected_revision, "reason": reason}
     async with media._write(db):
-        ctx, customer = await context(db, user)
+        ctx, customer = await context(db, user, run_id=run_id)
         replay = await _replay(db, ctx, request_id, "cancel", run_id, body)
         if replay is not None: return replay
         run, workflow = await _load(db, ctx, run_id, True)
@@ -405,7 +406,7 @@ async def request_result(db, user, request_id):
 async def workspace_status(db, user, run_id):
     if monthly.normalized_role(user) != "super_admin": raise HTTPException(403, "月度流程仅老板可查看")
     if not await tables_available(db, TABLES): return None
-    ctx, customer = await context(db, user); run, workflow = await _load(db, ctx, run_id)
+    ctx, customer = await context(db, user, run_id=run_id); run, workflow = await _load(db, ctx, run_id)
     if not workflow: return None
     view = await _view(db, ctx, customer, run, workflow)
     pending = workflow.status in {"prepared", "reviewed"}
@@ -416,14 +417,16 @@ async def workspace_status(db, user, run_id):
         "已内部审核，等待老板单独确认公开排期" if workflow.status == "reviewed" else "月度素材和内容已准备，等待老板逐篇确认" if pending else "仅按老板明确确认的日期执行，异常会单独列出"}
 
 
-async def alerts(db, user, customer_id=20):
-    ctx, customer = await context(db, user)
-    if customer_id != customer.id: raise HTTPException(404, "本阶段仅开放北方面食")
-    workflow = await db.scalar(select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.customer_id == customer.id).order_by(Workflow.id.desc()).limit(1))
-    if not workflow: return {"customer_id": customer.id, "run_id": None, "items": [], "counts": {"attention": 0, "total": 0, "blocked": 0, "unknown": 0, "missed": 0, "failed": 0, "pending_confirmation": 0}}
+async def alerts(db, user, customer_id=monthly.PILOT_CUSTOMER_ID, *, month=None):
+    ctx, customer = await context(db, user, customer_id=customer_id)
+    query = select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.customer_id == customer.id)
+    if month is not None:
+        monthly.valid_month(month); query = query.join(Run, Run.id == Workflow.run_id).where(Run.month == month, Run.customer_id == customer.id, Run.owner_id == ctx.identity)
+    workflow = await db.scalar(query.order_by(Workflow.id.desc()).limit(1))
+    if not workflow: return {"customer_id": customer.id, "month": month, "run_id": None, "items": [], "counts": {"attention": 0, "total": 0, "blocked": 0, "unknown": 0, "missed": 0, "failed": 0, "pending_confirmation": 0}}
     run, workflow = await _load(db, ctx, workflow.run_id); view = await _view(db, ctx, customer, run, workflow)
     rows = view["alerts"]
-    return {"customer_id": customer.id, "run_id": run.id, "items": rows,
+    return {"customer_id": customer.id, "month": run.month, "run_id": run.id, "items": rows,
         "counts": {"attention": len(rows), "total": len(rows), **{state: sum(row["status"] == state or state == "failed" and row["status"] == "rejected" for row in rows) for state in ("blocked", "unknown", "missed", "failed")},
             "pending_confirmation": int(workflow.status in {"prepared", "reviewed"})}}
 
@@ -442,8 +445,10 @@ async def authorize_schedule(db, *, schedule, task=None):
     if not await tables_available(db, TABLES): raise HTTPException(409, "月度确认资料尚未就绪，本次不会公开提交")
     if schedule is None: raise HTTPException(409, "此月度任务只能按老板确认的具体排期执行，不允许提前或另建发布请求")
     if schedule.status not in {"scheduled", "dispatching"}: raise HTTPException(409, "此月度排期已停止或结果待核对，不会重新发送")
+    if task is None: task = await db.get(Task, schedule.task_id, populate_existing=True)
+    if task is None: raise HTTPException(409, "月度任务已不可核对，不会发布")
     workflow = None
-    rows = list((await db.scalars(select(Workflow).where(Workflow.customer_id == 20, Workflow.status.in_(("scheduled", "cancelled"))).with_for_update().execution_options(populate_existing=True))).all())
+    rows = list((await db.scalars(select(Workflow).where(Workflow.customer_id == task.customer_id, Workflow.status.in_(("scheduled", "cancelled"))).with_for_update().execution_options(populate_existing=True))).all())
     for candidate in rows:
         if any(ref["schedule_id"] == schedule.id for ref in candidate.schedule_refs): workflow = candidate; break
     if not workflow or workflow.status != "scheduled" or not workflow.activation or workflow.activation.get("confirmation_version") != PUBLIC_NOTICE_VERSION:
@@ -451,7 +456,7 @@ async def authorize_schedule(db, *, schedule, task=None):
     actor = await db.get(Employees, workflow.owner_id, populate_existing=True)
     user = SimpleNamespace(id=str(actor.id), role=actor.role, name=actor.name) if actor else None
     if not user: raise HTTPException(409, "原确认老板身份已失效")
-    ctx, customer = await context(db, user); run, current = await _load(db, ctx, workflow.run_id, True)
+    ctx, customer = await context(db, user, run_id=workflow.run_id); run, current = await _load(db, ctx, workflow.run_id, True)
     if not await _fresh(db, ctx, customer, run, current): raise HTTPException(409, "月度文案、图片、门店或负责人已变化，停止原排期")
     if current.reviewed_hash != current.preview_hash or current.activation.get("preview_hash") != current.preview_hash:
         raise HTTPException(409, "月度公开确认与审核版本不一致")

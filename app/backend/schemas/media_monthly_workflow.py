@@ -16,7 +16,7 @@ class Prepare(Input):
     request_id: str = Field(min_length=36, max_length=36)
     expected_run_revision: int = Field(ge=1)
     expected_workflow_revision: int = Field(ge=0)
-    items: list[Picture] = Field(min_length=12, max_length=12)
+    items: list[Picture] = Field(min_length=1, max_length=31)
     facts_confirmed: StrictBool
 
 

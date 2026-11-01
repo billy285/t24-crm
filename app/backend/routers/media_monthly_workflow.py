@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
@@ -41,5 +41,5 @@ async def request_result(request_id: str, user: UserResponse = Depends(get_curre
 
 
 @router.get("/customers/{customer_id}/workflow-alerts")
-async def alerts(customer_id: int = Path(ge=1), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await service.alerts(db, user, customer_id)
+async def alerts(customer_id: int = Path(ge=1), month: str | None = Query(None, pattern=r"^[0-9]{4}-(?:0[1-9]|1[0-2])$"), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await service.alerts(db, user, customer_id, month=month)

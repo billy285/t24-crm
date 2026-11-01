@@ -300,8 +300,8 @@ async def _optional(db, key, factory):
 async def _monthly(db, ctx, customers, start, end, platform, view):
     if not ctx.owner:
         return [], {}, _source("monthly", "locked", "月度草稿当前仅由老板核对，不开放额外员工权限"), False
-    if 20 not in customers or platform not in {None, "google_business"} or view == "inbox":
-        return [], {}, _source("monthly", message="当前范围不包含北方面食月度草稿"), False
+    if not customers or platform not in {None, "google_business"} or view == "inbox":
+        return [], {}, _source("monthly", message="当前范围不包含可查看的Google月度草稿"), False
     from services import media_monthly as monthly
     if not await tables_available(db, monthly.TABLES):
         return [], {}, _source("monthly", "missing", "月度草稿准备尚未启用"), False
@@ -516,6 +516,106 @@ async def _portfolio(db, ctx, customers, permissions, rows, gb, mb, *, platform,
         "sources_complete": complete, "source_mode": "local_saved", "observed_at": iso(instant)}
 
 
+def _queue_month(start, end):
+    local = start.astimezone(ZoneInfo("Asia/Shanghai")); through = end.astimezone(ZoneInfo("Asia/Shanghai"))
+    if (local.day, local.hour, local.minute, local.second, local.microsecond) != (1, 0, 0, 0, 0): return None
+    year, month = (local.year + 1, 1) if local.month == 12 else (local.year, local.month + 1)
+    if (through.year, through.month, through.day, through.hour, through.minute, through.second, through.microsecond) != (year, month, 1, 0, 0, 0, 0): return None
+    return local.strftime("%Y-%m")
+
+
+async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, start, end, *, complete, platform=None):
+    """Bulk local preparation checks. Not a publication/permission authority."""
+    from models.media_monthly import MediaMonthlyProfile as Profile, MediaMonthlyRun as Run, MediaMonthlyItem as Item
+    from models.media_monthly_workflow import MediaMonthlyWorkflow as Workflow
+    from models.media_publication_images import MediaPublicationImage as Image
+    from services import media_publication_images as publication_images
+    from models.customer_materials import Customer_materials as Material
+    from models.customer_menu_items import Customer_menu_items as Menu
+    from services import media_monthly as monthly
+    month = _queue_month(start, end); profiles, runs, entries, workflows = {}, {}, {}, {}
+    owner_data = ctx.owner and platform in {None, "google_business"} and await tables_available(db, monthly.TABLES | {Workflow.__tablename__})
+    if owner_data:
+        profiles = {r.customer_id: r for r in (await _records(db, select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id.in_(customers))))[0]}
+        if month:
+            for run in (await _records(db, select(Run).where(Run.owner_id == ctx.identity, Run.customer_id.in_(customers), Run.month == month, Run.status != "archived").order_by(Run.id.desc())))[0]: runs.setdefault(run.customer_id, run)
+            ids = {r.id for r in runs.values()}
+            for entry in (await _records(db, select(Item).where(Item.run_id.in_(ids))))[0]: entries.setdefault(entry.run_id, []).append(entry)
+            workflows = {r.run_id: r for r in (await _records(db, select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id.in_(ids), Workflow.customer_id.in_(customers))))[0]}
+    material_customers = {identity for identity in customers if permissions[identity]["modules"]["materials"]["read"]}
+    mats, menus, source_materials, fixed_images, sources_ok = {}, {}, {}, {}, True
+    if await tables_available(db, {Material.__tablename__, Menu.__tablename__}):
+        for material in (await _records(db, select(Material).where(Material.customer_id.in_(material_customers), Material.visibility == "team")))[0]:
+            mats.setdefault(material.customer_id, set()).add(material.id); source_materials[material.id] = material
+        for identity, menu_id in await _tuples(db, select(Menu.customer_id, Menu.id).where(Menu.customer_id.in_(material_customers), Menu.status == "active")):
+            menus.setdefault(identity, set()).add(menu_id)
+    else: sources_ok = False
+    if ctx.owner and await tables_available(db, {Image.__tablename__}):
+        for image in (await _records(db, select(Image).where(Image.customer_id.in_(material_customers), Image.revoked_at.is_(None))))[0]:
+            material = source_materials.get(image.material_id)
+            if material and image.customer_id == material.customer_id and image.source_fingerprint == publication_images.source_fingerprint(material) and not monthly._quality(image):
+                fixed_images[image.id] = image
+    records = {identity: [] for identity in customers}
+    for row in rows: records[row["customer_id"]].append(row)
+    for item in items:
+        identity = item["id"]; current = records[identity]; customer = customers[identity]
+        profile = profiles.get(identity); run = runs.get(identity); workflow = workflows.get(run.id) if run else None
+        target = None; rule_ok = False
+        if profile and month:
+            try: target = len(monthly.slots(month, profile.rules)); rule_ok = True
+            except HTTPException: pass
+        tasks = {r["id"]: r for r in current if r["kind"] == "task"}
+        prepared = sum(r["status"] in {"draft", "in_review", "ready", "completed"} for r in tasks.values())
+        reviewing = sum(r["status"] == "in_review" for r in tasks.values())
+        scheduled = len({r["navigation"].get("task_id", r["id"]) for r in current if r["kind"] in {"google_schedule", "meta_schedule"} and r["status"] in {"scheduled", "dispatching", "pending", "processing", "accepted"}})
+        published = len({r["navigation"].get("task_id", r["id"]) for r in current if r["kind"] in {"google_schedule", "meta_schedule", "meta_post"} and r["status"] == "succeeded"})
+        basis = "authorized_records"; batch = entries.get(run.id, []) if run else []
+        if run:
+            basis = "monthly_plan"; target = len(run.snapshot.get("slots", [])) or target
+            prepared = len(batch)
+            task_ids = {ref["task_id"] for ref in workflow.task_refs} if workflow else {entry.task_id for entry in batch if entry.task_id}
+            reviewing = len(batch) if workflow and workflow.status == "prepared" else sum(r["navigation"].get("task_id") in task_ids and r["kind"] == "task" and r["status"] == "in_review" for r in current)
+            schedule_ids = {ref["schedule_id"] for ref in workflow.schedule_refs} if workflow else set()
+            monthly_schedules = [r for r in current if r["kind"] == "google_schedule" and r["source_id"] in schedule_ids]
+            scheduled = sum(r["status"] in {"scheduled", "dispatching", "pending", "processing", "accepted"} for r in monthly_schedules)
+            published = sum(r["status"] == "succeeded" for r in monthly_schedules)
+        checks = []
+        def check(key, label, state): checks.append({"key": key, "label": label, "state": state})
+        active = customer.status == "closed"
+        check("cooperation", "合作中" if active else "非合作客户，仅保留历史", "ready" if active else "blocked")
+        check("account", "平台已连接，发布前仍需核对授权" if item["operating_state"] == "active" else "请连接当前平台账号", "ready" if item["operating_state"] == "active" else "unknown" if not complete else "missing")
+        if identity in material_customers:
+            check("materials", f"已有{len(mats.get(identity, []))}项共享素材，实际图片需逐项核对" if mats.get(identity) else "尚无共享素材", "ready" if mats.get(identity) else "missing" if sources_ok else "unknown")
+        else: check("materials", "素材需由有权限的同事核对", "unknown")
+        if ctx.owner and "google_business" in item["platforms"] and platform in {None, "google_business"}:
+            if "google_business" in item["platforms"] and platform in {None, "google_business"}:
+                check("operator", "Google主要运营已指定" if item["assignment_state"] == "assigned" else "请老板指定Google主要运营", "ready" if item["assignment_state"] == "assigned" else "missing")
+            check("rules", "月度频率与时区已保存" if rule_ok else "请选择整月并确认本商家频率与时区", "ready" if rule_ok else "missing" if owner_data else "unknown")
+            images_ok = bool(profile and profile.images and all(choice.get("image_version_id") in fixed_images and fixed_images[choice["image_version_id"]].customer_id == identity and fixed_images[choice["image_version_id"]].material_id == choice.get("material_id") for choice in profile.images))
+            check("images", "固定图片版本已保存，发布前仍需核验实际图片" if images_ok else "请确认合格的固定图片版本", "ready" if images_ok else "missing" if sources_ok else "unknown")
+            facts_ok = bool(profile and profile.public_facts and profile.public_facts.get("public_name") and profile.public_facts.get("location") and profile.public_facts.get("highlights"))
+            check("facts", "公开事实已保存" if facts_ok else "请确认公开店名、位置和卖点", "ready" if facts_ok else "missing" if owner_data else "unknown")
+            menu_ok = bool(profile and (profile.rules.get("generic_mode") is True or profile.menu_item_ids and set(profile.menu_item_ids).issubset(menus.get(identity, set()))))
+            check("menu", "菜单或仅公开事实模式已确认" if menu_ok else "请核对所选菜单或明确仅公开事实模式", "ready" if menu_ok else "missing" if sources_ok else "unknown")
+        if run:
+            check("batch", "已有本月批次，请继续原批次" if run.status not in {"unknown", "generating", "failed"} else "原生成结果需先核对，不会重复新建", "blocked" if run.status in {"unknown", "generating", "failed"} else "ready")
+        if item.get("blocked") or item.get("overdue"): check("exceptions", "先处理失败、受阻或逾期记录", "blocked")
+        if not complete or not sources_ok: check("sources", "本地资料尚未完整读取", "unknown")
+        readiness = "not_applicable" if not active else "blocked" if any(c["state"] == "blocked" for c in checks) else "unknown" if any(c["state"] == "unknown" for c in checks) else "needs_setup" if any(c["state"] == "missing" for c in checks) else "ready"
+        can_monthly = bool(ctx.owner and active and platform in {None, "google_business"} and "google_business" in item["platforms"] and owner_data and permissions[identity]["modules"]["delivery"]["write"] and permissions[identity]["modules"]["materials"]["read"])
+        if not active: action = {"kind": "content", "label": "查看历史内容"}
+        elif can_monthly and run: action = {"kind": "monthly", "label": "继续本月清单", "run_id": run.id}
+        elif item["operating_state"] != "active": action = {"kind": "accounts", "label": "核对平台账号"}
+        elif not mats.get(identity) and identity in material_customers: action = {"kind": "materials", "label": "补齐共享素材"}
+        elif can_monthly: action = {"kind": "monthly", "label": "准备本月内容" if rule_ok else "设置月度规则"}
+        elif reviewing: action = {"kind": "review", "label": "查看待审核内容"}
+        else: action = {"kind": "content", "label": "查看授权工作内容"}
+        item["work_queue"] = {"month": month, "basis": basis, "target": target if ctx.owner else None,
+            "prepared": prepared, "in_review": reviewing, "scheduled": scheduled, "published": published,
+            "readiness": readiness, "checks": checks, "next_action": action, "can_prepare_monthly": can_monthly}
+    return items
+
+
 def _matching(items, status, operator_id):
     return [r for r in items if (operator_id is None or r["primary_operator_id"] == operator_id) and (
         status == "all" or status == "attention" and any(i["severity"] != "info" for i in r["issues"]) or
@@ -571,6 +671,7 @@ async def merchants(db, user, *, q=None, platform=None, customer_id=None, start=
     customers, permissions, truncated = await _customers(db, ctx, customer_id, q=q)
     rows, gb, mb, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform)
     portfolio = await _portfolio(db, ctx, customers, permissions, rows, gb, mb, platform=platform, complete=not(truncated or cut))
+    await _work_queues(db, ctx, customers, permissions, portfolio["items"], rows, gb, mb, start, end, complete=portfolio["sources_complete"], platform=platform)
     items = _matching(portfolio["items"], status, operator_id)
     items.sort(key=lambda r: (-sum(i["severity"] == "high" for i in r["issues"]), -sum(i["severity"] == "medium" for i in r["issues"]), r["id"]))
     scope = {"q": q, "platform": platform, "customer_id": customer_id, "view": "merchants", "status": status, "operator_id": operator_id, "start": iso(start), "end": iso(end)}

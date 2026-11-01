@@ -226,9 +226,8 @@ async def test_same_month_new_input_cannot_adopt_second_twelve_tasks(monthly):
     setup = await env.monthly_client.put(PREFIX + "/customers/20/profile", json=changed)
     assert setup.status_code == 200
     other = await env.monthly_client.post(PREFIX + "/customers/20/runs", json=generate_body(setup.json()))
-    assert other.status_code == 201 and other.json()["id"] != first["id"]
-    rejected = await env.monthly_client.post(PREFIX + f"/runs/{other.json()['id']}/adopt", json=payload(other.json()))
-    assert rejected.status_code == 409
+    assert other.status_code == 409  # New inputs do not create a second live monthly batch.
+    assert len(env.monthly_state.calls) == 1
     async with env.sessions() as db: assert await db.scalar(select(func.count()).select_from(Task)) == 12
 
 
@@ -354,7 +353,7 @@ async def test_nonowner_denied_before_any_sql_or_runtime(role):
 
 @pytest.mark.asyncio
 async def test_wrong_customer_stale_owner_and_unconfirmed_consent_fail_closed(monthly):
-    env = monthly; assert (await env.monthly_client.get(PREFIX + "/customers/10/setup")).status_code == 404
+    env = monthly; assert (await env.monthly_client.get(PREFIX + "/customers/99999/setup")).status_code == 404
     setup = await configured(env); body = generate_body(setup); body["consent"]["confirmed"] = False
     assert (await env.monthly_client.post(PREFIX + "/customers/20/runs", json=body)).status_code == 422
     assert not env.monthly_state.calls

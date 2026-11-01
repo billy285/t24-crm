@@ -14,7 +14,7 @@ import re
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 from uuid import uuid5, NAMESPACE_URL
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from fastapi import HTTPException
@@ -48,12 +48,15 @@ def aware(value): return value.replace(tzinfo=timezone.utc) if value.tzinfo is N
 
 async def context(db, user, customer_id=PILOT_CUSTOMER_ID, *, write=False):
     # Deny nonowners before any database or AI/runtime read.
-    if normalized_role(user) != "super_admin": raise HTTPException(403, "月度草稿试点仅老板可操作")
+    if normalized_role(user) != "super_admin": raise HTTPException(403, "月度草稿仅老板可操作")
     ctx = await media.context(db, user)
     actor = await db.get(Employees, ctx.identity, populate_existing=True)
     if not actor or actor.status not in {"active", "probation"} or normalized_role(SimpleNamespace(role=actor.role)) != "super_admin":
         raise HTTPException(403, "当前老板身份已失效，请重新登录")
-    if type(customer_id) is not int or customer_id != PILOT_CUSTOMER_ID: raise HTTPException(404, "本阶段仅开放北方面食试点")
+    if customer_id is None:
+        await require_tables(db, TABLES)
+        return ctx, None
+    if type(customer_id) is not int or customer_id < 1: raise HTTPException(404, "商家不存在")
     customer, permissions = await media._customer(db, ctx, customer_id, write=write)
     if write and customer.status != "closed": raise HTTPException(409, "此客户目前未处于合作状态；保留历史查看和异常核对，不再创建内容")
     if not permissions["modules"]["materials"]["read"] or write and not permissions["modules"]["delivery"]["write"]:
@@ -85,18 +88,39 @@ async def _runtime(db):
         raise HTTPException(503, "AI 服务地址或模型需要核对，请老板检查现有设置") from None
 
 
+def valid_month(month):
+    if type(month) is not str or not re.fullmatch(r"[0-9]{4}-(?:0[1-9]|1[0-2])", month):
+        raise HTTPException(422, "请选择有效的年月")
+    year, number = map(int, month.split("-"))
+    if not 2000 <= year <= 2099: raise HTTPException(422, "请选择2000—2099年的有效月份")
+    return year, number
+
+
+def valid_rules(rules):
+    if type(rules) is not dict: raise HTTPException(422, "请核对本商家的发布频率、时间和时区")
+    zone_name, weekdays, clock, frequency = (rules.get(key) for key in ("timezone", "weekdays", "local_time", "posts_per_week"))
+    if (type(zone_name) is not str or not 1 <= len(zone_name) <= 80 or type(weekdays) is not list or not 1 <= len(weekdays) <= 7
+        or any(type(day) is not int or not 1 <= day <= 7 for day in weekdays) or len(set(weekdays)) != len(weekdays)
+        or type(frequency) is not int or frequency != len(weekdays) or type(clock) is not str or not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", clock)):
+        raise HTTPException(422, "请核对不重复的周一至周日、每周次数、当地时间和门店时区")
+    try: zone = ZoneInfo(zone_name)
+    except (ValueError, ZoneInfoNotFoundError): raise HTTPException(422, "门店时区无效，请使用有效IANA时区") from None
+    return zone
+
+
 def slots(month=MONTH, rules=None):
-    if month != MONTH: raise HTTPException(422, "本次仅准备已确认的 2026 年 11 月试点")
-    rules = rules or {}
-    if (rules.get("timezone"), rules.get("weekdays"), rules.get("local_time"), rules.get("posts_per_week")) != ("America/Chicago", [2, 4, 6], "11:00", 3):
-        raise HTTPException(422, "请使用已确认的周二、周四、周六芝加哥时间11:00，每周3次规则")
-    zone = ZoneInfo("America/Chicago")
+    year, number = valid_month(month); rules = rules or {}
+    zone = valid_rules(rules); hour, minute = map(int, rules["local_time"].split(":"))
     result = []
-    for day in range(1, calendar.monthrange(2026, 11)[1] + 1):
-        local = datetime(2026, 11, day, 11, 0, tzinfo=zone)
-        if local.isoweekday() in {2, 4, 6}:
-            result.append({"slot_id": f"202611{day:02d}", "proposed_publish_at": local.astimezone(timezone.utc).isoformat(), "timezone": "America/Chicago"})
-    if not 1 <= len(result) <= 18 or len(result) != 12: raise HTTPException(409, "本月试点日期无法核对")
+    for day in range(1, calendar.monthrange(year, number)[1] + 1):
+        local = datetime(year, number, day, hour, minute, tzinfo=zone)
+        if local.isoweekday() not in set(rules["weekdays"]): continue
+        # Do not guess a missing or repeated wall-clock time at DST changes.
+        utc = local.astimezone(timezone.utc)
+        if utc.astimezone(zone).replace(tzinfo=None) != local.replace(tzinfo=None) or local.replace(fold=1).utcoffset() != local.utcoffset():
+            raise HTTPException(422, "所选时间遇到夏令时跳时或重复，请选择明确的门店当地发布时间")
+        result.append({"slot_id": f"{year:04d}{number:02d}{day:02d}", "proposed_publish_at": utc.isoformat(), "timezone": rules["timezone"]})
+    if not 1 <= len(result) <= 31: raise HTTPException(409, "本月发布日期无法核对")
     return result
 
 
@@ -151,7 +175,7 @@ async def _sources(db, ctx, customer):
     return menu_data, material_data, versions
 
 
-async def _input(db, ctx, customer, profile):
+async def _input(db, ctx, customer, profile, month=MONTH):
     menu_data, material_data, versions = await _sources(db, ctx, customer)
     if profile is None: return None, None, menu_data, material_data, ["请先确认公开事实、菜单及素材选择"]
     menus = {r["id"]: r for r in menu_data}; materials = {r["id"]: r for r in material_data}
@@ -180,15 +204,16 @@ async def _input(db, ctx, customer, profile):
             "byte_size": image.byte_size if image else None, "quality_warnings": warnings})
     snapshot = {"customer_id": customer.id, "customer_name": customer.business_name, "profile_id": profile.id, "profile_revision": profile.revision,
         "public_facts": profile.public_facts, "rules": profile.rules, "menu_items": selected_menus, "images": selected_images,
-        "slots": slots(MONTH, profile.rules)}
+        "slots": slots(month, profile.rules)}
     return snapshot, digest(snapshot), menu_data, material_data, list(dict.fromkeys(gaps))
 
 
-async def setup(db, user, customer_id):
+async def setup(db, user, customer_id, *, month=MONTH):
+    valid_month(month)
     ctx, customer = await context(db, user, customer_id)
     profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).execution_options(populate_existing=True))
     try:
-        snapshot, input_hash, menus, materials, gaps = await _input(db, ctx, customer, profile)
+        snapshot, input_hash, menus, materials, gaps = await _input(db, ctx, customer, profile, month)
     except HTTPException as exc:
         if exc.status_code not in {409, 422}: raise
         # Retain owner access to existing copy and current image choices even
@@ -203,21 +228,21 @@ async def setup(db, user, customer_id):
     menu_ready = bool(profile and (profile.menu_item_ids or profile.rules.get("generic_mode")))
     if profile and not menu_ready: gaps.append("请确认所选菜单，或明确选择只使用公开事实的通用草稿模式")
     quality_ack = bool(profile and snapshot and all(not r["quality_warnings"] or r.get("quality_confirmed") is True for r in snapshot["images"]))
-    return {"customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
+    return {"month": month, "slots": snapshot["slots"] if snapshot else [], "customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
         "materials": materials, "runtime": runtime, "input_hash": input_hash, "source_hash": input_hash, "gaps": gaps,
         "capabilities": {"is_owner": True, "can_generate": bool(customer.status == "closed" and runtime["enabled"] and profile and quality_ack and menu_ready),
             "cooperation_active": customer.status == "closed", "read_only_reason": None if customer.status == "closed" else "客户当前未在合作，仅查看历史和异常，不再创建内容"},
         "notice": {"version": NOTICE_VERSION, "text": NOTICE, "send_fields": SEND_FIELDS}}
 
 
-async def save_profile(db, user, customer_id, *, expected_revision, public_facts, rules, menu_item_ids, images: list, confirmed_facts):
+async def save_profile(db, user, customer_id, *, month=MONTH, expected_revision, public_facts, rules, menu_item_ids, images: list, confirmed_facts):
     ctx, customer = await context(db, user, customer_id, write=True)
     if confirmed_facts is not True: raise HTTPException(422, "请先核对本次公开事实和图片对应关系")
     facts = {"public_name": _clean(public_facts["public_name"], 200, required=True), "location": _clean(public_facts["location"], 300, required=True),
         "highlights": [_clean(value, 300, required=True) for value in public_facts["highlights"]]}
     if any(BAN.search(value) for value in [*facts["highlights"], facts["location"]]): raise HTTPException(422, "本试点不使用营业时间、今天到店、节假日或优惠承诺，请核对公开事实")
     rules = {**rules, "forbidden_claims": [_clean(value, 100, required=True) for value in rules.get("forbidden_claims", [])]}
-    slots(MONTH, rules)
+    slots(month, rules)
     if not 1 <= len(images) <= 20 or len({r["material_id"] for r in images}) != len(images) or len(set(menu_item_ids)) != len(menu_item_ids) or any(type(x) is not int or x < 1 for x in menu_item_ids):
         raise HTTPException(422, "请选择不重复且有效的菜单及图片")
     async with media._write(db):
@@ -227,16 +252,16 @@ async def save_profile(db, user, customer_id, *, expected_revision, public_facts
         if row is not None and (row.public_facts, row.rules, row.menu_item_ids, row.images) == (facts, rules, menu_item_ids, images):
             # A repeated confirmation of identical rules is not a new input
             # version and cannot bypass semantic monthly generation dedup.
-            await _input(db, ctx, customer, row)
+            await _input(db, ctx, customer, row, month)
         elif row is None:
             row = Profile(owner_id=ctx.identity, customer_id=customer.id, revision=1, created_at=now()); db.add(row)
             row.public_facts = facts; row.rules = rules; row.menu_item_ids = menu_item_ids; row.images = images; row.confirmed_at = now(); row.updated_at = now()
-            await db.flush(); await _input(db, ctx, customer, row)
+            await db.flush(); await _input(db, ctx, customer, row, month)
         else:
             row.revision += 1
             row.public_facts = facts; row.rules = rules; row.menu_item_ids = menu_item_ids; row.images = images; row.confirmed_at = now(); row.updated_at = now()
-            await db.flush(); await _input(db, ctx, customer, row)
-    return await setup(db, user, customer_id)
+            await db.flush(); await _input(db, ctx, customer, row, month)
+    return await setup(db, user, customer_id, month=month)
 
 
 def _copy_hash(title, content): return digest({"title": title, "content": content})
@@ -252,7 +277,7 @@ def _copy(title, content, rules):
 
 
 async def _owned_run(db, ctx, identity, *, lock=False):
-    query = select(Run).where(Run.id == identity, Run.owner_id == ctx.identity, Run.customer_id == PILOT_CUSTOMER_ID).execution_options(populate_existing=True)
+    query = select(Run).where(Run.id == identity, Run.owner_id == ctx.identity).execution_options(populate_existing=True)
     if lock: query = query.with_for_update()
     row = await db.scalar(query)
     if not row: raise HTTPException(404, "月度草稿批次不存在")
@@ -267,20 +292,21 @@ async def run_data(db, row):
     return {"id": row.id, "customer_id": row.customer_id, "month": row.month, "status": state, "revision": row.revision,
         "input_hash": row.input_hash, "ai_used": row.ai_used, "message": row.message,
         "profile_snapshot": {key: row.snapshot[key] for key in ("public_facts", "rules")}, "items": items, "preview_hash": preview,
-        "adoptable": bool(row.status == "generated" and len(entries) == 12 and all(not item.quality_warnings for item in entries)),
+        "adoptable": bool(row.status == "generated" and len(entries) == len(slots(row.month, row.snapshot["rules"])) and all(not item.quality_warnings for item in entries)),
         "request_id": row.request_id, "canonical_request_id": row.request_id, "created_at": iso(row.created_at)}
 
 
 async def get_run(db, user, identity):
-    ctx, customer = await context(db, user)
+    ctx, _ = await context(db, user, None)
     row = await _owned_run(db, ctx, identity)
-    return await _fresh_data(db, row, await _freshness(db, ctx, customer))
+    ctx, customer = await context(db, user, row.customer_id)
+    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month))
 
 
-async def _freshness(db, ctx, customer):
+async def _freshness(db, ctx, customer, month=MONTH):
     try:
         profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).execution_options(populate_existing=True))
-        _, input_hash, _, _, _ = await _input(db, ctx, customer, profile)
+        _, input_hash, _, _, _ = await _input(db, ctx, customer, profile, month)
         _, runtime = await _runtime(db)
         return input_hash, runtime["fingerprint"]
     except HTTPException: return None, None
@@ -295,18 +321,33 @@ async def _fresh_data(db, row, current):
     return data
 
 
-async def list_runs(db, user, customer_id):
+async def list_runs(db, user, customer_id, *, month=None):
     ctx, customer = await context(db, user, customer_id)
-    rows = list((await db.scalars(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id).order_by(Run.id.desc()).limit(20))).all())
-    current = await _freshness(db, ctx, customer)
-    return {"items": [await _fresh_data(db, row, current) for row in rows]}
+    query = select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id)
+    if month is not None:
+        valid_month(month); query = query.where(Run.month == month)
+    rows = list((await db.scalars(query.order_by(Run.id.desc()).limit(20))).all())
+    currents = {month: await _freshness(db, ctx, customer, month) for month in {row.month for row in rows}}
+    return {"items": [await _fresh_data(db, row, currents[row.month]) for row in rows]}
 
 
 async def request_result(db, user, request_id):
-    ctx, customer = await context(db, user); key = media._key(request_id)
+    ctx, _ = await context(db, user, None); key = media._key(request_id)
     row = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, (Run.request_id == key) | (Run.adopt_request_id == key)))
-    if not row: raise HTTPException(404, "原请求尚未登记，请保留请求编号")
-    return await _fresh_data(db, row, await _freshness(db, ctx, customer))
+    if not row:
+        from models.media_monthly_workflow import MediaMonthlyWorkflowRequest as Receipt
+        from services.schema_readiness import tables_available
+        if await tables_available(db, {Receipt.__tablename__}):
+            receipt = await db.scalar(select(Receipt).where(Receipt.owner_id == ctx.identity, Receipt.request_id == key, Receipt.kind == "archive"))
+            if receipt:
+                archived = await _owned_run(db, ctx, receipt.run_id)
+                await context(db, user, archived.customer_id)
+                if archived.status != "archived" or archived.revision != receipt.result.get("revision"):
+                    raise HTTPException(409, "归档结果的当前版本已变化，请读取原批次，不要另建归档")
+                return receipt.result
+        raise HTTPException(404, "原请求尚未登记，请保留请求编号")
+    ctx, customer = await context(db, user, row.customer_id)
+    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month))
 
 
 def _ai_payload(snapshot):
@@ -382,7 +423,14 @@ def _parse(raw, snapshot):
         raise HTTPException(422, "AI 月度草稿结构或事实边界未通过校验；未创建任务，也未使用模板替代") from None
 
 
+async def _receipt_used(db, ctx, request_id):
+    from models.media_monthly_workflow import MediaMonthlyWorkflowRequest as Receipt
+    from services.schema_readiness import tables_available
+    return await tables_available(db, {Receipt.__tablename__}) and bool(await db.scalar(select(Receipt.id).where(Receipt.owner_id == ctx.identity, Receipt.request_id == request_id).limit(1)))
+
+
 async def generate(db, user, customer_id, *, request_id, expected_profile_revision, month, input_hash, consent):
+    valid_month(month)
     ctx, customer = await context(db, user, customer_id, write=True); key = media._key(request_id)
     fingerprint = digest({"customer_id": customer_id, "expected_profile_revision": expected_profile_revision, "month": month, "input_hash": input_hash, "consent": consent})
     async with media._write(db):
@@ -391,9 +439,10 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
         if old:
             if old.request_id != key or old.fingerprint != fingerprint: raise HTTPException(409, "同一请求编号对应不同生成内容，请核对原请求")
             return await run_data(db, old)
-        profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer_id).execution_options(populate_existing=True))
+        if await _receipt_used(db, ctx, key): raise HTTPException(409, "此请求编号已用于其他月度流程，请读取原结果")
+        profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer_id).with_for_update().execution_options(populate_existing=True))
         if not profile or profile.revision != expected_profile_revision: raise HTTPException(409, "公开规则版本已变化，请重新读取并确认")
-        snapshot, actual, _, _, _ = await _input(db, ctx, customer, profile)
+        snapshot, actual, _, _, _ = await _input(db, ctx, customer, profile, month)
         if input_hash != actual: raise HTTPException(409, "菜单、素材或公开事实已变化，请重新核对")
         if not snapshot["menu_items"] and not profile.rules.get("generic_mode"):
             raise HTTPException(422, "尚未选择已确认菜单；如只用公开事实写通用草稿，请明确启用通用模式")
@@ -403,7 +452,12 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
             raise HTTPException(422, "请确认本次实际 AI 服务、公开文字及用途")
         if any(image["quality_warnings"] and image.get("quality_confirmed") is not True for image in snapshot["images"]): raise HTTPException(422, "请先确认低质量图片仅作草稿参考，不能直接采用为发布任务")
         semantic = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.month == month, Run.input_hash == input_hash))
-        if semantic: return await run_data(db, semantic)
+        if semantic:
+            if semantic.status == "archived": raise HTTPException(409, "相同资料已有归档草案；请保留原文案，确需重新生成请先明确更新本月资料或规则")
+            return await run_data(db, semantic)
+        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.month == month,
+            Run.status.in_(("generating", "unknown", "generated", "adopted"))).limit(1)):
+            raise HTTPException(409, "该商家本月已有内容批次，请先管理原批次，不会因资料调整另建重复排期")
         if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.status == "generating", Run.updated_at > now() - timedelta(minutes=5)).limit(1)):
             raise HTTPException(409, "已有生成请求待确认，请先读取原请求，不能同时重复生成")
         selected_images = snapshot["images"]
@@ -427,7 +481,7 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
         if result is not None:
             try:
                 profile = await db.get(Profile, row.profile_id, populate_existing=True)
-                _, current_hash, _, _, _ = await _input(db, ctx, customer, profile)
+                _, current_hash, _, _, _ = await _input(db, ctx, customer, profile, row.month)
                 _, current_runtime = await _runtime(db)
                 fresh = current_hash == row.input_hash and current_runtime["fingerprint"] == row.runtime["fingerprint"]
             except HTTPException: fresh = False
@@ -441,15 +495,18 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
                 db.add(Item(run_id=row.id, slot_id=slot["slot_id"], proposed_publish_at=datetime.fromisoformat(slot["proposed_publish_at"]), timezone=slot["timezone"],
                     title=text["title"], content=text["content"], owner_summary=text["owner_summary"], material_id=picture["material_id"], image_version_id=picture.get("image_version_id"), image_sha256=picture.get("image_sha256"),
                     menu_item_ids=slot["menu_item_ids"], quality_warnings=picture["quality_warnings"], revision=1, copy_hash=_copy_hash(text["title"], text["content"]), created_at=now(), updated_at=now()))
-            row.status = "generated"; row.ai_used = True; row.message = "已生成12条候选草稿及建议日期，尚未加入运营任务、审核或公开排期"
+            row.status = "generated"; row.ai_used = True; row.message = f"已生成{len(snapshot['slots'])}条候选草稿及建议日期，尚未加入运营任务、审核或公开排期"
         row.revision += 1; row.updated_at = now(); await db.flush()
         return await run_data(db, row)
 
 
 async def edit_item(db, user, run_id, item_id, *, expected_revision, title, content, owner_summary):
-    ctx, _ = await context(db, user, write=True)
+    ctx, _ = await context(db, user, None)
+    original = await _owned_run(db, ctx, run_id)
+    await context(db, user, original.customer_id, write=True)
     async with media._write(db):
         row = await _owned_run(db, ctx, run_id, lock=True)
+        await context(db, user, row.customer_id, write=True)
         from services.media_monthly_workflow import guard_legacy
         await guard_legacy(db, ctx, run_id, editing=True)
         if row.status != "generated": raise HTTPException(409, "仅尚未采用的已生成候选可以编辑")
@@ -466,29 +523,32 @@ async def edit_item(db, user, run_id, item_id, *, expected_revision, title, cont
 
 
 async def adopt(db, user, run_id, *, request_id, expected_revision, preview_hash, confirmed):
-    ctx, customer = await context(db, user, write=True); key = media._key(request_id)
+    ctx, _ = await context(db, user, None); key = media._key(request_id)
+    original = await _owned_run(db, ctx, run_id)
+    ctx, customer = await context(db, user, original.customer_id, write=True)
     if confirmed is not True: raise HTTPException(422, "请核对本批具体文案、图片和客户后确认仅加入待准备任务")
     fingerprint = digest({"expected_revision": expected_revision, "preview_hash": preview_hash, "confirmed": True})
     async with media._write(db):
-        ctx, customer = await context(db, user, write=True); row = await _owned_run(db, ctx, run_id, lock=True)
+        row = await _owned_run(db, ctx, run_id, lock=True)
+        ctx, customer = await context(db, user, row.customer_id, write=True)
         from services.media_monthly_workflow import guard_legacy
         await guard_legacy(db, ctx, run_id)
         if row.adopt_request_id:
             if row.adopt_request_id == key and row.adopt_fingerprint == fingerprint: return await run_data(db, row)
             raise HTTPException(409, "此批次已采用，请读取原任务，不要重复创建")
-        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, (Run.request_id == key) | (Run.adopt_request_id == key)).limit(1)):
+        if await _receipt_used(db, ctx, key) or await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, (Run.request_id == key) | (Run.adopt_request_id == key)).limit(1)):
             raise HTTPException(409, "此请求编号已用于其他操作，请保留原编号查询")
         if row.status != "generated" or row.revision != expected_revision or (await run_data(db, row))["preview_hash"] != preview_hash:
             raise HTTPException(409, "整月草稿版本或确认内容已变化，请重新预览")
         if await db.scalar(select(Run.id).where(Run.customer_id == row.customer_id, Run.month == row.month, Run.status == "adopted", Run.id != row.id).limit(1)):
             raise HTTPException(409, "该客户本月已有采用批次，请管理原12条任务；本阶段不支持重复采用或隐式替代")
         profile = await db.get(Profile, row.profile_id, populate_existing=True)
-        _, current_hash, _, _, _ = await _input(db, ctx, customer, profile)
+        _, current_hash, _, _, _ = await _input(db, ctx, customer, profile, row.month)
         if current_hash != row.input_hash: raise HTTPException(409, "规则、菜单或图片已变化，请重新生成后核对")
         _, runtime = await _runtime(db)
         if runtime["fingerprint"] != row.runtime["fingerprint"]: raise HTTPException(409, "AI 服务配置已变化，请重新核对草稿来源")
         items = list((await db.scalars(select(Item).where(Item.run_id == row.id).order_by(Item.slot_id))).all())
-        if len(items) != 12 or any(item.quality_warnings or not item.image_version_id or item.task_id for item in items):
+        if len(items) != len(slots(row.month, row.snapshot["rules"])) or any(item.quality_warnings or not item.image_version_id or item.task_id for item in items):
             raise HTTPException(409, "仍有低质量或未固定配图；可保留月度文字草稿，补齐真实合格图片后重新准备才能加入发布任务")
         for item in items:
             values = media._validate_content_fields({"title": item.title, "content": item.content, "platform": "google_business",
@@ -507,18 +567,112 @@ async def adopt(db, user, run_id, *, request_id, expected_revision, preview_hash
             await media._event(db, ctx, task, "create", None)
             item.task_id = task.id
         row.adopt_request_id = key; row.adopt_fingerprint = fingerprint; row.status = "adopted"; row.revision += 1; row.updated_at = now()
-        row.message = "已一次性加入12条待准备任务；仍需逐项提交审核，未公开发布或创建排期"
+        row.message = f"已一次性加入{len(items)}条待准备任务；仍需逐项提交审核，未公开发布或创建排期"
         await db.flush(); return await run_data(db, row)
 
 
+async def archive(db, user, run_id, *, request_id, expected_revision, confirmed):
+    """Archive unused private copy only; never cancel a public workflow."""
+    from models.media_monthly_workflow import MediaMonthlyWorkflow as Workflow, MediaMonthlyWorkflowRequest as Receipt
+    ctx, _ = await context(db, user, None); identity = media._key(request_id)
+    original = await _owned_run(db, ctx, run_id)
+    await context(db, user, original.customer_id, write=True)
+    await require_tables(db, {Workflow.__tablename__, Receipt.__tablename__})
+    if confirmed is not True: raise HTTPException(422, "请确认仅归档未采用的私有草案并保留原记录")
+    fingerprint = digest({"kind": "archive", "run_id": run_id, "expected_revision": expected_revision, "confirmed": True})
+    async with media._write(db):
+        run = await _owned_run(db, ctx, run_id, lock=True)
+        await context(db, user, run.customer_id, write=True)
+        prior = await db.scalar(select(Receipt).where(Receipt.owner_id == ctx.identity, Receipt.request_id == identity))
+        if prior:
+            if prior.run_id != run_id or prior.kind != "archive" or prior.fingerprint != fingerprint:
+                raise HTTPException(409, "原请求编号对应不同操作，请读取原结果")
+            if run.status != "archived" or run.revision != prior.result.get("revision"):
+                raise HTTPException(409, "归档后的批次版本已变化，请读取原结果")
+            return prior.result
+        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, (Run.request_id == identity) | (Run.adopt_request_id == identity)).limit(1)):
+            raise HTTPException(409, "此请求编号已用于其他月度操作")
+        if run.revision != expected_revision or run.status not in {"generated", "failed"} or run.adopt_request_id:
+            raise HTTPException(409, "仅可归档当前版本且未采用的已生成或失败草案；结果待确认和正在生成的请求不能归档")
+        if await db.scalar(select(Item.id).where(Item.run_id == run.id, Item.task_id.is_not(None)).limit(1)) or await db.scalar(select(Workflow.id).where(Workflow.run_id == run.id).limit(1)):
+            raise HTTPException(409, "此草案已有任务或整月清单，请管理原流程；不能借归档绕过已确认的排期")
+        run.status = "archived"; run.revision += 1; run.message = "未采用的私有草案已归档，原文案和记录保留；未修改任务、排期或公开内容"; run.updated_at = now()
+        await db.flush(); result = await run_data(db, run)
+        result["archive_receipt"] = {"request_id": identity, "revision": run.revision}
+        db.add(Receipt(owner_id=ctx.identity, run_id=run.id, request_id=identity, kind="archive", fingerprint=fingerprint, result=result, created_at=now()))
+        await db.flush(); return result
+
+
 async def workspace_rows(db, user, customer_ids, start, end, view):
+    """Saved multi-merchant monthly summary, without per-store image reads.
+
+    Exact current bytes, binding, permission and content versions are rechecked
+    in the native owner preview and on every mutation/dispatch. The projection
+    never grants approval or schedules a saved suggestion.
+    """
+    if normalized_role(user) != "super_admin" or not customer_ids or view == "inbox": return []
+    if len(customer_ids) == 1:
+        ctx, customer = await context(db, user, customer_ids[0])
+        candidates = (await db.scalars(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer.id).order_by(Run.id.desc()))).all()
+        latest = {}
+        for candidate in candidates: latest.setdefault(candidate.month, candidate)
+        output = []
+        for candidate in latest.values():
+            try: proposed = slots(candidate.month, candidate.snapshot["rules"])
+            except (HTTPException, KeyError): continue
+            if any(start <= datetime.fromisoformat(slot["proposed_publish_at"]) < end for slot in proposed) or start <= aware(candidate.created_at) < end:
+                output.extend(await _single_workspace_rows(db, user, customer_ids, start, end, view, run_id=candidate.id))
+        return output
+    ctx, _ = await context(db, user, None)
+    from models.customers import Customers
+    from models.media_monthly_workflow import MediaMonthlyWorkflow as Workflow
+    from services.schema_readiness import tables_available
+    customers = {r.id: r for r in (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all()}
+    candidates = (await db.scalars(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id.in_(customers)).order_by(Run.id.desc()))).all()
+    latest = {}
+    for run in candidates: latest.setdefault((run.customer_id, run.month), run)
+    runs = {run.id: run for run in latest.values() if run.status not in {"adopted", "archived"}}
+    entries = {identity: [] for identity in runs}
+    for item in (await db.scalars(select(Item).where(Item.run_id.in_(runs)).order_by(Item.slot_id))).all(): entries[item.run_id].append(item)
+    workflows = {}
+    if await tables_available(db, {"media_monthly_workflows", "media_monthly_workflow_requests"}):
+        workflows = {r.run_id: r for r in (await db.scalars(select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id.in_(runs), Workflow.customer_id.in_(customers)))).all()}
+    profiles = {r.customer_id: r for r in (await db.scalars(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id.in_(customers)))).all()}
+    result = []
+    for identity, run in runs.items():
+        customer = customers[run.customer_id]; batch = entries[identity]; workflow = workflows.get(identity)
+        profile = profiles.get(customer.id)
+        stale = not profile or profile_data(profile) != (workflow.snapshot.get("source", {}).get("profile") if workflow else
+            {"id": run.profile_id, "customer_id": run.customer_id, "revision": run.snapshot.get("profile_revision"),
+             "public_facts": run.snapshot.get("public_facts"), "rules": run.snapshot.get("rules"),
+             "menu_item_ids": [item["id"] for item in run.snapshot.get("menu_items", [])],
+             "images": [{key: image.get(key) for key in ("material_id", "image_version_id", "menu_item_id", "quality_confirmed")} for image in run.snapshot.get("images", [])]})
+        state = "blocked" if stale else workflow.status if workflow else "unknown" if run.status == "generating" and now() - aware(run.updated_at) > timedelta(minutes=5) else run.status
+        zone = run.snapshot.get("rules", {}).get("timezone")
+        def dto(kind, source_id, title, content, at, basis, revision, version):
+            return {"id": kind + ":" + str(source_id), "kind": kind, "customer_id": customer.id, "customer_name": customer.business_name,
+                "platform": "google_business", "title": title, "content": content, "status": state, "at": iso(at), "time_basis": basis,
+                "timezone": zone, "revision": revision, "version": version, "source_id": source_id, "binding_id": None, "binding_revision": None,
+                "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": run.id}}
+        if view == "calendar":
+            if workflow and workflow.schedule_refs: continue
+            result.extend(dto("monthly_item", item.id, item.title, item.content, item.proposed_publish_at, "proposed_publish", item.revision, item.copy_hash)
+                for item in batch if start <= aware(item.proposed_publish_at) < end)
+        elif any(start <= aware(item.proposed_publish_at) < end for item in batch) or not batch and start <= aware(run.created_at) < end:
+            result.append(dto("monthly_run", run.id, f"{run.month} {customer.business_name}月度计划 · {len(batch)}篇",
+                "本地已保存月度内容；请进入原计划核对实际图片、版本和发布条件" + ("；来源已变化" if stale else ""), run.created_at,
+                "record_created", workflow.revision if workflow else run.revision, workflow.preview_hash if workflow else digest({"id": run.id, "revision": run.revision})))
+    return result
+
+
+async def _single_workspace_rows(db, user, customer_ids, start, end, view, *, run_id=None):
     """Local-only latest monthly candidates for the central workspaces."""
-    if PILOT_CUSTOMER_ID not in customer_ids or normalized_role(user) != "super_admin": return []
-    ctx, customer = await context(db, user)
-    latest = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer.id, Run.month == MONTH).order_by(Run.id.desc()).limit(1))
-    if not latest or latest.status == "adopted": return []
+    if len(customer_ids) != 1 or normalized_role(user) != "super_admin": return []
+    ctx, customer = await context(db, user, customer_ids[0])
+    latest = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer.id, Run.id == run_id).limit(1))
+    if not latest or latest.status in {"adopted", "archived"}: return []
     data = await run_data(db, latest)
-    source_fresh = await _freshness(db, ctx, customer) == (latest.input_hash, latest.runtime["fingerprint"])
+    source_fresh = await _freshness(db, ctx, customer, latest.month) == (latest.input_hash, latest.runtime["fingerprint"])
     status = "blocked" if not source_fresh or data["status"] == "failed" or data["status"] == "generated" and not data["adoptable"] else data["status"]
     from services.schema_readiness import tables_available
     workflow = None
@@ -531,7 +685,7 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
     def row(kind, identity, title, content, at, basis, revision, version=None):
         return {"id": kind + ":" + str(identity), "kind": kind, "customer_id": customer.id, "customer_name": customer.business_name,
             "platform": "google_business", "title": title, "content": content, "status": status, "at": iso(at), "time_basis": basis,
-            "timezone": "America/Chicago", "revision": revision, "version": version, "source_id": identity, "binding_id": None, "binding_revision": None,
+            "timezone": latest.snapshot["rules"]["timezone"], "revision": revision, "version": version, "source_id": identity, "binding_id": None, "binding_revision": None,
             "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": latest.id}}
     if view == "inbox": return []
     if view == "calendar":
@@ -547,5 +701,5 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
     message = workflow["message"] if workflow else data["message"]
     revision = workflow["revision"] if workflow else latest.revision
     version = workflow["snapshot_hash"] if workflow else data["preview_hash"]
-    title = f"2026-11 北方面食月度计划 · {len(entries)}篇" if workflow else f"2026-11 北方面食月度草案 · {len(entries)}条候选"
+    title = f"{latest.month} {customer.business_name}月度计划 · {len(entries)}篇" if workflow else f"{latest.month} {customer.business_name}月度草案 · {len(entries)}条候选"
     return [row("monthly_run", latest.id, title, message + ("；当前来源已变化，请重新核对" if not source_fresh else ""), latest.created_at, "record_created", revision, version)]
