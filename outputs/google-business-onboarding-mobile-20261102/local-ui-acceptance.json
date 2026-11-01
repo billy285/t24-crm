@@ -1,0 +1,20 @@
+{
+  "actionbar_after_all_cards": true,
+  "actual_local_production_react_and_css": true,
+  "backend_api_or_database_changes": false,
+  "comparison_cards": 3,
+  "computed_bottom": "auto",
+  "computed_position": "static",
+  "desktop_rules_unchanged_by_exact_single_mobile_rule_diff": true,
+  "evidence_owner": "root",
+  "frontend_version": "c814db9f574f",
+  "horizontal_overflow": false,
+  "production_mobile_acceptance_pending_static_switch": true,
+  "screenshots_not_committed": true,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "status": "PASS_LOCAL_PENDING_PRODUCTION_STATIC_ACCEPTANCE",
+  "viewport": {
+    "height": 844,
+    "width": 390
+  }
+}

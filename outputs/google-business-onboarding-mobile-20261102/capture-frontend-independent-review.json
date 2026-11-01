@@ -1,0 +1,36 @@
+{
+  "actual_r3_deployed_runtime_prepared_source419_schema162_pins_verified": true,
+  "command_file_not_emitted_or_executed": true,
+  "database_mode_ro_query_only_and_no_workers_or_provider_calls": true,
+  "exact_embedded_source_reproduced": true,
+  "existing_monthly_counter_exception_only_forward": true,
+  "in_memory_generated_command_bytes": 6553,
+  "in_memory_generated_command_sha256": "9d2c776a30d71e3767fafba3b8d45bedc30f79e0f11cb65bbb0dc4615299a849",
+  "independent_tests_passed": 17,
+  "limits": [
+    "Root/backend must first confirm postpilot proof acceptance before emitting/executing capture wrapper.",
+    "This review generated wrapper text in memory only; no server or provider action."
+  ],
+  "provider_requests": false,
+  "requires_43_customers15_active_native_bindings1_ready_catalog1_request0_batches0_items": true,
+  "server_execution": false,
+  "source_pins": {
+    "make_capture.py": {
+      "bytes": 2652,
+      "sha256": "0bc34d61cc61779e62ada6df76edc740088c2ba603d7999469be6c36e958a3b9"
+    },
+    "preflight.py": {
+      "bytes": 11327,
+      "sha256": "edeff00ba7088c9a04081b2e397680ce39021e1e7ce11fea974188dc7e73e416"
+    },
+    "test_capture.py": {
+      "bytes": 7997,
+      "sha256": "888991492952b63d65de8a8ba66d0be5e523d251122068159ada256d937b14b2"
+    }
+  },
+  "stage": "GOOGLE_ONBOARDING_MOBILE_CAPTURE_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS_FRAMEWORK_PENDING_POSTPILOT_ACCEPTANCE",
+  "test_seconds": 0.1,
+  "two_stable_full162_row_hash_samples_env_private_credentials_csp_nginx_static_source_unchanged": true,
+  "writes_only_new_root600_aggregate_proof_with_no_raw_private_content_output": true
+}

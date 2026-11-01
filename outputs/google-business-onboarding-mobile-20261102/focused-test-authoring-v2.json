@@ -1,0 +1,19 @@
+{
+  "actual_release_and_maker_source_modified": false,
+  "added_prepared_five_boolean_and_four_full_hash_proof_attacks": true,
+  "application_source_modified": false,
+  "files": {
+    "test_commands.py": {
+      "bytes": 8722,
+      "sha256": "06ce1f29bd6df9dac786fe51d79e4a1b5b21ac70ae15d8c5afd22f9518653997"
+    },
+    "test_static_release.py": {
+      "bytes": 12543,
+      "sha256": "ad0db529820163b0246001816671de8dc754ce66e0737e44060506378b87742b"
+    }
+  },
+  "passed": 71,
+  "seconds": 0.18,
+  "server_or_provider_execution": false,
+  "stage": "GOOGLE_ONBOARDING_MOBILE_STATIC_FOCUSED_TEST_AUTHORING_V2"
+}

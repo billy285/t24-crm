@@ -1,0 +1,129 @@
+{
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "files": {
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/manifest.json": {
+      "bytes": 146199,
+      "sha256": "a08a1c922981b0fe0fa91436b4061e5143f6769bfd9e0e03b89f6c852444a51b"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/payload.tar.gz": {
+      "bytes": 2245573,
+      "sha256": "ff601095511c4e1573c49360b4e6833f46c0aa4a15ecb5c49b98fa5e6330e9f4"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/build_payload.py": {
+      "bytes": 15641,
+      "sha256": "1103c454af8c69f3c5cceb7e8366da779c18281f26ef990a4c9517b8b35be9a4"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/capture-commands/capture-command.sh": {
+      "bytes": 6553,
+      "sha256": "9d2c776a30d71e3767fafba3b8d45bedc30f79e0f11cb65bbb0dc4615299a849"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/capture-commands/capture-pins.json": {
+      "bytes": 363,
+      "sha256": "2033b04b77d77391d7745df9f6f74ae34ed469126bdebd5127d35bcca4d2ba15"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/make_capture.py": {
+      "bytes": 2652,
+      "sha256": "0bc34d61cc61779e62ada6df76edc740088c2ba603d7999469be6c36e958a3b9"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/make_commands.py": {
+      "bytes": 9961,
+      "sha256": "5df5f0f322e39b4037b1d668e04daa7fe51880ba3765096bae6b27f7ccef59b1"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/preflight.json": {
+      "bytes": 2902,
+      "sha256": "a310fbeafe8744d351f3d45bf29e9c873fbf02014b2708199e1fa97aaa45ebdc"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/preflight.py": {
+      "bytes": 11327,
+      "sha256": "edeff00ba7088c9a04081b2e397680ce39021e1e7ce11fea974188dc7e73e416"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/release.py": {
+      "bytes": 18040,
+      "sha256": "fb017adf5eaa00e7c873bc26471693cb54030494631390c7a85ad24891171b0c"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/test_capture.py": {
+      "bytes": 7997,
+      "sha256": "888991492952b63d65de8a8ba66d0be5e523d251122068159ada256d937b14b2"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/test_commands.py": {
+      "bytes": 8722,
+      "sha256": "06ce1f29bd6df9dac786fe51d79e4a1b5b21ac70ae15d8c5afd22f9518653997"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/test_package.py": {
+      "bytes": 5821,
+      "sha256": "53cebcaaab743996dd962a27184012710c692541ae5b372c599f0b94c2fbdb67"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/test_static_release.py": {
+      "bytes": 12543,
+      "sha256": "ad0db529820163b0246001816671de8dc754ce66e0737e44060506378b87742b"
+    },
+    "outputs/google-business-onboarding-20261102/mobile-actionbar-local-patch.json": {
+      "bytes": 658,
+      "sha256": "01c4ee8b20a8441f352bf294de740ce5a99f679e39be10d8251838eaf616803e"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/application-file-freeze.json": {
+      "bytes": 1090,
+      "sha256": "b182e0d65738369bd93da04cd762dc184e04ef6e6275115d4189ee05b0e37a11"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/capture-frontend-independent-review.json": {
+      "bytes": 1643,
+      "sha256": "13dc40022069f33d86c33e06960571a086b8e681539767260e70b34507c2cd35"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/capture-release-independent-review.json": {
+      "bytes": 805,
+      "sha256": "4fe9b91a7b546a44d7e0735e85cf033c534a17d4b98f5deccc3889575a7e1bc5"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/focused-test-authoring-v2.json": {
+      "bytes": 614,
+      "sha256": "be55113bbe51af1c7c133d6b3f7ad5766238d3536fe7b7a78165d7eaf5824ec9"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/local-ui-acceptance.json": {
+      "bytes": 665,
+      "sha256": "3517fe3db6155208d3eb32c1640f32dbf9e5be3c6d05e035f1cd97d0339580e3"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/package-freeze.json": {
+      "bytes": 1945,
+      "sha256": "7e73277a59b30e3db5074e3238125f582d0988787745db9f847e92a3c9cdb510"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/preflight-independent-review.json": {
+      "bytes": 763,
+      "sha256": "f22b1b3709f21f461a4719e8eed38b61c18b53fc4859ea283a3bf689e0a1f961"
+    }
+  },
+  "final_independent_package_review_may_be_added": true,
+  "frontend_version": "c814db9f574f",
+  "git_staging_performed": false,
+  "not_included": [
+    "all actual merchant screenshots and raw catalog/customer data",
+    "SQLite or protected full proof",
+    "credentials and private content",
+    "Python caches",
+    "original R3 four-member modifications"
+  ],
+  "paths": [
+    "deployments/google-business-onboarding-mobile-20261102/preflight.py",
+    "deployments/google-business-onboarding-mobile-20261102/make_capture.py",
+    "deployments/google-business-onboarding-mobile-20261102/build_payload.py",
+    "deployments/google-business-onboarding-mobile-20261102/release.py",
+    "deployments/google-business-onboarding-mobile-20261102/make_commands.py",
+    "deployments/google-business-onboarding-mobile-20261102/test_capture.py",
+    "deployments/google-business-onboarding-mobile-20261102/test_package.py",
+    "deployments/google-business-onboarding-mobile-20261102/test_static_release.py",
+    "deployments/google-business-onboarding-mobile-20261102/test_commands.py",
+    "deployments/google-business-onboarding-mobile-20261102/preflight.json",
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/manifest.json",
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/payload.tar.gz",
+    "deployments/google-business-onboarding-mobile-20261102/capture-commands/capture-command.sh",
+    "deployments/google-business-onboarding-mobile-20261102/capture-commands/capture-pins.json",
+    "outputs/google-business-onboarding-mobile-20261102/application-file-freeze.json",
+    "outputs/google-business-onboarding-mobile-20261102/capture-frontend-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/capture-release-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/preflight-independent-review.json",
+    "outputs/google-business-onboarding-mobile-20261102/package-freeze.json",
+    "outputs/google-business-onboarding-mobile-20261102/focused-test-authoring-v2.json",
+    "outputs/google-business-onboarding-mobile-20261102/local-ui-acceptance.json",
+    "outputs/google-business-onboarding-20261102/mobile-actionbar-local-patch.json"
+  ],
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "status": "MOBILE_STATIC_CARRIER_RECOMMENDATION_ONLY"
+}

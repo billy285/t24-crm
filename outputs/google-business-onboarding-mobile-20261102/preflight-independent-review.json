@@ -1,0 +1,14 @@
+{
+  "actual_task": "t-hk071tsm04k69kw",
+  "current162_and419_backend_sources_preserved": true,
+  "local_summary_sha256": "a310fbeafe8744d351f3d45bf29e9c873fbf02014b2708199e1fa97aaa45ebdc",
+  "original43_customers15_bindings1_catalog1_request0_batch_item": true,
+  "provider_or_business_writes": false,
+  "runtime9b_env_credentials_private_csp_nginx_unchanged": true,
+  "server_actions_by_reviewer": false,
+  "server_full_proof_path": "/opt/t24-crm/releases/google-business-onboarding-mobile-preflight-b847750a7e81.json",
+  "server_full_proof_sha256": "b847750a7e816361fa13a166f4f24e4f23a97008e108f33da486d54239bece5b",
+  "status": "ACTUAL_CURRENT162_MOBILE_PREFLIGHT_INDEPENDENT_PASS",
+  "summary_is_not_full_proof": true,
+  "two_stable_samples_verified": true
+}

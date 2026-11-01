@@ -1,0 +1,26 @@
+{
+  "backend_changes": false,
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "baseline_frontend_version": "b0e161d74fe5",
+  "baseline_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "container_restarts": false,
+  "content_security_policy_changes": false,
+  "credentials_included": false,
+  "database_migration": false,
+  "database_writes": false,
+  "dependencies_changes": false,
+  "dist_inventory_sha256": "9cca49367336917a611f1eba5e67851229f207e4acaa0d71e4136fed06f14fec",
+  "environment_changes": false,
+  "exact_single_mobile_css_rule": true,
+  "existing_hashed_assets_preserved": true,
+  "files": {
+    "app/frontend/src/pages/google-onboarding.css": "d27170c1cd6d1e8b18c4db82ea8526bda71380113996a274df43982fb463f6ce"
+  },
+  "frontend_version": "c814db9f574f",
+  "original162_database_preservation_required": true,
+  "permissions_changes": false,
+  "publications_or_provider_writes": false,
+  "runtime_environment_and_private_boundaries_preservation_required": true,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "static_only": true
+}

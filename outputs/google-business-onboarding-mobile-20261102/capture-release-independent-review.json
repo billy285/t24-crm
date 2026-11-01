@@ -1,0 +1,15 @@
+{
+  "command_bytes": 6553,
+  "command_sha256": "9d2c776a30d71e3767fafba3b8d45bedc30f79e0f11cb65bbb0dc4615299a849",
+  "exact_in_memory_command_and_pins_reproduced": true,
+  "fresh_current_nonempty_catalog_and_request_evidence": true,
+  "independent_tests_passed": 17,
+  "only_monthly_rate_counter_forward_exception": true,
+  "original_env_credential_metadata_private_csp_nginx_preserved": true,
+  "preflight_source_sha256": "edeff00ba7088c9a04081b2e397680ce39021e1e7ce11fea974188dc7e73e416",
+  "provider_requests_or_database_writes_or_credential_content_export": false,
+  "server_execution_by_reviewer": false,
+  "status": "PASS_PENDING_POSTPILOT_ACCEPTANCE_BEFORE_EXECUTION",
+  "strong_actual_r3_receipt_runtime419source_and_schema162_pins": true,
+  "two_stable_full162_rows_and_boundary_samples": true
+}

@@ -1,0 +1,44 @@
+{
+  "actual_static_prepare_pending": true,
+  "backend_archive_members": 0,
+  "backend_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "container_restarts_database_writes_or_migrations": false,
+  "current_database_tables_required_unchanged": 162,
+  "files": {
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/manifest.json": {
+      "bytes": 146199,
+      "sha256": "a08a1c922981b0fe0fa91436b4061e5143f6769bfd9e0e03b89f6c852444a51b"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/artifacts/payload.tar.gz": {
+      "bytes": 2245573,
+      "sha256": "ff601095511c4e1573c49360b4e6833f46c0aa4a15ecb5c49b98fa5e6330e9f4"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/build_payload.py": {
+      "bytes": 15641,
+      "sha256": "1103c454af8c69f3c5cceb7e8366da779c18281f26ef990a4c9517b8b35be9a4"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/make_commands.py": {
+      "bytes": 9961,
+      "sha256": "5df5f0f322e39b4037b1d668e04daa7fe51880ba3765096bae6b27f7ccef59b1"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/preflight.py": {
+      "bytes": 11327,
+      "sha256": "edeff00ba7088c9a04081b2e397680ce39021e1e7ce11fea974188dc7e73e416"
+    },
+    "deployments/google-business-onboarding-mobile-20261102/release.py": {
+      "bytes": 18040,
+      "sha256": "fb017adf5eaa00e7c873bc26471693cb54030494631390c7a85ad24891171b0c"
+    },
+    "outputs/google-business-onboarding-mobile-20261102/application-file-freeze.json": {
+      "bytes": 1090,
+      "sha256": "b182e0d65738369bd93da04cd762dc184e04ef6e6275115d4189ee05b0e37a11"
+    }
+  },
+  "frontend_version": "c814db9f574f",
+  "local_tests_passed": 107,
+  "runtime9b_and_env_required_unchanged": true,
+  "single_css_rule_only": true,
+  "source_sha": "adb948da237f2056bf37e53c9e5ec25c42cb8f78",
+  "static_archive_members": 140,
+  "status": "FROZEN_STATIC_ONLY_PACKAGE_PENDING_ACTUAL_PREPARE"
+}

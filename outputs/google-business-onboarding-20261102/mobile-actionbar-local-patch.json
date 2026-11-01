@@ -1,0 +1,16 @@
+{
+  "actual_browser_acceptance_pending": true,
+  "data_logic_backend_permissions_unchanged": true,
+  "desktop_sticky_rule_unchanged": true,
+  "exact_one_mobile_css_rule_changed": true,
+  "frontend_version": "c814db9f574f",
+  "git_diff_check_passed": true,
+  "mobile_actionbar_bottom": "auto",
+  "mobile_actionbar_position": "static",
+  "server_or_browser_started_by_agent": false,
+  "source_file": "app/frontend/src/pages/google-onboarding.css",
+  "source_sha256": "d27170c1cd6d1e8b18c4db82ea8526bda71380113996a274df43982fb463f6ce",
+  "stage": "GOOGLE_ONBOARDING_MOBILE_ACTIONBAR_CSS_LOCAL_PATCH",
+  "vite_build_passed": true,
+  "vite_build_seconds": 8.84
+}
