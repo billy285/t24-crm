@@ -1,0 +1,11 @@
+{
+  "artifacts_written": false,
+  "dist_inventory_sha256": "288c2ed6737902d41b7bfeadbb12d96af1a214a75e5714b99607a4b1ff38dc4e",
+  "file_count": 140,
+  "frontend_version": "c1d87dd771d8",
+  "source_delta_count": 15,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ASSET_APP_STATIC_BUILD_FROZEN_PENDING_TOOLCHAIN",
+  "toolchain_receipt_verified": false,
+  "total_bytes": 6270949
+}

@@ -1,0 +1,71 @@
+{
+  "actions": {
+    "git_writes": 0,
+    "production_business_writes": 0,
+    "server_or_provider_requests": 0
+  },
+  "at_utc": "2026-11-01T05:24:13.068336+00:00",
+  "boundaries": {
+    "enhance_original_size_no_crop_or_upscale": true,
+    "fixed_local_three_presets": true,
+    "new_pending_material_only_no_existing_packet_task_changes": true,
+    "no_external_vendors_or_ai_calls": true,
+    "no_new_employee_permissions": true,
+    "no_social_publish_or_schedule_controls": true,
+    "original_request_recovery": true,
+    "owner_only_merchant_scoped": true,
+    "photo_carousel_video_without_audio": true,
+    "private_hash_verified_output_preview_before_adoption": true,
+    "video_actual_capability_gated": true
+  },
+  "checks": {
+    "frontend_tests": {
+      "count": 108,
+      "files": [
+        "media-asset-studio.test.mjs",
+        "media-monthly-pipeline.test.mjs",
+        "media-monthly-workflow.test.mjs",
+        "media-monthly-navigation.test.mjs",
+        "media-merchant-workflow.test.mjs",
+        "media-monthly-attention.test.mjs"
+      ],
+      "status": "PASS",
+      "studio_focused": 27
+    },
+    "git_diff_check": "PASS",
+    "scoped_eslint": "PASS_0_WARNINGS",
+    "typecheck": {
+      "error": "Finance.tsx:5778 TS2322 unchanged callback mismatch",
+      "owned_file_errors": 0,
+      "status": "EXISTING_BASELINE_ONLY"
+    }
+  },
+  "files": {
+    "app/frontend/src/components/MediaAssetStudio.tsx": {
+      "bytes": 36936,
+      "sha256": "c4bca2051a044a55590498139835841763de05c52353fe7d1d1cf2cac5fce94f"
+    },
+    "app/frontend/src/components/media-asset-studio.css": {
+      "bytes": 13541,
+      "sha256": "b0d6cc9c6d8f2e38106eb939d879895b1c8fafcc8dd9811cdf29a1722223a39a"
+    },
+    "app/frontend/src/lib/media-asset-studio.ts": {
+      "bytes": 15113,
+      "sha256": "0a9dffc0b40301f7b12ade1b2714517638f64c0657f9f233047e0ae2ce8fb81a"
+    },
+    "app/frontend/tests/media-asset-studio.test.mjs": {
+      "bytes": 26092,
+      "sha256": "d23d992228fb2fc4db83825a86fe350a1cc82341c5d58a94e3fee8ec4677ec02"
+    }
+  },
+  "fixture": {
+    "actual_react_qa": "parent_in_progress",
+    "local_ascii_font_not_production_qualifier": true,
+    "local_video_capability": false,
+    "native_js_dialogs": false,
+    "server_session": 2290,
+    "synthetic_images_current_renderer": true,
+    "url": "http://127.0.0.1:8898/work/media-asset-studio-preview/index.html"
+  },
+  "status": "SOURCE_FROZEN"
+}

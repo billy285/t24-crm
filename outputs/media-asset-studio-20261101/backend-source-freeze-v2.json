@@ -1,0 +1,33 @@
+{
+  "at_utc": "2026-11-01T05:26:52.456572+00:00",
+  "broader_native_finance_owner_suite_passed": 661,
+  "broader_suite_note": "Broad run began before idle and parent temporary-directory additions; final focused151 reran after both and includes new idle/cleanup/session-kill checks. Native helper source unchanged across these runs.",
+  "broader_suite_seconds": 148.4,
+  "down_revision": "e10cb234c570",
+  "files": {
+    "alembic/versions/f21dc345d681_media_asset_studio.py": "14739f5170760cac3e396f332698e2030fb3385f57a82146bd30248012dab6d9",
+    "models/media_asset_studio.py": "4a028424f28b468ed339d171ec0f9656719a9db0837637718875985188d39a49",
+    "routers/media_asset_studio.py": "78fbecff322aa3baac9627bb16437ae61b64dcb039e66df8f4cf0a8612771039",
+    "schemas/media_asset_studio.py": "3f6fdd98d001d5ce891ee1d1b3def4f1bb851c63697d941e7701a910f2ed823d",
+    "services/media_asset_renderer.py": "a821f9767fec832687a45c7bf30ccfe25625b543893a938295a0df5e10c025bc",
+    "services/media_asset_studio.py": "3655a9cc05786d879ad7b3afb4fb71c9f7280dcf748d7661bffbc1b89c22f16a",
+    "services/media_publication_images.py": "a88ec25f09e91d1b754b5f15f24a17082e820b3af61744f3bec89c31f6ea1834",
+    "tests/test_media_asset_studio.py": "14f2746fbf923845bd53df0de8c3452258f89169cbc89e1c17272a7585d8f737"
+  },
+  "final_focus_and_broad_suite": "passed",
+  "final_focus_seconds": 10.24,
+  "last_completed_focus_passed": 151,
+  "legacy_image_before_sha256": "8e2ea1a8ea6a4d55260936c4d7d2095038f6ab4c092c7ed093a27593a6569ce5",
+  "new_tables": [
+    "media_asset_profiles",
+    "media_asset_jobs",
+    "media_asset_requests"
+  ],
+  "parent_temporary_tree_cleanup": "Trusted parent creates private TMPDIR; always kills renderer process group, waits known renderer, then removes entire private temporary tree even on failure or cancellation.",
+  "production_font_ffmpeg_proof": "pending candidate dependency build; no current production engine installed",
+  "real_png_rendering": "deterministic local synthetic Pillow, real CJK long-copy passed",
+  "schema_revision": "f21dc345d681",
+  "server_provider_git_actions": false,
+  "stage": "ASSET_STUDIO_BACKEND_SOURCE_V2_FROZEN",
+  "supersedes_sha256": "817713dab19a7b8dfac1112f4adb0d9a531bf0f8ef9e3fc917d28c01d0bb7a3d"
+}

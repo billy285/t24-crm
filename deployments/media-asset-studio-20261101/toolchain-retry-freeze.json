@@ -1,0 +1,16 @@
+{
+  "approved_package_count": 194,
+  "approved_proposal_sha256": "9c7545b0cb443f56f9b897dfa441cfc3c3ce74dcfe50891725676698f864a1b3",
+  "command_bytes": 5684,
+  "command_sha256": "df3b3e8c910c5413bdddba19f238a4380c5cb6c715eaff3db01590c74aba2a50",
+  "executed": false,
+  "loader_bytes": 11131,
+  "loader_sha256": "15afe3889698dda7da3a08dcddf4d3a705e35b70ebda41daea3d4e9ba064824c",
+  "old_source_modified": false,
+  "original_command_sha256": "c1b0cbbeaa3305379cc634ae7d37b45627a32d35d129b750ad261863a0f27075",
+  "original_toolchain_sha256": "4fe7ee52647ff1775c8b3e7ac9bce60208aa66806324d3c4a51f80ff23f16fe7",
+  "preflight_sha256": "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9",
+  "production_or_host_installation": false,
+  "variant_bytes": 25883,
+  "variant_sha256": "8c51c8a7c0d79434a0b4686a57a3f697637f3a763f1e4152bad5a7240af7ceb6"
+}

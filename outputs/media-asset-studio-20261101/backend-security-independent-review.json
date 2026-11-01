@@ -1,0 +1,31 @@
+{
+  "actual_new_candidate_cjk_mp4_acceptance": "pending exacttoolchain image and offline prepare; local tests are not that acceptance",
+  "application_source": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "backend_v2_hashes": {
+    "alembic/versions/f21dc345d681_media_asset_studio.py": "14739f5170760cac3e396f332698e2030fb3385f57a82146bd30248012dab6d9",
+    "models/media_asset_studio.py": "4a028424f28b468ed339d171ec0f9656719a9db0837637718875985188d39a49",
+    "routers/media_asset_studio.py": "78fbecff322aa3baac9627bb16437ae61b64dcb039e66df8f4cf0a8612771039",
+    "schemas/media_asset_studio.py": "3f6fdd98d001d5ce891ee1d1b3def4f1bb851c63697d941e7701a910f2ed823d",
+    "services/media_asset_renderer.py": "a821f9767fec832687a45c7bf30ccfe25625b543893a938295a0df5e10c025bc",
+    "services/media_asset_studio.py": "3655a9cc05786d879ad7b3afb4fb71c9f7280dcf748d7661bffbc1b89c22f16a",
+    "services/media_publication_images.py": "a88ec25f09e91d1b754b5f15f24a17082e820b3af61744f3bec89c31f6ea1834",
+    "tests/test_media_asset_studio.py": "14f2746fbf923845bd53df0de8c3452258f89169cbc89e1c17272a7585d8f737"
+  },
+  "cpu_memory_file_output_time_and_thread_limits": true,
+  "current_customer_and_material_acl_rechecked": true,
+  "fixed_source_versions_and_bytes_rechecked_before_result_and_adoption": true,
+  "focused_test_seconds": 8.95,
+  "focused_tests_passed": 140,
+  "main_after_sha256": "dfcd63fe31739e280b5093d94f57e000538e27290d0637a0a78634033d70c1b9",
+  "main_ast_unchanged_after_removing_exact_asset_start_stop_and_csp_default_delta": true,
+  "main_before_sha256": "12201aedb42b381755022127a28cf701143bba1db2d87ead98dd9b10e55d3892",
+  "native_helper_equivalence_file": "native-image-helper-equivalence.json",
+  "native_material_image_audit_receipt_adoption_atomic_and_pending": true,
+  "no_auto_publish_or_external_ai": true,
+  "original_photos_monthly_packet_tasks_schedules_delivery_policy_unchanged": true,
+  "owner_only_before_sql": true,
+  "parent_temporary_tree_cleanup_after_kill": true,
+  "rendering_subprocess_minimal_environment_no_provider_clients": true,
+  "server_provider_or_git_actions_by_reviewer": false,
+  "stage": "ASSET_STUDIO_BACKEND_INDEPENDENT_SECURITY_REVIEW_PASS"
+}

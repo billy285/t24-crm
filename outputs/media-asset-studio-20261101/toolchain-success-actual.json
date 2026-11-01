@@ -1,0 +1,95 @@
+{
+  "added_package_count": 194,
+  "all155_current_rows_and_private_packet_preserved": true,
+  "all408_backend_files_unchanged": true,
+  "api_or_worker_started": false,
+  "approved_proposal_sha256": "9c7545b0cb443f56f9b897dfa441cfc3c3ce74dcfe50891725676698f864a1b3",
+  "base_image": "sha256:3e948625074aa6af891ace1e814f98aa9ed8d9bc004d85f6c5cadc6b423c1536",
+  "base_package_inventory_sha256": "fbe1a36f30fd6c731352f3fed4c79347959eac1274e082c449dabf0974c81ee9",
+  "base_resumer_sha256": "8f007897d478a08f3e8c0f189c0bbbe7354ec8c6c208ea2ac868934fe4624b86",
+  "base_toolchain_sha256": "8c51c8a7c0d79434a0b4686a57a3f697637f3a763f1e4152bad5a7240af7ceb6",
+  "build": {
+    "build_daemon_result_known": true,
+    "client_status": "BUILD_CLIENT_FINISHED",
+    "elapsed_seconds": 76.189,
+    "exit_code": 0,
+    "log_bytes": 71198,
+    "log_sha256": "bac9e15d59f57ec358abb59a40fef49436976cc35cc928accd999c022e8b78a8",
+    "public_tail": ": could not determine current runlevel\ninvoke-rc.d: policy-rc.d denied execution of start.\nSetting up libsensors-config (1:3.6.2-2) ...\nSetting up libcdio19t64:amd64 (2.2.0-4.1~deb13u1) ...\nSetting up libdeflate0:amd64 (1.23-2) ...\nSetting up xkb-data (2.42-1) ...\nSetting up libxcb-shm0:amd64 (1.17.0-2+b1) ...\nSetting up libmpg123-0t64:amd64 (1.32.10-1+deb13u1) ...\nSetting up libgomp1:amd64 (14.2.0-19) ...\nSetting up libcjson1:amd64 (1.7.18-3.1+deb13u1) ...\nSetting up libxvidcore4:amd64 (2:1.3.7-1+b2) ...\nSetting up libjbig0:amd64 (2.1-6.1+b2) ...\nSetting up libelf1t64:amd64 (0.192-4) ...\nSetting up libsnappy1v5:amd64 (1.2.2-1) ...\nSetting up libcdio-cdda2t64:amd64 (10.2+2.0.2-1+b1) ...\nSetting up libxcb-present0:amd64 (1.17.0-2+b1) ...\nSetting up libasound2-data (1.2.14-1+deb13u1) ...\nSetting up libpgm-5.3-0t64:amd64 (5.3.128~dfsg-2.1+b1) ...\nSetting up libtheoraenc1:amd64 (1.2.0~alpha1+dfsg-6) ...\nSetting up libz3-4:amd64 (4.13.3-1) ...\nSetting up libblas3:amd64 (3.12.1-6) ...\nupdate-alternatives: using /usr/lib/x86_64-linux-gnu/blas/libblas.so.3 to provide /usr/lib/x86_64-linux-gnu/libblas.so.3 (libblas.so.3-x86_64-linux-gnu) in auto mode\nSetting up libasound2t64:amd64 (1.2.14-1+deb13u1) ...\nSetting up libjpeg62-turbo:amd64 (1:2.1.5-4) ...\nSetting up libslang2:amd64 (2.3.3-5+b2) ...\nSetting up libva2:amd64 (2.22.0-3) ...\nSetting up libx11-data (2:1.8.12-1) ...\nSetting up libsvtav1enc2:amd64 (2.3.0+dfsg-1) ...\nSetting up libxcb-sync1:amd64 (1.17.0-2+b1) ...\nSetting up libdbus-1-3:amd64 (1.16.2-2) ...\nSetting up libfribidi0:amd64 (1.0.16-1) ...\nSetting up libopus0:amd64 (1.5.2-2) ...\nSetting up libcdio-paranoia2t64:amd64 (10.2+2.0.2-1+b1) ...\nSetting up fonts-dejavu-mono (2.37-8) ...\nSetting up libpng16-16t64:amd64 (1.6.48-1+deb13u6) ...\nSetting up libatomic1:amd64 (14.2.0-19) ...\nSetting up libvorbis0a:amd64 (1.3.7-3) ...\nSetting up fonts-dejavu-core (2.37-8) ...\nSetting up libflac14:amd64 (1.5.0+ds-2) ...\nSetting up libsensors5:amd64 (1:3.6.2-2) ...\nSetting up libfftw3-double3:amd64 (3.3.10-2+b1) ...\nSetting up libssh-4:amd64 (0.11.5-0+deb13u1) ...\nSetting up libgfortran5:amd64 (14.2.0-19) ...\nSetting up libvulkan1:amd64 (1.4.309.0-1) ...\nSetting up libwebp7:amd64 (1.5.0-0.1) ...\nSetting up libnuma1:amd64 (2.0.19-1) ...\nSetting up libvidstab1.1:amd64 (1.1.0-2+b2) ...\nSetting up libvpx9:amd64 (1.15.0-2.1+deb13u1) ...\nSetting up libsrt1.5-gnutls:amd64 (1.5.4-1+deb13u1) ...\nSetting up libflite1:amd64 (2.2-7) ...\nSetting up libdav1d7:amd64 (1.5.1-1) ...\nSetting up ocl-icd-libopencl1:amd64 (2.3.3-1) ...\nSetting up libasyncns0:amd64 (0.8-6+b5) ...\nSetting up libxshmfence1:amd64 (1.3.3-1) ...\nSetting up libtiff6:amd64 (4.7.0-3+deb13u3) ...\nSetting up libbs2b0:amd64 (3.1.0+dfsg-8+b1) ...\nSetting up libxcb-randr0:amd64 (1.17.0-2+b1) ...\nSetting up librav1e0.7:amd64 (0.7.1-9+b2) ...\nSetting up libzimg2:amd64 (3.0.5+ds1-1+b2) ...\nSetting up libopenjp2-7:amd64 (2.5.3-2.1~deb13u2) ...\nSetting up libx11-6:amd64 (2:1.8.12-1) ...\nSetting up libopenal-data (1:1.24.2-1) ...\nSetting up libthai-data (0.1.29-2) ...\nSetting up libunibreak6:amd64 (6.1-3) ...\nSetting up libwayland-egl1:amd64 (1.23.1-3) ...\nSetting up libusb-1.0-0:amd64 (2:1.0.28-1) ...\nSetting up libmbedcrypto16:amd64 (3.6.6-0.1~deb13u1) ...\nSetting up libx265-215:amd64 (4.1-2) ...\nSetting up libsamplerate0:amd64 (0.2.2-4+b2) ...\nSetting up libwebpmux3:amd64 (1.5.0-0.1) ...\nSetting up libdrm-common (2.4.124-2) ...\nSetting up libjxl0.11:amd64 (0.11.2-0.1~deb13u3) ...\nSetting up libxml2:amd64 (2.12.7+dfsg+really2.9.14-2.1+deb13u3) ...\nSetting up libzvbi-common (0.2.44-1) ...\nSetting up libmp3lame0:amd64 (3.100-6+b3) ...\nSetting up libvorbisenc2:amd64 (1.3.7-3) ...\nSetting up libdvdnav4:amd64 (6.1.1-3+b1) ...\nSetting up libiec61883-0:amd64 (1.2.0-7) ...\nSetting up libserd-0-0:amd64 (0.32.4-1) ...\nSetting up libxkbcommon0:amd64 (1.7.0-2) ...\nSetting up libwayland-client0:amd64 (1.23.1-3) ...\nSetting up libavc1394-0:amd64 (0.5.4-5+b2) ...\nSetting up libxcb-dri3-0:amd64 (1.17.0-2+b1) ...\nSetting up libllvm19:amd64 (1:19.1.7-3+b1) ...\nSetting up libx11-xcb1:amd64 (2:1.8.12-1) ...\nSetting up liblapack3:amd64 (3.12.1-6) ...\nupdate-alternatives: using /usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3 to provide /usr/lib/x86_64-linux-gnu/liblapack.so.3 (liblapack.so.3-x86_64-linux-gnu) in auto mode\nSetting up libzmq5:amd64 (4.3.5-1+b3) ...\nSetting up libcaca0:amd64 (0.99.beta20-5+deb13u1) ...\nSetting up libzvbi0t64:amd64 (0.2.44-1) ...\nSetting up libxrender1:amd64 (1:0.9.12-1) ...\nSetting up libsoxr0:amd64 (0.1.3-4+b2) ...\nSetting up fontconfig-config (2.15.0-2.3) ...\nSetting up libxext6:amd64 (2:1.3.4-1+b3) ...\nSetting up libopenal1:amd64 (1:1.24.2-1) ...\nSetting up libxxf86vm1:amd64 (1:1.1.4-1+b4) ...\nSetting up librist4:amd64 (0.2.11+dfsg-1) ...\nSetting up libthai0:amd64 (0.1.29-2+b1) ...\nSetting up libvorbisfile3:amd64 (1.3.7-3) ...\nSetting up libglib2.0-0t64:amd64 (2.84.4-3~deb13u5) ...\nNo schema files found: doing nothing.\nSetting up libfreetype6:amd64 (2.13.3+dfsg-1+deb13u1) ...\nSetting up libxfixes3:amd64 (1:6.0.0-2+b4) ...\nSetting up shared-mime-info (2.4-5+b2) ...\nSetting up libplacebo349:amd64 (7.349.0-3) ...\nSetting up libdc1394-25:amd64 (2.2.6-5) ...\nSetting up libxv1:amd64 (2:1.0.11-1.1+b3) ...\nSetting up libxrandr2:amd64 (2:1.5.4-1+b3) ...\nSetting up librubberband2:amd64 (3.3.0+dfsg-2+b3) ...\nSetting up libjack-jackd2-0:amd64 (1.9.22~dfsg-4) ...\nSetting up libdrm2:amd64 (2.4.124-2) ...\nSetting up libva-drm2:amd64 (2.22.0-3) ...\nSetting up libvdpau1:amd64 (1.5-3+b1) ...\nSetting up libsord-0-0:amd64 (0.16.18-1) ...\nSetting up libwayland-cursor0:amd64 (1.23.1-3) ...\nSetting up libsratom-0-0:amd64 (0.6.18-1) ...\nSetting up libdecor-0-0:amd64 (0.2.2-2) ...\nSetting up libharfbuzz0b:amd64 (10.2.0-1+deb13u1) ...\nSetting up libgdk-pixbuf-2.0-0:amd64 (2.42.12+dfsg-4+deb13u1) ...\nSetting up libxss1:amd64 (1:1.2.3-1+b3) ...\nSetting up libfontconfig1:amd64 (2.15.0-2.3) ...\nSetting up libsndfile1:amd64 (1.2.2-2+deb13u1) ...\nSetting up libbluray2:amd64 (1:1.3.4-1+b2) ...\nSetting up libva-x11-2:amd64 (2.22.0-3) ...\nSetting up liblilv-0-0:amd64 (0.24.26-1) ...\nSetting up libopenmpt0t64:amd64 (0.7.13-1+b1) ...\nSetting up libdrm-amdgpu1:amd64 (2.4.124-2) ...\nSetting up fontconfig (2.15.0-2.3) ...\nRegenerating fonts cache... done.\nSetting up libxi6:amd64 (2:1.8.2-1) ...\nSetting up libpulse0:amd64 (17.0+dfsg1-2+b1) ...\nSetting up libxcursor1:amd64 (1:1.2.3-1) ...\nSetting up libpango-1.0-0:amd64 (1.56.3-1) ...\nSetting up libdrm-intel1:amd64 (2.4.124-2) ...\nSetting up libavutil59:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libcairo2:amd64 (1.18.4-1+b1) ...\nSetting up libpostproc58:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libsphinxbase3t64:amd64 (0.8+5prealpha+1-21+b1) ...\nSetting up libswresample5:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libswscale8:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libass9:amd64 (1:0.17.3-1+deb13u1) ...\nSetting up libtheoradec1:amd64 (1.2.0~alpha1+dfsg-6) ...\nSetting up libcairo-gobject2:amd64 (1.18.4-1+b1) ...\nSetting up libpangoft2-1.0-0:amd64 (1.56.3-1) ...\nSetting up libpangocairo-1.0-0:amd64 (1.56.3-1) ...\nSetting up mesa-libgallium:amd64 (25.0.7-2+deb13u1) ...\nSetting up libgbm1:amd64 (25.0.7-2+deb13u1) ...\nSetting up libgl1-mesa-dri:amd64 (25.0.7-2+deb13u1) ...\nSetting up librsvg2-2:amd64 (2.60.0+dfsg-1+deb13u1) ...\nSetting up libpocketsphinx3:amd64 (0.8+5prealpha+1-15+b4) ...\nSetting up libavcodec61:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libsdl2-2.0-0:amd64 (2.32.4+dfsg-1) ...\nSetting up libglx-mesa0:amd64 (25.0.7-2+deb13u1) ...\nSetting up libglx0:amd64 (1.7.0-1+b2) ...\nSetting up libavformat61:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libgl1:amd64 (1.7.0-1+b2) ...\nSetting up libavfilter10:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up libavdevice61:amd64 (7:7.1.5-0+deb13u1) ...\nSetting up ffmpeg (7:7.1.5-0+deb13u1) ...\nProcessing triggers for libc-bin (2.41-12+deb13u4) ...\n ---> Removed intermediate container 43bd2b75e5ee\n ---> e86f40cc1d9c\nSuccessfully built e86f40cc1d9c\nSuccessfully tagged t24-crm:asset-toolchain-01d126c4fb9d\n"
+  },
+  "credentials_or_business_data_mounted": false,
+  "engine_canary": {
+    "actual_h264_mp4": {
+      "bytes": 1973,
+      "codec_name": "h264",
+      "height": 32,
+      "pix_fmt": "yuv420p",
+      "sha256": "1c873633d59621ab4f7995a380ad44d1f168f213bdb5f9915f84219abb1eafe8",
+      "width": 32
+    },
+    "backend_file_count": 408,
+    "backend_inventory_sha256": "ba909ad54619de4b8004383a5fa4f43282aa31e198b2fd4f00e65c8f92e3b482",
+    "cjk_and_latin_glyphs_verified": true,
+    "ffmpeg_version": "ffmpeg version 7.1.5-0+deb13u1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "font": {
+      "collection_index": 2,
+      "name": [
+        "Noto Sans CJK SC",
+        "Regular"
+      ],
+      "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+      "sha256": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+    },
+    "freetype2": true,
+    "latin_font": {
+      "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+      "sha256": "57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e"
+    },
+    "license_files": {
+      "/usr/share/doc/ffmpeg/copyright": "28700587b4c278cd4e24adf4174a6fbe2510f27af962966d9ff15144b0b9ddbb",
+      "/usr/share/doc/fonts-dejavu-core/copyright": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9",
+      "/usr/share/doc/fonts-noto-cjk/copyright": "849f4ea9c214fa4ac3593b770c699f387534b11ce671264c1b10d85bdcb5997b"
+    },
+    "no_business_data_credentials_or_provider_requests": true,
+    "python_pillow": "12.3.0"
+  },
+  "engine_probe_log_sha256": "aa651f15ce152ee5e8f898463f9d479514320e38cbea3a2bc3c37ca8608919ab",
+  "estimated_installed_bytes": 548605952,
+  "fetch_only_official_signed_debian": true,
+  "frontend_version": "8113d14d204f",
+  "image_tag": "t24-crm:asset-toolchain-01d126c4fb9d",
+  "install_and_engine_probe_network_none": true,
+  "installer_after_sha256": "8bd2b7b1ddc2890833884b883744503e3d8164f262bdce5be603d4d8c7e52442",
+  "installer_before_sha256": "42a8f69e204156bf321747040891b96c8012a1e587f2a5cc8eae31f48ba34792",
+  "installer_edits": [
+    "trusted_sbin_path",
+    "local_absolute_deb_acquisition"
+  ],
+  "legacy_builder_enabled": true,
+  "local_absolute_deb_acquisition_without_no_download": true,
+  "no_existing_package_upgraded_or_removed": true,
+  "official_debian_package_network_fetch_performed": false,
+  "original_context_unchanged": true,
+  "packages_manifest_sha256": "1898abbe19f5c37bf0dd73e15ccad03b1076bbd979c216ee8f1cfffa0ce60a86",
+  "physical_offline_build": true,
+  "preflight_sha256": "bed4a64393ad4940a3e3c2a583d57a02f7970ce03ba6d96bec1991f7ba3d7bd2",
+  "production_container_changed": false,
+  "production_or_host_installation": false,
+  "production_runtime_unchanged": true,
+  "public_build_log_path": "/opt/t24-crm/releases/media-asset-studio-toolchain-01d126c4fb9d-20261101/docker-build-public.log",
+  "publications_performed": false,
+  "receipt_path": "/opt/t24-crm/releases/media-asset-studio-toolchain-01d126c4fb9d-20261101/toolchain-prepared.json",
+  "receipt_sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d",
+  "social_ai_or_payment_provider_requests": false,
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "MEDIA_ASSET_STUDIO_TOOLCHAIN_PREPARED",
+  "tool_sha256": "01d126c4fb9d7e931e6342db39fb13a8185500952fb3567c58766aeb09cab577",
+  "toolchain_image": "sha256:e86f40cc1d9cfc531c3aeaec6ce1776adc805c4c9b215669658ee639dfdcc9aa",
+  "top_packages": {
+    "ffmpeg": "7:7.1.5-0+deb13u1",
+    "fonts-dejavu-core": "2.37-8",
+    "fonts-noto-cjk": "1:20240730+repack1-1"
+  },
+  "total_download_bytes": 186417108,
+  "trusted_install_path_sbin_added": true
+}

@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "reviewer": "root",
+  "loader_sha256": "acf40f0b2f93ce6796e8b7054e3cf40ce75fc6692dab5517e032b46c7aa0cfe4",
+  "command_sha256": "4bb63302e78730fcf20c28df1654411d1125a8853f3cb284a400f63deb71f3e9",
+  "local_tests_passed": 10,
+  "derived_resumer_sha256": "01d126c4fb9d7e931e6342db39fb13a8185500952fb3567c58766aeb09cab577",
+  "review": "Exact protected8f source derivation; only single local acquire --no-download removal added to previously reviewed trusted sbin PATH edit. Reverse equivalence proves both edits only; full194signedclosure/hash/doublecopy, physicalnetworknone/pullfalse and no-upgrade/no-remove/all109+194inventory remain. All155/private packet/currentruntime and actualCJK/H264/408 checks retained."
+}

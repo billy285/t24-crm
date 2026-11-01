@@ -1,0 +1,32 @@
+{
+  "actual_candidate_execution": "pending",
+  "app_source_changes": false,
+  "at_utc": "2026-11-01T05:36:52.466272+00:00",
+  "canonical_canary": "python -B -c <exact renderer_canary.py bytes>",
+  "files": {
+    "renderer_canary.py": {
+      "bytes": 18546,
+      "sha256": "cf8961248786c816055ba62497b76e9baa515f586522903b4cbeb1bce9e04f15"
+    },
+    "test_renderer_canary.py": {
+      "bytes": 7341,
+      "sha256": "6268a4fb3c970766e123dee8af9c521cdd5cbf59e837bc7064bb03356af9c872"
+    }
+  },
+  "local_contract_attack_tests_passed": 11,
+  "local_seconds": 3.08,
+  "optional_read_only_export": "python -B -c <exact renderer_canary.py bytes> --export-thumbnail <one-of-two-fixed-names> <reviewed-thumbnail-sha256>",
+  "server_provider_database_actions": false,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "FINAL_RENDERER_CANARY_AUTHORING_VERIFIED",
+  "thumbnail_constraints": {
+    "combined_base64_bytes_max": 61440,
+    "inline_in_canonical_receipt": false,
+    "maximum_long_edge": 360,
+    "maximum_png_bytes_each": 22528
+  },
+  "thumbnail_files": [
+    "/app/backend/logs/asset-studio-canary/chinese-poster.png",
+    "/app/backend/logs/asset-studio-canary/collage-four.png"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "chunks": [
+    [
+      "part-00.bin",
+      6000,
+      "c3714dbe27cd94d0d4669996359c322757d8ac42458debf89345c1fc177817f9"
+    ],
+    [
+      "part-01.bin",
+      6000,
+      "6e186484255d45f7ab03304c3442f5db71225f044b4531eb3c7728581815668d"
+    ],
+    [
+      "part-02.bin",
+      3612,
+      "828c85033e33214da7350f11f20f160b17a7582692925e4a414561112276f5ec"
+    ]
+  ],
+  "commands": {
+    "execute-command.sh": {
+      "bytes": 3063,
+      "sha256": "07ebcf6ecfefd4df153b028a26dc49510f4353e3d1dbb281e6b70af69bf7f4ab"
+    },
+    "stage-00-command.sh": {
+      "bytes": 10763,
+      "sha256": "9ac2ea91a797342c603307c5d88afd9010bc9fb83f77333245102e898b409954"
+    },
+    "stage-01-command.sh": {
+      "bytes": 10852,
+      "sha256": "4ba48f60acfd17f3973bad38117e7a8128ea50924121e9024e01988e31d678b3"
+    },
+    "stage-02-command.sh": {
+      "bytes": 7759,
+      "sha256": "e502e98872463638e2d68368c40b736bf3e340854e9bde5de3ede30588edf6a0"
+    }
+  },
+  "directory": "/opt/t24-crm/releases/media-asset-toolchain-transport-c1b0cbbeaa33-20261101",
+  "executed": false,
+  "packed_bytes": 15612,
+  "packed_sha256": "4beef4f8202e4a78884be6825643d90108c1d16aff8fe97457123d25c021756b",
+  "source_command_bytes": 20834,
+  "source_command_sha256": "c1b0cbbeaa3305379cc634ae7d37b45627a32d35d129b750ad261863a0f27075",
+  "stage": "APPEND_ONLY_TOOLCHAIN_TRANSPORT_PREPARED",
+  "toolchain_sha256": "4fe7ee52647ff1775c8b3e7ac9bce60208aa66806324d3c4a51f80ff23f16fe7"
+}

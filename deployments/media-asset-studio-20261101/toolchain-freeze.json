@@ -1,0 +1,12 @@
+{
+  "api_or_worker_started": false,
+  "build_and_probe_network": "none",
+  "business_or_credential_mounts": false,
+  "command_bytes": 20834,
+  "command_sha256": "c1b0cbbeaa3305379cc634ae7d37b45627a32d35d129b750ad261863a0f27075",
+  "executed": false,
+  "only_network_phase": "official signed Debian package resolution and download in a new isolated container",
+  "preflight_sha256": "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9",
+  "production_or_host_installation": false,
+  "toolchain_sha256": "4fe7ee52647ff1775c8b3e7ac9bce60208aa66806324d3c4a51f80ff23f16fe7"
+}

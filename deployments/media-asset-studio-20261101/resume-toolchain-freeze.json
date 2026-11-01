@@ -1,0 +1,15 @@
+{
+  "client_docker_buildkit": "0",
+  "command_bytes": 8085,
+  "command_sha256": "96c95f61eef74757d2455e053501abbb985c37a692e1a508ed3e0fe7c6499092",
+  "executed": false,
+  "installer_path_added": [
+    "/usr/sbin",
+    "/sbin"
+  ],
+  "network_fetch_performed": false,
+  "production_or_host_installation": false,
+  "resume_bytes": 13775,
+  "resume_sha256": "8f007897d478a08f3e8c0f189c0bbbe7354ec8c6c208ea2ac868934fe4624b86",
+  "scope": "media-asset-studio-toolchain-8f007897d478-20261101"
+}

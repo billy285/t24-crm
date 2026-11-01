@@ -1,0 +1,35 @@
+{
+  "stage": "ROOT_ACTUAL_REACT_UI_LOCAL_ACCEPTANCE",
+  "at_utc": "2026-11-01T05:28:31.864810+00:00",
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "build": "vite production PASS8.37s; versionc1d87dd771d8",
+  "fixture_only": true,
+  "business_or_provider_requests": false,
+  "checks": {
+    "desktop_1280_real_png_loaded": {
+      "output": [
+        1080,
+        1080
+      ],
+      "original": [
+        640,
+        480
+      ]
+    },
+    "explicit_adoption_new_pending_material": true,
+    "mobile_390_no_horizontal_overflow": true,
+    "mobile_320_no_horizontal_overflow": true,
+    "mobile_existing_result_first": true,
+    "failed_explicit_retry_returns_queued": true,
+    "unknown_refresh_only_no_automatic_retry": true,
+    "first_brand_explicit_save": true,
+    "enhance_original_size_ratio_no_crop_or_upscale_caption": true,
+    "staff_studio_absent": true
+  },
+  "not_proven_here": [
+    "production Noto rendering",
+    "production FFmpeg render or browser playback",
+    "production deployment"
+  ],
+  "temporary_viewport_reset": true
+}

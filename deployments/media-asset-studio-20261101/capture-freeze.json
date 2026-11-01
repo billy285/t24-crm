@@ -1,0 +1,14 @@
+{
+  "business_writes": false,
+  "command_bytes": 11846,
+  "command_sha256": "777334fa92e6a95788f99631755f318be8cd064cbc9f62a5f3020e4c6ec48254",
+  "credential_file_content_read": false,
+  "executed": false,
+  "installation_performed": false,
+  "only_writes": "new protected aggregate baseline and rendering-capacity receipt",
+  "preflight_bytes": 20951,
+  "preflight_sha256": "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9",
+  "private_content_read": false,
+  "provider_requests": false,
+  "worker_started": false
+}

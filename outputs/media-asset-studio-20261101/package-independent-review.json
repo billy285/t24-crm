@@ -1,0 +1,31 @@
+{
+  "actual_toolchain_cjk_h264_previously_verified": true,
+  "additive_tables": [
+    "media_asset_jobs",
+    "media_asset_profiles",
+    "media_asset_requests"
+  ],
+  "application_freeze_sha256": "cc314579784239cd710c45c39e589ce14a8d05e4d8b28c33f1900510cc0cce00",
+  "application_or_release_files_edited": false,
+  "backend_overlay_files": 8,
+  "capture_descendant_pipe_timeout_fix_verified": true,
+  "changed_application_sources": 15,
+  "finance_acl_private_sources_unchanged": true,
+  "frontend_version": "c1d87dd771d8",
+  "manifest_bytes": 146426,
+  "manifest_sha256": "2c526c73ec63ba59603fe304956c617f936ed53390c461890e959d98d413a504",
+  "method": "Called build_payload.build in memory only; independently compared exact deterministic tar.gz and canonical manifest bytes with immutable artifacts. No generator main or artifact overwrite. Reviewed final release path, full155/three-table additive boundary, package/source allowlist, toolchain provenance, offline owner-only/resource canaries, forward-only recovery and reversible exact CSP change. Actual final renderer canary remains mandatory during prepare.",
+  "old_table_count": 155,
+  "payload_bytes": 2263273,
+  "payload_members": 148,
+  "payload_sha256": "006c469c89b50217a253139c05f21a289386b521915c29bad3117238ca1afc15",
+  "real_publication_or_schedule_executed": false,
+  "release_sha256": "334d6bb4b5a45538d019a03df19b0cd6b2d49671969b1dd7ea288c06f0976108",
+  "renderer_canary_sha256": "cf8961248786c816055ba62497b76e9baa515f586522903b4cbeb1bce9e04f15",
+  "reviewer": "north_month_frontend",
+  "server_actions_by_reviewer": false,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "static_files": 140,
+  "status": "PASS",
+  "toolchain_receipt_sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d"
+}

@@ -1,0 +1,13 @@
+{
+  "after_sha256": "a88ec25f09e91d1b754b5f15f24a17082e820b3af61744f3bec89c31f6ea1834",
+  "baseline_source": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "before_sha256": "8e2ea1a8ea6a4d55260936c4d7d2095038f6ab4c092c7ed093a27593a6569ce5",
+  "checks": {
+    "locked_helper_exact_old_transaction_body_plus_return": true,
+    "unchanged_native_outer_write_context": true,
+    "unchanged_native_return_after_write": true,
+    "unchanged_native_validation_processing_and_replay_before_write": true
+  },
+  "provider_or_server_actions": false,
+  "stage": "ASSET_STUDIO_NATIVE_IMAGE_HELPER_EQUIVALENCE_PASS"
+}

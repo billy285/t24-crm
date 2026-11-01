@@ -1,0 +1,22 @@
+{
+  "command_bytes": 3421,
+  "command_sha256": "4bb63302e78730fcf20c28df1654411d1125a8853f3cb284a400f63deb71f3e9",
+  "derived_resumer_bytes": 14364,
+  "derived_resumer_sha256": "01d126c4fb9d7e931e6342db39fb13a8185500952fb3567c58766aeb09cab577",
+  "exact194_proposal_preserved": true,
+  "exact_command_and_pins_reproduced": true,
+  "executed": false,
+  "installer_edits": [
+    "trusted_sbin_path",
+    "local_absolute_deb_acquisition"
+  ],
+  "loader_bytes": 3729,
+  "loader_sha256": "acf40f0b2f93ce6796e8b7054e3cf40ce75fc6692dab5517e032b46c7aa0cfe4",
+  "network_fetch_performed": false,
+  "no_server_provider_git_or_app_changes": true,
+  "only_two_installer_edits_and_clean_legacy_builder": true,
+  "physical_offline_build": true,
+  "production_or_host_installation": false,
+  "scope": "media-asset-studio-toolchain-01d126c4fb9d-20261101",
+  "stage": "LOCAL_ACQUIRE_TOOLCHAIN_INDEPENDENT_REVIEW_PASSED"
+}

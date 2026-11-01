@@ -1,0 +1,23 @@
+{
+  "actual_runtime": "Debian13 trixie / Python3.10.22 / Pillow12.3.0",
+  "all155_current_rows_and_existing_authority_preserved": true,
+  "container_fonts_available": false,
+  "cpu_count": 2,
+  "csp_environment_override_present": false,
+  "current_tables": 155,
+  "disk_available_bytes": 15020036096,
+  "exported_summary_sha256": "dd15f00a2dc617a072e30387fd5d8e70d0259aa5e7d867d7d4bcc5139b234993",
+  "ffmpeg_installed": false,
+  "frontend_version": "8113d14d204f",
+  "full_proof_digest_recomputed_from_exported_summary": false,
+  "memory_available_bytes": 2122240000,
+  "note": "The SHA pins the protected full server aggregate, including all155 row hashes; the exported summary is a bounded projection, not the full proof.",
+  "pillow_freetype_png_probe_passed": true,
+  "prepared_private_packet_count": 1,
+  "production_or_host_installation_performed": false,
+  "protected_full_proof_sha256": "bed4a64393ad4940a3e3c2a583d57a02f7970ce03ba6d96bec1991f7ba3d7bd2",
+  "schema_revision": "e10cb234c570",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "MEDIA_ASSET_STUDIO_ACTUAL_CAPACITY_REVIEW_PASS",
+  "worker_or_provider_actions": false
+}

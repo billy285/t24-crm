@@ -1,0 +1,266 @@
+{
+  "active_nginx_sha256": "08736c1ec5f04701338e5a409c7c5ac72138f3aafb203a034a34c6c974a499a6",
+  "all155_current_tables_preserved": true,
+  "backend_file_count": 408,
+  "backend_inventory_sha256": "ba909ad54619de4b8004383a5fa4f43282aa31e198b2fd4f00e65c8f92e3b482",
+  "business_writes": false,
+  "bytes": 93127,
+  "content_security_policy_sha256": "2b194e47b6ce14dbf475afea0192b06f0e93d000811af1a29c8e5f78646250fa",
+  "credential_file_content_read": false,
+  "crm": {
+    "config": "7224218131950ce106c764ae838f7cb7f4a33ed07530b869346763d226dc56d4",
+    "id": "3000cd73a62f0c852874c2124426ec45b47f26d128843fb56f5963ef9ef98058",
+    "image": "sha256:3e948625074aa6af891ace1e814f98aa9ed8d9bc004d85f6c5cadc6b423c1536",
+    "restart": 0,
+    "started": "2026-11-01T04:44:42.917603256Z"
+  },
+  "csp_environment_override_present": false,
+  "deployed_receipt_sha256": "8bc2907a55706ebc229faeb9b0f10ee24f08dd10de81c29412afce6e8a787197",
+  "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+  "frontend_version": "8113d14d204f",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "host": "iZj6c4cj7edgnhdimts4l7Z",
+  "installation_performed": false,
+  "nginx_sha256": "c06d6788d23ff5a7c8d481c6cb20ad96fef9178d17aa4980193202b762fdccb7",
+  "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+  "ops_execution_enabled": false,
+  "ops_scheduler_enabled": false,
+  "path": "/opt/t24-crm/releases/media-asset-studio-preflight-bed4a64393ad.json",
+  "permissions_changed": false,
+  "prepared_private_packet_count": 1,
+  "prepared_private_packet_preserved": true,
+  "private_content_read": false,
+  "provider_requests": false,
+  "public_content_security_policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+  "public_inventory_sha256": "942aac166f3db7fbf77abd62679cc71748556d766fc35729ce1d4b53ca0741f5",
+  "public_root": "/var/www/t24-crm-public/media-ops-monthly-flow-d39337fccfd6-20261101",
+  "render_capacity": {
+    "container": {
+      "affinity_cpu_count": 2,
+      "binaries": {
+        "ffmpeg": {
+          "available": false
+        },
+        "ffprobe": {
+          "available": false
+        }
+      },
+      "cgroup": {
+        "cpu.max": "max 100000",
+        "memory.current": "183631872",
+        "memory.max": "max",
+        "pids.max": "4098"
+      },
+      "cpu_count": 2,
+      "disk": {
+        "/": {
+          "available_bytes": 15020036096,
+          "total_bytes": 52448063488
+        }
+      },
+      "font_license_metadata": [],
+      "fonts": {
+        "count": 0,
+        "files": [],
+        "total_hashed_bytes": 0,
+        "truncated": false
+      },
+      "memory": {
+        "MemAvailable_bytes": 2122240000,
+        "MemTotal_bytes": 3664936960,
+        "SwapFree_bytes": 0,
+        "SwapTotal_bytes": 0
+      },
+      "pillow": {
+        "available": true,
+        "features": {
+          "freetype2": true,
+          "jpg": true,
+          "raqm": false,
+          "webp": true,
+          "zlib": true
+        },
+        "in_memory_png_probe": true,
+        "version": "12.3.0"
+      },
+      "python": "3.10.22",
+      "system": {
+        "apt-get": {
+          "available": true,
+          "bytes": 59784,
+          "path": "/usr/bin/apt-get",
+          "sha256": "67072be139e90c73ed25007ac92f0525909a7c6d6829aecc2ceff86f9568f98b"
+        },
+        "apt_sources": [
+          {
+            "bytes": 437,
+            "official_public_uris": [
+              "http://deb.debian.org/debian",
+              "http://deb.debian.org/debian-security"
+            ],
+            "other_or_credentialed_uri_count_withheld": 0,
+            "path": "/etc/apt/sources.list.d/debian.sources",
+            "sha256": "720ec2b8dd6b9480dbc5dabd7eaed51f059cc97356cb8e035934d55a1efdae30"
+          }
+        ],
+        "dpkg-query": {
+          "available": true,
+          "bytes": 174864,
+          "path": "/usr/bin/dpkg-query",
+          "sha256": "095817337215129933918cacae5fd62e86202fe238591bea207a75b73561e8c5"
+        },
+        "installed_render_packages": [],
+        "os_release": {
+          "ID": "debian",
+          "VERSION_CODENAME": "trixie",
+          "VERSION_ID": "13"
+        }
+      }
+    },
+    "container_resource_limits": {
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpuShares": 0,
+      "Memory": 0,
+      "MemorySwap": 0,
+      "NanoCpus": 0,
+      "OomKillDisable": null,
+      "PidsLimit": null,
+      "ReadonlyRootfs": false
+    },
+    "host": {
+      "affinity_cpu_count": 2,
+      "binaries": {
+        "ffmpeg": {
+          "available": false
+        },
+        "ffprobe": {
+          "available": false
+        }
+      },
+      "cgroup": {},
+      "cpu_count": 2,
+      "disk": {
+        "/": {
+          "available_bytes": 15020036096,
+          "total_bytes": 52448063488
+        },
+        "/opt/t24-crm": {
+          "available_bytes": 15020036096,
+          "total_bytes": 52448063488
+        },
+        "/var/www": {
+          "available_bytes": 15020036096,
+          "total_bytes": 52448063488
+        }
+      },
+      "font_license_metadata": [
+        {
+          "bytes": 3859,
+          "path": "/usr/share/doc/fonts-dejavu-core/copyright",
+          "sha256": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9"
+        },
+        {
+          "bytes": 28095,
+          "path": "/usr/share/doc/fonts-ubuntu-console/copyright",
+          "sha256": "bca346a561b9668925ff55af1fcf0e10e65e07b1b40dd057bb4f3ded848ef8cf"
+        }
+      ],
+      "fonts": {
+        "count": 6,
+        "files": [
+          {
+            "bytes": 705684,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "sha256": "d1c3ff99f1e1ce1827a33efd4dad81f40babda06bff9e43bd7591c86662a287b"
+          },
+          {
+            "bytes": 757076,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "sha256": "690243adfefe0ce154b547db6205794bd30ac4277275179517a90994f4980648"
+          },
+          {
+            "bytes": 331992,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            "sha256": "f8aa70b5d4210d77624f5b5b5cf094fadf9fd019caf5b528fa5af42fc4ac43a5"
+          },
+          {
+            "bytes": 340712,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "sha256": "39c29931201f08dd89fdba4129c76288e6baeecf7c94fe4f6a757f2b50718b1b"
+          },
+          {
+            "bytes": 356088,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
+            "sha256": "f81ce497906182460f9a4beb89bec7c1265af2182f8110c25821dfc88486942e"
+          },
+          {
+            "bytes": 380132,
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+            "sha256": "3731a19f2b50d86d81dd1a1effcd81492ed1fa44f6ea904792dd98fdae9b3dfe"
+          }
+        ],
+        "total_hashed_bytes": 2871684,
+        "truncated": false
+      },
+      "memory": {
+        "MemAvailable_bytes": 2121543680,
+        "MemTotal_bytes": 3664936960,
+        "SwapFree_bytes": 0,
+        "SwapTotal_bytes": 0
+      },
+      "pillow": {
+        "available": false
+      },
+      "python": "3.10.12",
+      "system": {
+        "apt-get": {
+          "available": true,
+          "bytes": 51680,
+          "path": "/usr/bin/apt-get",
+          "sha256": "cd43d3cef236813a1c4af61b5f0a6250fe0878a41032eb219d4ba0cbc04ac6d0"
+        },
+        "apt_sources": [
+          {
+            "bytes": 2934,
+            "official_public_uris": [],
+            "other_or_credentialed_uri_count_withheld": 10,
+            "path": "/etc/apt/sources.list",
+            "sha256": "0b3e55bf30cf07d108230c01091d652ef2e5531b60b437f512dd170aad89aad6"
+          },
+          {
+            "bytes": 110,
+            "official_public_uris": [],
+            "other_or_credentialed_uri_count_withheld": 1,
+            "path": "/etc/apt/sources.list.d/docker.list",
+            "sha256": "a7c32d8ec3c45f0d64f214ec0f4d3f149746a3dd4cb27d505e3a410762bea687"
+          }
+        ],
+        "dpkg-query": {
+          "available": true,
+          "bytes": 141848,
+          "path": "/usr/bin/dpkg-query",
+          "sha256": "11b7055ec6ec739838f171182ced296ca75ec2da2d32e4331e9926021d6f8d08"
+        },
+        "installed_render_packages": [],
+        "os_release": {
+          "ID": "ubuntu",
+          "ID_LIKE": "debian",
+          "VERSION_CODENAME": "jammy",
+          "VERSION_ID": "22.04"
+        }
+      }
+    }
+  },
+  "rows_sha256": "ca6bd8a488c822a1b7972e7b17bf471af9bfe309b12bd9e2572d4338bf0ace4a",
+  "runtime_changed": false,
+  "schema_changed": false,
+  "schema_revision": "e10cb234c570",
+  "schema_sha256": "b742c19790928c8fbc5bd1d5014c8e7aec219507ccac7c1e662bab8b71f39d12",
+  "sha256": "bed4a64393ad4940a3e3c2a583d57a02f7970ce03ba6d96bec1991f7ba3d7bd2",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "MEDIA_ASSET_STUDIO_PREFLIGHT_CAPTURED",
+  "table_count": 155,
+  "worker_started": false
+}

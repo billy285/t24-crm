@@ -1,0 +1,29 @@
+{
+  "actions": {
+    "application_edits": 0,
+    "git_writes": 0,
+    "provider_requests": 0,
+    "server_requests": 0
+  },
+  "at_utc": "2026-11-01T05:38:03.098549+00:00",
+  "checks": {
+    "actual_parent_TMPDIR_and_effective_child_limits_affinity_nice_observed": true,
+    "exact_frozen_native_process_and_three_source_hashes": true,
+    "linux_python310_and_worker_off_required": true,
+    "no_material_job_task_schedule_or_provider_actions": true,
+    "only_two_new_synthetic_png_thumbnails_360px22KiB": true,
+    "optional_export_exact_whitelisted_filename_hash_regular_private_no_follow_file": true,
+    "real_h264_video_two_and_six_sources_dimensions_duration_no_audio": true,
+    "real_metadata_free_png_alpha_original_pixels_and_full_photo_corners": true,
+    "socket_and_database_connectors_denied": true,
+    "whole_private_temp_tree_removed_after_every_case": true
+  },
+  "limits": [
+    "Source review and11 local synthetic tests only; actual Linux candidate execution waits verified toolchain."
+  ],
+  "local_synthetic_tests_passed": 11,
+  "reviewer": "north_month_frontend",
+  "source_sha256": "cf8961248786c816055ba62497b76e9baa515f586522903b4cbeb1bce9e04f15",
+  "status": "PASS_SOURCE_REVIEW",
+  "test_sha256": "6268a4fb3c970766e123dee8af9c521cdd5cbf59e837bc7064bb03356af9c872"
+}

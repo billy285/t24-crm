@@ -1,0 +1,51 @@
+{
+  "actions": {
+    "app_source_edits": 0,
+    "git": 0,
+    "production_database": 0,
+    "provider": 0,
+    "server": 0
+  },
+  "at_utc": "2026-11-01T05:51:25.567538+00:00",
+  "candidate_table_count": 158,
+  "checks": {
+    "all155_old_table_schema_and_rows_preserved_except_exact_head": true,
+    "mid_third_table_and_index_failure_transaction_rollback": true,
+    "new3_tables_empty": true,
+    "only_reviewed_three_tables_and_one_index_added": true,
+    "original_autoincrement_sequence_unchanged": true,
+    "original_user_version_and_application_id_unchanged": true,
+    "private_prepared_month_packet1_and_request1_exact": true,
+    "test_seconds": 0.35,
+    "tests_passed": 4
+  },
+  "down_revision": "e10cb234c570",
+  "migration": "f21dc345d681",
+  "migration_path": "app/backend/alembic/versions/f21dc345d681_media_asset_studio.py",
+  "migration_sha256": "14739f5170760cac3e396f332698e2030fb3385f57a82146bd30248012dab6d9",
+  "new_indexes": [
+    "ix_media_asset_jobs_customer_id"
+  ],
+  "new_tables": [
+    "media_asset_jobs",
+    "media_asset_profiles",
+    "media_asset_requests"
+  ],
+  "original_table_count": 155,
+  "schema_objects": {
+    "ix_media_asset_jobs_customer_id": "CREATE INDEX ix_media_asset_jobs_customer_id ON media_asset_jobs (customer_id)",
+    "media_asset_jobs": "CREATE TABLE media_asset_jobs (\n\tid VARCHAR(32) NOT NULL, \n\towner_id INTEGER NOT NULL, \n\tcustomer_id INTEGER NOT NULL, \n\trequest_id VARCHAR(36) NOT NULL, \n\tfingerprint VARCHAR(64) NOT NULL, \n\trevision INTEGER NOT NULL, \n\tkind VARCHAR(16) NOT NULL, \n\tstatus VARCHAR(16) NOT NULL, \n\tsnapshot JSON NOT NULL, \n\tattempt INTEGER NOT NULL, \n\tlease_token VARCHAR(32), \n\tlease_at DATETIME, \n\toutput JSON, \n\tadoption JSON, \n\terror_code VARCHAR(40), \n\tmessage VARCHAR(255) NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_media_asset_job_request UNIQUE (owner_id, request_id)\n)",
+    "media_asset_profiles": "CREATE TABLE media_asset_profiles (\n\towner_id INTEGER NOT NULL, \n\tcustomer_id INTEGER NOT NULL, \n\trevision INTEGER NOT NULL, \n\tsettings JSON NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (owner_id, customer_id)\n)",
+    "media_asset_requests": "CREATE TABLE media_asset_requests (\n\tid INTEGER NOT NULL, \n\towner_id INTEGER NOT NULL, \n\tcustomer_id INTEGER NOT NULL, \n\trequest_id VARCHAR(36) NOT NULL, \n\tkind VARCHAR(16) NOT NULL, \n\tfingerprint VARCHAR(64) NOT NULL, \n\tresult JSON NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_media_asset_request UNIQUE (owner_id, request_id)\n)"
+  },
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ASSET_STUDIO_EXACT_THREE_EMPTY_TABLE_SCHEMA_FROZEN",
+  "table_shape_function": "deployments/meta-business-20261031/release.py:table_shape with retained.NEW_TABLES=frozenset(new_tables)",
+  "table_shapes": {
+    "media_asset_jobs": "47d84f4ce732b9969a5f86187f101b7364b4ca39f8494e023ed0dba90dbc5f90",
+    "media_asset_profiles": "b734cecd9babdbe8c9c5c2e44fc8076507d4674e99f07ad6d569b5c6e7a6c403",
+    "media_asset_requests": "ad2da4e7814d995e75c0babe1448d3e472f3c43f2580fc56af0d09f16c2c45a5"
+  },
+  "test_path": "deployments/media-asset-studio-20261101/test_schema_migration.py",
+  "test_sha256": "7876f7304b5cd144e920e37f6d32b70534b3d64db67c4e4a9955bce270add24a"
+}

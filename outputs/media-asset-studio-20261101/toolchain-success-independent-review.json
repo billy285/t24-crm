@@ -1,0 +1,20 @@
+{
+  "actual_cjk_font_verified": true,
+  "actual_h264_mp4_verified": true,
+  "added_package_count": 194,
+  "all408_backend_files_and155_current_rows_preserved": true,
+  "approved_proposal_sha256": "9c7545b0cb443f56f9b897dfa441cfc3c3ce74dcfe50891725676698f864a1b3",
+  "canonical_receipt_bytes": 12582,
+  "canonical_receipt_sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d",
+  "exact_two_installer_edits_verified": true,
+  "frontend_version": "8113d14d204f",
+  "note": "Independently canonicalized the actual receipt, removing only receipt_path and receipt_sha256; compared full frozen provenance, exact194 proposal aggregates, installer before/after source hashes and actual CJK/H264+408 inventory against current155 capture. Production remains unchanged by this toolchain-only step.",
+  "old_scopes_unmodified": true,
+  "real_publication_or_schedule_executed": false,
+  "reviewer": "north_month_frontend",
+  "server_actions_by_reviewer": false,
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "status": "PASS",
+  "tool_sha256": "01d126c4fb9d7e931e6342db39fb13a8185500952fb3567c58766aeb09cab577",
+  "toolchain_image": "sha256:e86f40cc1d9cfc531c3aeaec6ce1776adc805c4c9b215669658ee639dfdcc9aa"
+}

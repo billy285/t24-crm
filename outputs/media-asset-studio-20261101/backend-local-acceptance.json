@@ -1,0 +1,48 @@
+{
+  "actions": {
+    "git": 0,
+    "production_business_writes": 0,
+    "provider": 0,
+    "real_publications": 0,
+    "server": 0
+  },
+  "at_utc": "2026-11-01T05:26:52.456962+00:00",
+  "covered": [
+    "active owner deny before SQL",
+    "existing customer delivery/material scope",
+    "closed cooperation writes and stopped read history",
+    "exact UUID receipts and stale revision checks",
+    "private PNG/MP4 artifact authentication and SHA",
+    "atomic new pending Material/native fixed image/customer audit/request receipt",
+    "rollback before and after native image creation",
+    "source/profile/rights/live employee recheck before completion/adoption",
+    "one durable local lease and no rendering under SQL write lock",
+    "unknown manual-only retry same job id",
+    "idle worker read only",
+    "minimal subprocess environment and complete bounded pipe reads",
+    "always kill renderer session including any FFmpeg grandchild",
+    "parent-owned private temporary tree failure/cancellation cleanup",
+    "Pillow deterministic pixels and metadata stripping",
+    "preserve original enhancement dimensions/alpha and contain whole poster photo",
+    "Latin word-aware/CJK wrapping bounded shrink no facts truncation",
+    "readable text color contrast",
+    "verified menu/brand public title suggestions",
+    "155 existing populated tables preserved plus 3 empty new tables migration with DDL rollback",
+    "no automatic publication/AI/provider/native task/lease/policy changes"
+  ],
+  "production_font_ffmpeg_validation": "Pending candidate runtime test; local actual FFmpeg absent. No claim of production video execution yet.",
+  "source_freeze_sha256": "1489abfe9644d246ec7812d5b7372657ca102059ccd9b66abf57726ce225c2ce",
+  "stage": "ASSET_STUDIO_BACKEND_LOCAL_ACCEPTANCE",
+  "status": "PASS",
+  "tests": {
+    "broader_native_finance_owner_month_meta": {
+      "note": "Broad run began before idle and parent temporary-directory additions; final focused151 reran after both and includes new idle/cleanup/session-kill checks. Native helper source unchanged across these runs.",
+      "passed": 661,
+      "seconds": 148.4
+    },
+    "final_asset_native_image_security_middleware": {
+      "passed": 151,
+      "seconds": 10.24
+    }
+  }
+}

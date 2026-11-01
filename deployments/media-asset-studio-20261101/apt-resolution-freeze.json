@@ -1,0 +1,10 @@
+{
+  "command_bytes": 6951,
+  "command_sha256": "969d96579a5865500184bb2094a5596722633cc9c3f3454ad2842e9f27e1d83d",
+  "executed": false,
+  "installation_performed": false,
+  "old_toolchain_changed": false,
+  "package_download_performed": false,
+  "probe_bytes": 11603,
+  "probe_sha256": "223a9e30375c5ab67797e4c304094be51be8cff6f0ef3cf7630e46ec523ec557"
+}

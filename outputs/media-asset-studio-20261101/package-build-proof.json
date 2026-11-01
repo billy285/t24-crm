@@ -1,0 +1,51 @@
+{
+  "application_delta_count": 15,
+  "files": {
+    "application-file-freeze.json": {
+      "bytes": 3511,
+      "sha256": "cc314579784239cd710c45c39e589ce14a8d05e4d8b28c33f1900510cc0cce00"
+    },
+    "artifacts/manifest.json": {
+      "bytes": 146426,
+      "sha256": "2c526c73ec63ba59603fe304956c617f936ed53390c461890e959d98d413a504"
+    },
+    "artifacts/payload.tar.gz": {
+      "bytes": 2263273,
+      "sha256": "006c469c89b50217a253139c05f21a289386b521915c29bad3117238ca1afc15"
+    },
+    "build_payload.py": {
+      "bytes": 25444,
+      "sha256": "f7eccf883fea1c510cb3babea8774817155fe6e9156d110c7d894f391e5675a0"
+    },
+    "make_commands.py": {
+      "bytes": 10203,
+      "sha256": "52cabcc23a14bbc74fb727514a95fdb3f6dc86e676fb341038c26125575e292e"
+    },
+    "preflight.py": {
+      "bytes": 20951,
+      "sha256": "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9"
+    },
+    "release.py": {
+      "bytes": 53628,
+      "sha256": "334d6bb4b5a45538d019a03df19b0cd6b2d49671969b1dd7ea288c06f0976108"
+    },
+    "renderer_canary.py": {
+      "bytes": 18546,
+      "sha256": "cf8961248786c816055ba62497b76e9baa515f586522903b4cbeb1bce9e04f15"
+    },
+    "toolchain-prepared.json": {
+      "bytes": 12582,
+      "sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d"
+    }
+  },
+  "final_actual_renderer_canary_pending_prepare": true,
+  "frontend_version": "c1d87dd771d8",
+  "new_release_tests_passed": 226,
+  "new_release_tests_seconds": 5.72,
+  "payload_members": 148,
+  "runtime_overlay_files": 8,
+  "server_phases_executed": false,
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "ASSET_STUDIO_PACKAGE_EMITTED_PENDING_INDEPENDENT_REVIEW",
+  "static_files": 140
+}

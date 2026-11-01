@@ -1,0 +1,9 @@
+{
+  "command_bytes": 6829,
+  "command_sha256": "577abafc94691e0ded3b7e6f2349d6084ae067654f51cfd9dd626df61a74337a",
+  "diagnostic_bytes": 12259,
+  "diagnostic_sha256": "aace71c6bd5384e47cb73e2665f1298d0d29d1f00c95ef751f83d3ae672cb302",
+  "executed": false,
+  "installer_or_network_flags_changed": false,
+  "production_or_host_installation": false
+}

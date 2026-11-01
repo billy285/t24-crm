@@ -1,0 +1,34 @@
+{
+  "at_utc": "2026-11-01T05:15:08.966744+00:00",
+  "checks": {
+    "command_and_pin_bytes_reproduced_in_memory": true,
+    "current_d393_fe8113_runtime3000_schema_e10_exact": true,
+    "engine_probe_in_memory_png_only_and_metadata": true,
+    "font_and_binary_metadata_bounded_no_install": true,
+    "loopback_public_csp_only": true,
+    "no_empty_new_table_assumption": true,
+    "only_new_root_private_aggregate_proof_written": true,
+    "private_database_and_secret_file_content_not_read": true,
+    "public_apt_uris_allowlisted_credentials_redacted": true,
+    "two_stable_current155_snapshots_prepared_packet_retained": true
+  },
+  "git_writes": false,
+  "pins": {
+    "business_writes": false,
+    "command_bytes": 11846,
+    "command_sha256": "777334fa92e6a95788f99631755f318be8cd064cbc9f62a5f3020e4c6ec48254",
+    "credential_file_content_read": false,
+    "executed": false,
+    "installation_performed": false,
+    "only_writes": "new protected aggregate baseline and rendering-capacity receipt",
+    "preflight_bytes": 20951,
+    "preflight_sha256": "33e3ced927bc7fd872d5f8b1395ec46f14db48ebb4c8ac4e8199fc067b5b88a9",
+    "private_content_read": false,
+    "provider_requests": false,
+    "worker_started": false
+  },
+  "provider_requests": false,
+  "reviewer": "north_month_frontend",
+  "server_execution": false,
+  "status": "PASS"
+}

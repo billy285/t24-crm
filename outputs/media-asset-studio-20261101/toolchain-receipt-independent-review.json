@@ -1,0 +1,17 @@
+{
+  "actual_cjk_and_h264_engine_verified": true,
+  "all155_current_rows_and_private_packet_preserved": true,
+  "all408_backend_files_unchanged": true,
+  "exact194_approved_closure": true,
+  "exact_canonical_envelope_verified": true,
+  "final_application_renderer_canary_still_required": true,
+  "host_or_production_installation": false,
+  "original_full_environment_protected_by_live_baseline": true,
+  "publications_or_provider_actions": false,
+  "receipt_path": "/opt/t24-crm/releases/media-asset-studio-toolchain-01d126c4fb9d-20261101/toolchain-prepared.json",
+  "receipt_sha256": "2936b1c77c234e8a8cd027f91c8a028f603424098226349b5834e11c90f6198d",
+  "stage": "ACTUAL_TOOLCHAIN_RECEIPT_INDEPENDENTLY_VERIFIED",
+  "tool_sha256": "01d126c4fb9d7e931e6342db39fb13a8185500952fb3567c58766aeb09cab577",
+  "toolchain_image": "sha256:e86f40cc1d9cfc531c3aeaec6ce1776adc805c4c9b215669658ee639dfdcc9aa",
+  "two_installer_edits_reproduced_and_distinct_base_provenance": true
+}
