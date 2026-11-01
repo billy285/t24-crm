@@ -1,0 +1,23 @@
+{
+  "source_sha": "5fd379d625d6c18abdec1b98d388494d0900c780",
+  "synthetic_only": true,
+  "owner_merchants": 36,
+  "staff_merchants": 32,
+  "all_platform_merchant_target": 36,
+  "facebook_actual_jpegs_loaded": 12,
+  "instagram_actual_jpegs_loaded": 12,
+  "actual_source_png_and_native_jpeg_separate": true,
+  "owner_month_platform_navigation": true,
+  "return_search_preserved": true,
+  "private_plan_prepared": 12,
+  "private_plan_armed": 0,
+  "reviewed_batch_plan_control_present": true,
+  "fixture_mutations_disabled": true,
+  "staff_unauthorized_shop_search_count": 0,
+  "staff_monthly_action_count": 0,
+  "desktop_1280": true,
+  "mobile390_no_overflow": true,
+  "mobile320_no_overflow": true,
+  "public_provider_calls": false,
+  "business_mutations": false
+}
