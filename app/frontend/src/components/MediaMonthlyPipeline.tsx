@@ -6,7 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { MediaImageDeliveryPolicy, PublicationImagePreview } from '@/components/MediaPublicationImage';
 import { mediaError, mediaErrorStatus, mediaRequestId, mediaUtcToLocal } from '@/lib/media-operations-api';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
-import { type MonthlyRun } from '@/lib/media-monthly-api';
+import MediaMetaMonthlyPipeline from './MediaMetaMonthlyPipeline';
+import { monthlyPlatform, type MonthlyRun } from '@/lib/media-monthly-api';
 import { monthlyWorkflowApi, monthlyWorkflowImages, monthlyWorkflowMutationMatches, verifiedMonthlyWorkflow, type MonthlyWorkflow, type MonthlyWorkflowMutation } from '@/lib/media-monthly-workflow-api';
 import './media-monthly-pipeline.css';
 
@@ -15,7 +16,7 @@ type Props = {
   onPacketActive: (active: boolean) => void; onReloadRun: () => void; onOpenTask?: (id: number) => void; onHoldChange?: (active: boolean) => void; onChanged?: () => void;
 };
 type Pending = { mutation: MonthlyWorkflowMutation; before: MonthlyWorkflow };
-const stageLabels = { prepared: '待整月审核', reviewed: '内容已审核 · 尚未排期', scheduled: '正式排期已开启', cancelled: '已撤回 · 文案保留' };
+const stageLabels = { prepared: '待整月审核', reviewed: '内容已审核 · 尚未排期', scheduled: '正式排期已开启', schedule_prepared: '计划已保存 · 尚未启用', cancelled: '已撤回 · 文案保留' };
 const scheduleLabels: Record<string, string> = { scheduled: '等待到期', dispatching: '正在提交', pending: '提交结果待确认', accepted: 'Google 处理中', succeeded: 'Google 已确认', unknown: '结果待确认', rejected: 'Google 未通过', failed: '未提交成功', blocked: '条件变化，已暂停', missed: '错过时间，未补发', cancelled: '已取消' };
 const uncertain = (cause: unknown) => !mediaErrorStatus(cause) || [408, 429].includes(mediaErrorStatus(cause) || 0) || (mediaErrorStatus(cause) || 0) >= 500;
 const imageKey = (id: string, sha: string) => `${id}:${sha}`;
@@ -23,6 +24,7 @@ const shownTime = (value: string | null, zone = 'Asia/Shanghai') => value ? medi
 
 export default function MediaMonthlyPipeline(props: Props) {
   if (!props.isOwner || !Number.isSafeInteger(props.run.customer_id) || props.run.customer_id < 1 || props.run.status !== 'generated') return null;
+  if (monthlyPlatform(props.run) !== 'google_business') return <MediaMetaMonthlyPipeline {...props}/>;
   return <OwnerMonthlyPipeline key={`${props.scope}:${props.run.customer_id}:${props.run.month}:${props.run.id}:${props.run.revision}`} {...props}/>;
 }
 

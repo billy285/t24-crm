@@ -58,3 +58,15 @@ test('monthly action cannot pass response validation without owner preparation c
   assert.throws(() => api.verifiedWorkspaceMerchants(page([{ ...merchant(1), work_queue: { ...baseQueue, can_prepare_monthly: false } }])), /不完整/);
   assert.throws(() => api.verifiedWorkspaceMerchants(page([{ ...merchant(1), work_queue: { ...baseQueue, checks: [baseQueue.checks[0], baseQueue.checks[0]] } }])), /不完整/);
 });
+
+test('thirty merchants expose ninety exact platform-month entry points without combining their batches', () => {
+  const opened=[],month='2026-11',platforms=['google_business','facebook','instagram'];
+  const items=Array.from({length:30},(_,i)=>({...merchant(i+1),platforms,work_queue:{...baseQueue,platform:null,platforms,basis:'multi_platform_monthly',target:36,platform_progress:platforms.map((platform,index)=>({platform,month,run_id:(i+1)*10+index+1,status:index===0?'prepared':index===1?'reviewed':'schedule_prepared',target:12,prepared:12,in_review:index===0?12:0,schedule_prepared:index===2?12:0,scheduled:0,published:0,can_prepare_monthly:true}))}}));
+  api.verifiedWorkspaceMerchants(page(items));
+  const tree=panels.MerchantStatusList({items,isOwner:true,onChoose(){},onAction:(row,action)=>opened.push({customer:row.id,...action})});
+  const pills=nodes(tree).filter(node=>node.type==='button'&&node.props?.children?.[0]?.type==='strong'&&platforms.some(platform=>label(node).startsWith(api.workspacePlatformLabels[platform])));
+  assert.equal(pills.length,90);pills.at(-1).props.onClick();assert.deepEqual(opened,[{customer:30,kind:'monthly',platform:'instagram',month,run_id:303,label:'Instagram整月内容'}]);
+  assert.match(label(tree),/待发布确认 12/);assert.match(label(tree),/目标 36 篇/);
+  const staff=panels.MerchantStatusList({items,isOwner:false,onChoose(){},onAction(){throw new Error('Staff action forbidden');}});assert.equal(nodes(staff).some(node=>node.type==='button'&&node.props?.children?.[0]?.type==='strong'),false);
+  for(const invalid of [{...items[0].work_queue,platform_progress:[items[0].work_queue.platform_progress[0],items[0].work_queue.platform_progress[0]]},{...items[0].work_queue,platform_progress:[{...items[0].work_queue.platform_progress[0],month:'2026-12'}]},{...items[0].work_queue,platform_progress:[{...items[0].work_queue.platform_progress[0],platform:'all'}]}])assert.throws(()=>api.verifiedWorkspaceMerchants(page([{...items[0],work_queue:invalid}])));
+});

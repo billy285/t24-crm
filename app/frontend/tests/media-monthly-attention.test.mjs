@@ -11,7 +11,8 @@ function compile(body, imports = {}, extra = {}) {
     { module, exports: module.exports, require: key => imports[key] || {}, Set, Map, AbortController, ...extra });
   return module.exports;
 }
-const api = compile(source('../src/lib/media-monthly-attention.ts'));
+const monthly = compile(source('../src/lib/media-monthly-api.ts'));
+const api = compile(source('../src/lib/media-monthly-attention.ts'), {'./media-monthly-api':monthly});
 const result = extra => ({ customer_id: 20, run_id: 1, items: [], counts: { attention: 0, total: 0, blocked: 0, unknown: 0, missed: 0, failed: 0, pending_confirmation: 1 }, ...extra });
 const alert = extra => ({ key: 'schedule:1:unknown', version: 'a'.repeat(64), level: 'warning', status: 'unknown', title: '结果待确认', message: '读取原发布结果，勿重复发送。', ...extra });
 const label = node => node == null || typeof node === 'boolean' ? '' : typeof node !== 'object' ? String(node) : Array.isArray(node) ? node.map(label).join('') : label(node.props?.children);
@@ -33,7 +34,7 @@ function harness(extra = {}) {
   const exports = compile(source('../src/components/MediaMonthlyAttention.tsx'), {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'lucide-react': {}, '@/components/ui/button': { Button: 'Button' },
     '@/lib/media-monthly-attention': api,
-    '@/lib/media-monthly-api': { monthlyApi: (path, method, body, signal) => new Promise((resolve, reject) => requests.push({ path, method, body, signal, resolve, reject })) },
+    '@/lib/media-monthly-api': { ...monthly, monthlyApi: (path, method, body, signal) => new Promise((resolve, reject) => requests.push({ path, method, body, signal, resolve, reject })) },
   }, { window, document });
   return { props, requests, timers, listeners, document, opened,
     render() { si = ri = ei = 0; const root = exports.default(props); return root && typeof root.type === 'function' ? root.type(root.props) : root; },
@@ -65,15 +66,17 @@ test('visibility refresh and timer read only local alerts; unmount aborts late r
   h.document.visibilityState = 'visible'; h.listeners.get('visibilitychange')(); assert.equal(h.requests.length, 2);
   h.unmount(); assert.equal(h.requests[1].signal.aborted, true); assert.equal(h.timers.size, 0); assert.equal(h.listeners.size, 0);
   h.requests[1].resolve(result({ items: [alert()], counts: { ...result().counts, attention: 1, total: 1, unknown: 1 } })); await tick();
-  assert.doesNotMatch(label(h.render()), /1 项发布异常待处理/); assert.equal(h.requests.every(row => row.method === 'GET' && row.path === '/customers/20/workflow-alerts'), true);
+  assert.doesNotMatch(label(h.render()), /1 项发布异常待处理/); assert.equal(h.requests.every(row => row.method === 'GET' && row.path === '/customers/20/workflow-alerts?platform=google_business'), true);
 });
 
 
 test('another selected merchant reads only its exact month and does not show a stale month result', async () => {
   const h = harness({ customerId:31, customerName:'LOCAL TEST 31', month:'2027-03' });h.render();h.effects();
-  assert.equal(h.requests[0].path,'/customers/31/workflow-alerts?month=2027-03');
+  assert.equal(h.requests[0].path,'/customers/31/workflow-alerts?platform=google_business&month=2027-03');
   h.requests[0].resolve(result({customer_id:31,month:'2027-04'}));await tick();
   assert.match(label(h.render()),/当前无法确认是否有待办/);
   assert.throws(()=>api.verifiedMonthlyAttention(result({customer_id:32,month:'2027-03'}),31,'2027-03'));
   assert.equal(api.verifiedMonthlyAttention(result({customer_id:31,month:'2027-03'}),31,'2027-03').customer_id,31);
 });
+
+test('Meta reminder is pinned to exact platform and cannot reuse a Google result',async()=>{const h=harness({platform:'instagram',month:'2026-11'});h.render();h.effects();assert.equal(h.requests[0].path,'/customers/20/workflow-alerts?platform=instagram&month=2026-11');h.requests[0].resolve(result({platform:'instagram',month:'2026-11'}));await tick();assert.match(label(h.render()),/Instagram/);assert.throws(()=>api.verifiedMonthlyAttention(result({month:'2026-11'}),20,'2026-11','instagram'));});

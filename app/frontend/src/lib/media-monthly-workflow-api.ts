@@ -1,31 +1,32 @@
+import { verifiedMetaOpsMedia, verifiedMetaOpsSchedule, type MetaOpsMedia, type MetaOpsSchedule } from './meta-operations-api';
 import { invokeWithAuth } from './tokenStore';
 import { verifiedPublicationImage, type PublicationImage } from './media-publication-images';
-import { MONTHLY_PILOT_CUSTOMER_ID, MONTHLY_PILOT_MONTH, monthlyRules, monthlySlotIds, monthlySlotMatches, validMonthlyMonth, type MonthlyRules, type MonthlyRun, type MonthlyMaterial } from './media-monthly-api';
+import { monthlyPlatform, validMonthlyPlatform, type MonthlyPlatform, MONTHLY_PILOT_CUSTOMER_ID, MONTHLY_PILOT_MONTH, monthlyRules, monthlySlotIds, monthlySlotMatches, validMonthlyMonth, type MonthlyRules, type MonthlyRun, type MonthlyMaterial } from './media-monthly-api';
 
 export type MonthlyWorkflowKind = 'prepare' | 'review' | 'schedule' | 'cancel';
 export type MonthlyWorkflowPacket = {
-  id: number; revision: number; status: 'prepared' | 'reviewed' | 'scheduled' | 'cancelled';
+  id: number; revision: number; status: 'prepared' | 'reviewed' | 'schedule_prepared' | 'scheduled' | 'cancelled';
   preview_hash: string; source_hash: string; reviewed_at: string | null; expires_at: string;
   created_at: string; updated_at: string;
 };
 export type MonthlyWorkflowSchedule = {
-  id: number; revision: number; binding_id: number; task_id: number; timezone: string;
-  status: string; message: string; action_id: string | null; planned_at: string;
+  id: number; revision: number; binding_id: number; task_id?: number; draft_id?: number; timezone: string;
+  status: string; message: string; action_id: string | number | null; planned_at: string;
 };
 export type MonthlyWorkflowItem = {
   item_id: number; slot_id: string; title: string; content: string; owner_summary: string;
   proposed_publish_at: string; timezone: string; revision: number; copy_hash: string;
   material_id: number | null; image_version_id: string | null; image_sha256: string | null;
   publication_image: PublicationImage | null; quality_warnings: string[];
-  task_id: number | null; schedule: MonthlyWorkflowSchedule | null;
+  task_id: number | null; draft_id?: number | null; meta_media?: MetaOpsMedia | null; schedule: MonthlyWorkflowSchedule | null;
 };
 export type MonthlyWorkflowAlert = {
   key: string; version: string; run_id: number; level: 'warning' | 'error'; status: string; title: string; message: string;
   item_id: number | null; task_id: number | null; schedule_id: number | null; action_id: string | null;
 };
-export type MonthlyWorkflowBinding = { id: number; revision: number; customer_id: number; customer_name: string; title: string; primary_operator_id: number | null; primary_operator_name: string | null };
+export type MonthlyWorkflowBinding = { platform?: MonthlyPlatform; asset_name?: string; operations_active?: boolean; id: number; revision: number; customer_id: number; customer_name: string; title: string; primary_operator_id: number | null; primary_operator_name: string | null };
 export type MonthlyWorkflow = {
-  run_id: number; customer_id: number; month: string; rules: MonthlyRules; run_revision: number; source_stale: boolean;
+  platform?: MonthlyPlatform; run_id: number; customer_id: number; month: string; rules: MonthlyRules; run_revision: number; source_stale: boolean;
   history_frozen?: boolean;
   workflow: MonthlyWorkflowPacket | null; items: MonthlyWorkflowItem[]; materials: MonthlyMaterial[];
   binding: MonthlyWorkflowBinding | null; current_binding?: MonthlyWorkflowBinding | null;
@@ -33,8 +34,8 @@ export type MonthlyWorkflow = {
   scheduler: { enabled: boolean; activation_from: string | null };
   checks: { key: string; state: 'ready' | 'blocked' | 'pending'; message: string }[];
   alerts: MonthlyWorkflowAlert[];
-  counts: Record<'total' | 'scheduled' | 'succeeded' | 'blocked' | 'unknown' | 'missed' | 'cancelled', number>;
-  capabilities: { is_owner: true; can_prepare: boolean; can_review: boolean; can_schedule: boolean; can_cancel: boolean };
+  counts: Partial<Record<'prepared', number>> & Record<'total' | 'scheduled' | 'succeeded' | 'blocked' | 'unknown' | 'missed' | 'cancelled', number>;
+  capabilities: { is_owner: true; can_prepare: boolean; can_review: boolean; can_schedule: boolean; can_activate?: boolean; can_cancel: boolean };
   request_receipt?: { request_id: string; kind: MonthlyWorkflowKind; workflow_revision: number; result_hash: string };
 };
 export type MonthlyPrepareBody = {
@@ -42,7 +43,7 @@ export type MonthlyPrepareBody = {
   items: { item_id: number; image_version_id: string; rights_confirmed: true }[]; facts_confirmed: true;
 };
 export type MonthlyReviewBody = { request_id: string; expected_revision: number; preview_hash: string; confirmed: true };
-export type MonthlyScheduleBody = { request_id: string; expected_revision: number; preview_hash: string; publication_confirmed: true; confirmation_version: 'monthly-publication-v1' };
+export type MonthlyScheduleBody = { request_id: string; expected_revision: number; preview_hash: string; publication_confirmed: boolean; confirmation_version: 'monthly-publication-v1' };
 export type MonthlyCancelBody = { request_id: string; expected_revision: number; reason: string };
 export type MonthlyWorkflowMutation =
   | { kind: 'prepare'; body: MonthlyPrepareBody }
@@ -71,8 +72,10 @@ function verifyMaterials(values: MonthlyMaterial[], customerId: number) {
   need(new Set(values.map(value => value.id)).size === values.length);
 }
 
-export function verifiedMonthlyWorkflow(value: MonthlyWorkflow, runId: number, expected?: Pick<MonthlyRun, 'customer_id' | 'month' | 'profile_snapshot'>): MonthlyWorkflow {
+export function verifiedMonthlyWorkflow(value: MonthlyWorkflow, runId: number, expected?: Pick<MonthlyRun, 'customer_id' | 'month' | 'profile_snapshot' | 'platform'>): MonthlyWorkflow {
   const customerId = expected?.customer_id ?? MONTHLY_PILOT_CUSTOMER_ID, month = expected?.month ?? MONTHLY_PILOT_MONTH;
+  const platform = monthlyPlatform(expected || {}), meta = platform !== 'google_business';
+  need(value && validMonthlyPlatform(platform) && monthlyPlatform(value) === platform && (!meta || value.platform === platform), '月度审核清单与当前平台不一致。');
   const legacyRules: MonthlyRules = { timezone: 'America/Chicago', weekdays: [2, 4, 6], local_time: '11:00', posts_per_week: 3, language: 'en', forbidden_claims: [], include_prices: false, generic_mode: true };
   // Only the persisted original pilot has a legacy response without an explicit rule snapshot.
   const rules = monthlyRules(value?.rules ?? (customerId === MONTHLY_PILOT_CUSTOMER_ID && month === MONTHLY_PILOT_MONTH ? expected?.profile_snapshot.rules ?? legacyRules : undefined as unknown as MonthlyRules));
@@ -80,12 +83,12 @@ export function verifiedMonthlyWorkflow(value: MonthlyWorkflow, runId: number, e
   if (expected) { const original = expected.profile_snapshot.rules; need(rules.timezone === original.timezone && rules.local_time === original.local_time && rules.posts_per_week === original.posts_per_week && rules.language === original.language && rules.include_prices === original.include_prices && rules.generic_mode === original.generic_mode && [...rules.weekdays].sort().join(',') === [...original.weekdays].sort().join(',') && JSON.stringify(rules.forbidden_claims) === JSON.stringify(original.forbidden_claims), '月度审核规则与当前批次不一致。'); }
   need(positive(runId) && value && value.run_id === runId && value.customer_id === customerId && positive(customerId) && value.month === month && validMonthlyMonth(month) && positive(value.run_revision) && typeof value.source_stale === 'boolean', '本月审核清单与当前商家、月份或批次不一致。');
   const packet = value.workflow;
-  need(packet === null || positive(packet.id) && positive(packet.revision) && ['prepared', 'reviewed', 'scheduled', 'cancelled'].includes(packet.status) && hash(packet.preview_hash) && hash(packet.source_hash) && optionalInstant(packet.reviewed_at) && instant(packet.expires_at) && instant(packet.created_at) && instant(packet.updated_at));
+  need(packet === null || positive(packet.id) && positive(packet.revision) && ['prepared', 'reviewed', 'schedule_prepared', 'scheduled', 'cancelled'].includes(packet.status) && (meta || packet.status !== 'schedule_prepared') && hash(packet.preview_hash) && hash(packet.source_hash) && optionalInstant(packet.reviewed_at) && instant(packet.expires_at) && instant(packet.created_at) && instant(packet.updated_at));
   const binding = value.binding;
-  const verifiedBinding = (entry: MonthlyWorkflowBinding | null) => entry === null || entry && positive(entry.id) && positive(entry.revision) && entry.customer_id === customerId && text(entry.customer_name) && text(entry.title) && optionalId(entry.primary_operator_id) && nullableText(entry.primary_operator_name);
+  const verifiedBinding = (entry: MonthlyWorkflowBinding | null) => entry === null || entry && positive(entry.id) && positive(entry.revision) && entry.customer_id === customerId && text(entry.customer_name) && text(entry.title) && optionalId(entry.primary_operator_id) && nullableText(entry.primary_operator_name) && (!meta || entry.platform === platform && text(entry.asset_name) && typeof entry.operations_active === 'boolean');
   need(verifiedBinding(binding) && (value.current_binding === undefined || verifiedBinding(value.current_binding)) && (value.history_frozen === undefined || typeof value.history_frozen === 'boolean'));
   need(Array.isArray(value.items) && slots.length > 0 && value.items.length === slots.length && new Set(value.items.map(item => item.item_id)).size === slots.length && new Set(value.items.map(item => item.slot_id)).size === slots.length);
-  const imageIdentities = new Map<string, string>();
+  const imageIdentities = new Map<string, string>(), metaImageIdentities = new Map<string, string>();
   value.items.forEach(item => {
     need(item && positive(item.item_id) && monthlySlotMatches(item, month, rules) && positive(item.revision) && text(item.title) && item.title.length > 0 && item.title.length <= 200 && text(item.content) && item.content.length > 0 && item.content.length <= 1500 && text(item.owner_summary) && item.owner_summary.length > 0 && item.owner_summary.length <= 300 && hash(item.copy_hash) && optionalId(item.material_id) && (item.image_version_id === null || imageId(item.image_version_id)) && (item.image_sha256 === null || hash(item.image_sha256)) && strings(item.quality_warnings) && optionalId(item.task_id));
     need(item.publication_image === null || positive(item.material_id) && !!verifiedPublicationImage(item.publication_image, customerId, item.material_id) && item.publication_image.id === item.image_version_id && item.publication_image.image_sha256 === item.image_sha256, '实际配图与本月审核清单不一致，请重新核对。');
@@ -95,7 +98,16 @@ export function verifiedMonthlyWorkflow(value: MonthlyWorkflow, runId: number, e
       need(!imageIdentities.has(image.id) || imageIdentities.get(image.id) === identity, '同一图片版本的核对资料不一致，请重新读取。');
       imageIdentities.set(image.id, identity);
     }
+    if (meta) {
+      need(item.task_id === null && (item.draft_id == null || positive(item.draft_id)));
+      if (item.meta_media != null) { const media = verifiedMetaOpsMedia(item.meta_media); const immutable = JSON.stringify([media.sha256,media.width,media.height,media.byte_size,media.preview_path]); need(!metaImageIdentities.has(media.id) || metaImageIdentities.get(media.id) === immutable, '同一 Meta JPEG 的冻结资料不一致。'); metaImageIdentities.set(media.id, immutable); need(item.publication_image && media.width === item.publication_image.width && media.height === item.publication_image.height, 'Meta JPEG 与本次原配图尺寸不一致。'); if (platform === 'instagram') need(media.width >= 320 && media.width <= 1440 && media.width / media.height >= 0.8 && media.width / media.height <= 1.91, 'Instagram 配图尺寸或比例不符合要求。'); }
+    }
     const schedule = item.schedule;
+    if (meta && schedule) {
+      need(binding && positive(item.draft_id)); const native = verifiedMetaOpsSchedule(schedule as MetaOpsSchedule, binding.id);
+      need(native.draft_id === item.draft_id && native.target.platform === platform && native.target.customer_name === binding.customer_name && native.target.asset_name === binding.asset_name && native.timezone === item.timezone && Date.parse(native.planned_at) === Date.parse(item.proposed_publish_at) && native.submitted_draft.title === item.title && native.submitted_draft.content === item.content && native.media?.id === item.meta_media?.id && native.media?.sha256 === item.meta_media?.sha256, 'Meta 原生排期与当前账号、文案、图片或日期不一致。');
+      return;
+    }
     need(schedule === null || schedule && positive(schedule.id) && positive(schedule.revision) && positive(item.task_id) && schedule.task_id === item.task_id && !!binding && schedule.binding_id === binding.id && schedule.timezone === item.timezone && instant(schedule.planned_at) && Date.parse(schedule.planned_at) === Date.parse(item.proposed_publish_at) && scheduleStates.has(schedule.status) && text(schedule.message) && (schedule.action_id === null || uuid(schedule.action_id)), '正式排期与当前门店、任务或建议日期不一致。');
   });
   verifyMaterials(value.materials, customerId);
@@ -103,6 +115,8 @@ export function verifiedMonthlyWorkflow(value: MonthlyWorkflow, runId: number, e
   need(Array.isArray(value.checks) && value.checks.length <= 100 && value.checks.every(check => check && text(check.key) && ['ready', 'blocked', 'pending'].includes(check.state) && text(check.message)) && new Set(value.checks.map(check => check.key)).size === value.checks.length);
   need(Array.isArray(value.alerts) && value.alerts.length <= 100 && value.alerts.every(alert => alert && text(alert.key) && text(alert.version) && alert.run_id === runId && ['warning', 'error'].includes(alert.level) && text(alert.status) && text(alert.title) && text(alert.message) && optionalId(alert.item_id) && optionalId(alert.task_id) && optionalId(alert.schedule_id) && nullableText(alert.action_id)) && new Set(value.alerts.map(alert => alert.key)).size === value.alerts.length);
   need(value.counts && ['total', 'scheduled', 'succeeded', 'blocked', 'unknown', 'missed', 'cancelled'].every(key => count(value.counts[key as keyof MonthlyWorkflow['counts']]) && value.counts[key as keyof MonthlyWorkflow['counts']] <= slots.length) && value.counts.total === slots.length);
+  need(value.counts.prepared === undefined || count(value.counts.prepared) && value.counts.prepared <= slots.length);
+  need(!meta || value.capabilities?.can_activate === false || typeof value.capabilities?.can_activate === 'boolean');
   need(value.capabilities?.is_owner === true && ['can_prepare', 'can_review', 'can_schedule', 'can_cancel'].every(key => typeof value.capabilities[key as keyof MonthlyWorkflow['capabilities']] === 'boolean'));
   const receipt = value.request_receipt;
   need(receipt === undefined || receipt && uuid(receipt.request_id) && kinds.has(receipt.kind) && positive(receipt.workflow_revision) && hash(receipt.result_hash));
@@ -124,14 +138,18 @@ export function monthlyWorkflowCopiesMatch(before: MonthlyWorkflow, after: Month
 
 export function monthlyWorkflowMutationMatches(after: MonthlyWorkflow, before: MonthlyWorkflow, mutation: MonthlyWorkflowMutation): boolean {
   const receipt = after.request_receipt, packet = after.workflow;
-  if (after.customer_id !== before.customer_id || after.month !== before.month || after.run_id !== before.run_id || !receipt || receipt.request_id !== mutation.body.request_id || receipt.kind !== mutation.kind || !packet || receipt.workflow_revision !== packet.revision || !monthlyWorkflowCopiesMatch(before, after)) return false;
+  if (monthlyPlatform(after) !== monthlyPlatform(before) || after.customer_id !== before.customer_id || after.month !== before.month || after.run_id !== before.run_id || !receipt || receipt.request_id !== mutation.body.request_id || receipt.kind !== mutation.kind || !packet || receipt.workflow_revision !== packet.revision || !monthlyWorkflowCopiesMatch(before, after)) return false;
+  const meta = monthlyPlatform(after) !== 'google_business';
   if (mutation.kind === 'prepare') return packet.status === 'prepared' && packet.revision > mutation.body.expected_workflow_revision && after.items.every(item => mutation.body.items.some(selected => selected.item_id === item.item_id && selected.image_version_id === item.image_version_id));
+  if (!before.items.every(item => { const result = after.items.find(row => row.item_id === item.item_id); return result && result.image_version_id === item.image_version_id && result.image_sha256 === item.image_sha256 && JSON.stringify(result.meta_media ?? null) === JSON.stringify(item.meta_media ?? null); })) return false;
+  if (meta && (after.binding?.id !== before.binding?.id || after.binding?.revision !== before.binding?.revision || after.binding?.platform !== before.binding?.platform || after.binding?.asset_name !== before.binding?.asset_name)) return false;
   if (packet.revision <= mutation.body.expected_revision || mutation.kind !== 'cancel' && packet.preview_hash !== mutation.body.preview_hash) return false;
-  if (mutation.kind === 'review') return packet.status === 'reviewed' && after.items.every(item => positive(item.task_id) && item.schedule === null);
+  if (mutation.kind === 'review') return packet.status === 'reviewed' && after.items.every(item => (meta ? positive(item.draft_id) && item.meta_media != null : positive(item.task_id)) && item.schedule === null);
+  if (mutation.kind === 'schedule' && meta && !mutation.body.publication_confirmed) return packet.status === 'schedule_prepared' && after.items.every(item => item.schedule?.status === 'prepared' && item.schedule.action_id == null);
   if (mutation.kind === 'schedule') return packet.status === 'scheduled' && after.items.every(item => item.schedule !== null && ['scheduled', 'dispatching', 'pending', 'accepted', 'succeeded'].includes(item.schedule.status));
   return packet.status === 'cancelled' && after.items.every(item => {
     const original = before.items.find(candidate => candidate.item_id === item.item_id);
-    if (!original || original.task_id !== item.task_id) return false;
+    if (!original || original.task_id !== item.task_id || original.draft_id !== item.draft_id) return false;
     if (!original.schedule) return item.schedule === null;
     return !!item.schedule && item.schedule.id === original.schedule.id && item.schedule.task_id === original.schedule.task_id && item.schedule.binding_id === original.schedule.binding_id && item.schedule.planned_at === original.schedule.planned_at && item.schedule.timezone === original.schedule.timezone && item.schedule.status !== 'scheduled';
   });

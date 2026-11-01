@@ -102,3 +102,5 @@
   .mm-flow-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.mm-flow-receipt dl{grid-template-columns:64px minmax(0,1fr);font-size:11px}
   .mm-flow-recovery button{width:100%;margin:7px 0}.mm-flow-recovery{padding:14px}.mm-flow-warning,.mm-flow-notice,.mm-flow-error{font-size:12px}
 }
+
+.mm-meta-account{display:grid;gap:5px;padding:14px 16px;background:#f6f8fc;border:1px solid #dbe4f2;border-radius:12px;overflow-wrap:anywhere}.mm-meta-account small{color:#64748b}.mm-meta-flow .mm-flow-posts .mops-private-image{margin:12px 0}.mm-meta-flow .mm-flow-posts img{width:100%;max-height:240px;object-fit:contain;border-radius:10px}.mm-meta-flow .mm-flow-photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.mm-meta-flow .mm-flow-steps{overflow-wrap:anywhere}.mm-meta-flow .mm-flow-receipt dd{overflow-wrap:anywhere}@media(max-width:600px){.mm-meta-flow .mm-flow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.mm-meta-flow .mm-flow-bulk-image{display:grid}.mm-meta-flow .mm-flow-bulk-image button{min-height:44px}.mm-meta-flow .mm-flow-posts{grid-template-columns:minmax(0,1fr)}}

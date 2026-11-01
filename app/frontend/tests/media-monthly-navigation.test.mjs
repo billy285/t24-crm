@@ -21,14 +21,14 @@ test('owner monthly run retains explicit merchant/run navigation in all-merchant
 test('monthly projection rejects staff even when a response claims a valid month and merchant', () => {
   for (const row of [monthlyRun(), monthlyItem()]) assert.throws(() => verifiedWorkspaceProjection(projection([row], { capabilities: { is_owner: false, meta_owner_only: true } }), query));
 });
-test('monthly records accept each owner authorized positive merchant but reject wrong selected merchant and non-Google platform', () => {
+test('monthly records accept each owner authorized positive merchant and supported platforms but reject wrong selected merchant or unsupported platforms', () => {
   for (const customer_id of [21, 31]) {
     assert.equal(verifiedWorkspaceProjection(projection([monthlyRun({customer_id})]),query).items[0].customer_id,customer_id);
     const selected={...query,customerId:customer_id,platform:'google_business'};
     assert.equal(verifiedWorkspaceProjection(projection([monthlyRun({customer_id})],{},selected),selected).items[0].customer_id,customer_id);
     assert.throws(()=>verifiedWorkspaceProjection(projection([monthlyRun({customer_id:customer_id+1})],{},selected),selected));
   }
-  for (const extra of [{ customer_id: 0 }, { customer_id: -1 }, { customer_id: '31' }, { platform: 'facebook' }, { platform: 'instagram' }]) { reject(monthlyRun(extra)); reject(monthlyItem(extra)); }
+  for (const extra of [{ customer_id: 0 }, { customer_id: -1 }, { customer_id: '31' }, { platform: 'tiktok' }, { platform: 'all' }]) { reject(monthlyRun(extra)); reject(monthlyItem(extra)); }
 });
 test('monthly records require monthly navigation with a positive numeric run ID', () => {
   for (const navigation of [{ workspace: 'monthly' }, { workspace: 'monthly', run_id: 0 }, { workspace: 'monthly', run_id: -1 }, { workspace: 'monthly', run_id: '7' }, { workspace: 'tasks', task_id: 7 }, { workspace: 'google', binding_id: 7 }, { workspace: 'meta', binding_id: 7 }]) { reject(monthlyRun({ navigation })); reject(monthlyItem({ navigation })); }
@@ -52,4 +52,12 @@ test('monthly additions preserve strict source uniqueness and loaded scope/date 
   assert.throws(() => verifiedWorkspaceProjection(projection([monthlyRun()], { sources: [{ key: 'monthly', state: 'ready', message: '' }, { key: 'monthly', state: 'ready', message: '' }] }), query));
   assert.throws(() => verifiedWorkspaceProjection(projection([monthlyRun()], { scope: { customer_id: 21, platform: null, view: 'review' } }), query));
   assert.throws(() => verifiedWorkspaceProjection(projection([monthlyRun()], { range: { start: '2026-11-02T00:00:00Z', end: query.end } }), query));
+});
+
+test('Meta monthly navigation retains exact platform and refuses cross-platform selected scope', () => {
+  for (const platform of ['facebook','instagram']) {
+    const selected={...query,customerId:31,platform};
+    for (const make of [monthlyRun,monthlyItem]) assert.equal(verifiedWorkspaceProjection(projection([make({customer_id:31,platform})],{},selected),selected).items[0].platform,platform);
+    assert.throws(()=>verifiedWorkspaceProjection(projection([monthlyRun({customer_id:31,platform:platform==='facebook'?'instagram':'facebook'})],{},selected),selected));
+  }
 });
