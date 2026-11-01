@@ -1,0 +1,35 @@
+{
+  "actions": {
+    "artifact_overwrites": 0,
+    "git_writes": 0,
+    "provider_requests": 0,
+    "review_evidence_only": true,
+    "server_executions": 0
+  },
+  "at_utc": "2026-11-01T04:23:59.392364+00:00",
+  "carrier": "78764a3fab9e0b905d4b978533bb99f92c8b554e",
+  "checks": {
+    "bounded_no_redirect_no_proxy_downloads": true,
+    "carrier_app_tree_equals_reviewed_app": true,
+    "exact_current153_populated_preflight_required": true,
+    "exact_immutable_carrier_four_members": true,
+    "exact_member_hashes_and_lengths": true,
+    "isolated_python_heredoc_syntax_valid": true,
+    "no_activation_or_recovery_wrapper": true,
+    "no_provider_or_ai_or_real_public_schedule_actions": true,
+    "offline_candidate_network_none_no_credentials_workers_off": true,
+    "only_isolated_copy_migrated_in_prepare": true,
+    "original_runtime_and_business_rows_rechecked_before_after": true,
+    "root_owned_private_staging_and_no_follow_exclusive_writes": true
+  },
+  "frontend_version": "8113d14d204f",
+  "in_memory_command_and_pins_byte_identical": true,
+  "phase": "prepare_only",
+  "release": "/opt/t24-crm/releases/media-ops-monthly-flow-d39337fccfd6-20261101",
+  "release_helper_sha256": "d5efcfecb79859e595dec70a0e901abb1c5e86d52ba300a909dd73e44bfd24c7",
+  "reviewer": "north_month_frontend",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "status": "PASS",
+  "wrapper_bytes": 3227,
+  "wrapper_sha256": "aead1328767e1424fb3ae192383e1168f4aa151a96ce1a42f3e94b17347b0963"
+}

@@ -1,0 +1,77 @@
+{
+  "at_utc": "2026-11-01T04:24:47.544841+00:00",
+  "carrier": "78764a3fab9e0b905d4b978533bb99f92c8b554e",
+  "checks": {
+    "all_153_legacy_rows_and_schema_objects_preserved_except_exact_head": true,
+    "combined_monthly_routes_15_owner_deny_before_sql_canary": true,
+    "exact_backend_delta_10_and_local_hashes": true,
+    "exact_four_immutable_carrier_members": true,
+    "exact_frontend_static_140_and_local_hashes": true,
+    "exact_payload_150_regular_unique_members": true,
+    "fresh_42bc_runtime_environment_and_original_cutoff_required": true,
+    "full_environment_and_credentials_private_boundary_preserved": true,
+    "google_on_original_cutoff_meta_execution_scheduler_off": true,
+    "local_release_tool_tests_passed": 97,
+    "migration_known_identity_forward_recovery_no_database_restore": true,
+    "no_seed_native_tasks_schedules_or_public_actions": true,
+    "offline_clone_network_none_no_credentials_workers_off": true,
+    "only_2_new_empty_tables": true,
+    "prepare_wrapper_only_no_activate_or_review_receipt": true,
+    "production_migration_only_separate_switch_after_canonical_receipt": true,
+    "protected_source_inventory_1020_unchanged": true
+  },
+  "frontend_version": "8113d14d204f",
+  "limitations": [
+    "This is a local exact prepare-command review, not server execution or production acceptance.",
+    "Production switch command must be separately generated and reviewed against actual canonical prepared.json."
+  ],
+  "preflight_sha256": "42bc79e1b7041e3b376ca94ab8bef01d6dc6224e151821958cf48225f90faaaf",
+  "reviewed_files": {
+    "artifacts/manifest.json": {
+      "bytes": 144802,
+      "sha256": "d0953971efc1715dc0d68596e60e682e6c3748d8ccdbc10b5b393f044fdb0dc4"
+    },
+    "artifacts/payload.tar.gz": {
+      "bytes": 2275085,
+      "sha256": "3c57bc3a60082031c563f7f67dfab9d8da8c99989206418829aa4ecea535fd05"
+    },
+    "build_payload.py": {
+      "bytes": 23848,
+      "sha256": "8a03df7818bc80b4f763dfc862d26e2d35f31e1927618bb200516a0228abac16"
+    },
+    "commands-prepare/command-pins.json": {
+      "bytes": 1090,
+      "sha256": "889a7cd08d1e69de84756f4fa9cef7b1db55e02ea811b4dc0fdc518dfbdb0531"
+    },
+    "commands-prepare/prepare-command.sh": {
+      "bytes": 3227,
+      "sha256": "aead1328767e1424fb3ae192383e1168f4aa151a96ce1a42f3e94b17347b0963"
+    },
+    "make_commands.py": {
+      "bytes": 9866,
+      "sha256": "8aaad724b6e54a585f240e3b70c5633f421f9e470551393d0a20b444718bc733"
+    },
+    "preflight.py": {
+      "bytes": 9456,
+      "sha256": "510e19de4f6d7674e9f790b960dd7ae364d58d7ee5a1207870c9efb69a3a6a9a"
+    },
+    "release.py": {
+      "bytes": 42527,
+      "sha256": "d5efcfecb79859e595dec70a0e901abb1c5e86d52ba300a909dd73e44bfd24c7"
+    }
+  },
+  "reviewer": "north_month_backend",
+  "scope": {
+    "application_or_release_tool_edits": 0,
+    "artifact_overwrites": 0,
+    "business_database_writes": 0,
+    "git_actions": 0,
+    "provider_requests": 0,
+    "server_actions": 0,
+    "synthetic_test_databases_only": true,
+    "written_review_evidence_only": true
+  },
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "MONTHLY_FLOW_INDEPENDENT_EXACT_PREPARE_REVIEW",
+  "status": "PASS"
+}
