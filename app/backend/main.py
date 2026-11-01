@@ -30,6 +30,7 @@ from services.stripe_history_daily_scan import start_daily_scan, stop_daily_scan
 from services.stripe_auto_posting import start_auto_posting, stop_auto_posting
 from services.google_business_scheduler import start_scheduler as start_google_business_scheduler, stop_scheduler as stop_google_business_scheduler
 from services.meta_operations_scheduler import start_scheduler as start_meta_operations_scheduler, stop_scheduler as stop_meta_operations_scheduler
+from services.media_asset_studio import start_worker as start_media_asset_worker, stop_worker as stop_media_asset_worker
 from core.database import db_manager, get_db
 from core.auth import decode_access_token as decode_platform_access_token
 from dependencies.auth import employee_status_enforcement_enabled, normalize_system_role
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
     stripe_automatic_posting = start_auto_posting()
     google_business_scheduler = start_google_business_scheduler()
     meta_operations_scheduler = start_meta_operations_scheduler()
+    media_asset_worker = start_media_asset_worker()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
@@ -132,6 +134,7 @@ async def lifespan(app: FastAPI):
     await stop_auto_posting(stripe_automatic_posting)
     await stop_google_business_scheduler(google_business_scheduler)
     await stop_meta_operations_scheduler(meta_operations_scheduler)
+    await stop_media_asset_worker(media_asset_worker)
     await close_database()
     # MODULE_SHUTDOWN_END
 
@@ -198,7 +201,7 @@ SLOW_REQUEST_SECONDS = float(os.environ.get("SLOW_REQUEST_SECONDS", "1.0"))
 CONTENT_SECURITY_POLICY = os.environ.get(
     "CONTENT_SECURITY_POLICY",
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; "
+    "img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: wss:; "
     "frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
 )
 

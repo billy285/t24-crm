@@ -355,21 +355,35 @@ async def prepare(db, user, *, customer_id, material_id, source_sha256, rights_b
     identity = uuid4().hex
     image_stat = await asyncio.to_thread(_write_image, identity, canonical)
     async with media._write(db):
-        material, _ = await _material(db, ctx, customer_id, material_id, write=True)
-        if source_fingerprint(material) != source_reference: raise HTTPException(409, "原素材已更新，请重新准备")
-        existing = await db.scalar(select(Image).where(Image.prepared_by_id == ctx.identity, Image.request_id == request_id))
-        if existing:
-            if existing.request_fingerprint != fingerprint: raise HTTPException(409, "本次请求编号已用于不同图片，请先核对原结果")
-            return image_data(existing, ctx, material)
-        # A fresh descriptor check detects an in-place replacement after hashing.
-        if await asyncio.to_thread(_source_stat, material) != source_stat: raise HTTPException(409, "原文件正在变化，请重新准备")
-        row = Image(id=identity, customer_id=customer_id, material_id=material_id, prepared_by_id=ctx.identity,
-            request_id=request_id, request_fingerprint=fingerprint, source_sha256=source_sha256, source_fingerprint=source_reference,
-            source_file_stat=list(source_stat), image_file_stat=list(image_stat),
-            image_sha256=image_hash, width=width, height=height, byte_size=len(canonical), rights_basis=rights_basis,
-            file_key=identity, delivery_token=secrets.token_urlsafe(32), created_at=media.now())
-        db.add(row); await db.flush()
-        result = image_data(row, ctx, material)
+        result = await prepare_locked(db, ctx, customer_id=customer_id, material_id=material_id, request_id=request_id,
+            identity=identity, source_reference=source_reference, source_stat=source_stat, source_sha256=source_sha256,
+            canonical=canonical, width=width, height=height, image_hash=image_hash, image_stat=image_stat,
+            fingerprint=fingerprint, rights_basis=rights_basis)
+    return result
+
+
+async def prepare_locked(db, ctx, *, customer_id, material_id, request_id, identity, source_reference, source_stat,
+                         source_sha256, canonical, width, height, image_hash, image_stat, fingerprint, rights_basis):
+    """Native row creation under the caller's existing media transaction.
+
+    Only already validated, privately persisted bytes are passed by the public
+    prepare path or by the owner studio's atomic new-material adoption.
+    """
+    material, _ = await _material(db, ctx, customer_id, material_id, write=True)
+    if source_fingerprint(material) != source_reference: raise HTTPException(409, "原素材已更新，请重新准备")
+    existing = await db.scalar(select(Image).where(Image.prepared_by_id == ctx.identity, Image.request_id == request_id))
+    if existing:
+        if existing.request_fingerprint != fingerprint: raise HTTPException(409, "本次请求编号已用于不同图片，请先核对原结果")
+        return image_data(existing, ctx, material)
+    # A fresh descriptor check detects an in-place replacement after hashing.
+    if await asyncio.to_thread(_source_stat, material) != source_stat: raise HTTPException(409, "原文件正在变化，请重新准备")
+    row = Image(id=identity, customer_id=customer_id, material_id=material_id, prepared_by_id=ctx.identity,
+        request_id=request_id, request_fingerprint=fingerprint, source_sha256=source_sha256, source_fingerprint=source_reference,
+        source_file_stat=list(source_stat), image_file_stat=list(image_stat),
+        image_sha256=image_hash, width=width, height=height, byte_size=len(canonical), rights_basis=rights_basis,
+        file_key=identity, delivery_token=secrets.token_urlsafe(32), created_at=media.now())
+    db.add(row); await db.flush()
+    result = image_data(row, ctx, material)
     return result
 
 
