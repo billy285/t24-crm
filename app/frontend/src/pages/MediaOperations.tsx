@@ -40,7 +40,7 @@ export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
-  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'meta' | 'materials'>(() => typeof window === 'undefined' ? 'tasks' : new URLSearchParams(window.location.search).has('meta') ? 'meta' : new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
+  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'meta' | 'materials'>(() => typeof window === 'undefined' ? 'tasks' : (new URLSearchParams(window.location.search).has('meta') || new URLSearchParams(window.location.search).has('meta_ops')) ? 'meta' : new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
   const [metaRefresh, setMetaRefresh] = useState(0);
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;

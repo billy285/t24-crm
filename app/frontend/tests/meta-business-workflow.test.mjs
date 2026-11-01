@@ -57,7 +57,7 @@ function harness(kind = 'workspace') {
   const invokeWithAuth = options => new Promise((resolve, reject) => requests.push({ options, resolve, reject }));
   const lib = compile(apiSource, { './tokenStore': { invokeWithAuth } });
   const fallback = new Proxy({}, { get: (_, name) => name === '__esModule' ? true : String(name) });
-  const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }, '@/lib/meta-business-api': lib,
+  const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }, '@/lib/meta-business-api': lib, './MetaOperationsWorkspace': { __esModule: true, default: 'MetaOperationsWorkspace' },
     '@/lib/media-operations-api': { mediaError: (cause, fallback) => cause.message || fallback, mediaErrorStatus: cause => cause.status || cause.response?.status, mediaRequestId: () => `00000000-0000-4000-8000-${String(++requestId).padStart(12, '0')}` },
     '@/lib/use-unsaved-changes': { useUnsavedChanges: () => ({ markSaved() {}, confirmDiscard: () => true }), useHardNavigationBlock: () => ({ lock() { hold = true; }, release() { hold = false; } }) },
     '@/lib/google-business-api': { googleBusinessApi: path => invokeWithAuth({ url: '/google' + path }).then(response => response.data), verifiedGbpStatus: value => value },
@@ -120,7 +120,7 @@ test('actual binding needs a verified customer, selected asset and explicit prev
   const save = button(tree, '确认绑定客户账号'); assert.equal(Boolean(save.props.disabled), false); save.props.onClick(); save.props.onClick(); assert.equal(h.requests.length, 4);
   const sent = h.requests[3].options; assert.equal(sent.url, '/api/v1/meta-business/bindings'); assert.equal(sent.data.customer_id, 7); assert.equal(sent.data.connection_id, 31); assert.equal(sent.data.asset_ref, asset().asset_ref);
   assert.equal(Object.keys(sent.data).some(key => /token|password|secret/.test(key)), false);
-  h.requests[3].resolve({ data: binding() }); await tick(); assert.equal(h.changes.length, 1); assert.equal(h.requests.filter(x => x.options.method === 'POST').length, 1); assert.match(label(h.render()), /尚未开放发帖、评论或员工操作/);
+  h.requests[3].resolve({ data: binding() }); await tick(); assert.equal(h.changes.length, 1); assert.equal(h.requests.filter(x => x.options.method === 'POST').length, 1); assert.match(label(h.render()), /绑定不自动开放发布、评论或员工权限/);
 });
 test('actual uncertain binding reads the original result without resubmitting a new binding', async () => {
   const h = harness(); button(await openBinding(h), '确认绑定客户账号').props.onClick(); const original = h.requests[3].options.data.request_id;
@@ -158,4 +158,12 @@ test('platform capability strip keeps Google working independently of Meta error
   google.resolve({ data: { enabled: true, configured: true, is_owner: true, connections: [], bindings: [{ active: true }] } }); meta.reject(new Error('Synthetic Meta error')); await tick();
   const text = label(h.render()); assert.match(text, /已授权 · 1 家门店/); assert.match(text, /读取失败/); assert.match(text, /人工交付/);
   const staff = harness('capabilities'); staff.render('ops:2', false); staff.effects(); assert.equal(staff.requests.some(x => x.options.url === '/api/v1/meta-business/status'), false);
+});
+
+
+test('independent operations remains mounted while the legacy read connection is loading or fails', async () => {
+  const h = harness(); let tree = h.render(); h.effects();
+  const initial = find(tree, node => node.type === 'MetaOperationsWorkspace'); assert.equal(initial.props.isOwner, true); assert.equal(initial.props.refreshKey, undefined);
+  h.requests[0].reject({ status: 503, message: 'Synthetic legacy read-only error' }); await tick(); tree = h.render();
+  const independent = find(tree, node => node.type === 'MetaOperationsWorkspace'); assert.equal(independent.props.scope, initial.props.scope); assert.equal(independent.props.isOwner, true); assert.equal(independent.props.refreshKey, undefined);
 });

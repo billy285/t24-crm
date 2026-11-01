@@ -29,6 +29,7 @@ from services.automation_monitor import start_automation_scheduler, stop_automat
 from services.stripe_history_daily_scan import start_daily_scan, stop_daily_scan
 from services.stripe_auto_posting import start_auto_posting, stop_auto_posting
 from services.google_business_scheduler import start_scheduler as start_google_business_scheduler, stop_scheduler as stop_google_business_scheduler
+from services.meta_operations_scheduler import start_scheduler as start_meta_operations_scheduler, stop_scheduler as stop_meta_operations_scheduler
 from core.database import db_manager, get_db
 from core.auth import decode_access_token as decode_platform_access_token
 from dependencies.auth import employee_status_enforcement_enabled, normalize_system_role
@@ -120,6 +121,7 @@ async def lifespan(app: FastAPI):
     stripe_history_daily_scan = start_daily_scan()
     stripe_automatic_posting = start_auto_posting()
     google_business_scheduler = start_google_business_scheduler()
+    meta_operations_scheduler = start_meta_operations_scheduler()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
@@ -129,6 +131,7 @@ async def lifespan(app: FastAPI):
     await stop_daily_scan(stripe_history_daily_scan)
     await stop_auto_posting(stripe_automatic_posting)
     await stop_google_business_scheduler(google_business_scheduler)
+    await stop_meta_operations_scheduler(meta_operations_scheduler)
     await close_database()
     # MODULE_SHUTDOWN_END
 
@@ -288,7 +291,8 @@ async def isolate_phone_sales_access(request: Request, call_next):
 async def add_security_and_observability_headers(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
     image_delivery = request.url.path.startswith("/api/v1/media-publication-images/delivery/")
-    meta_private = request.url.path.startswith("/api/v1/meta-business/")
+    meta_image_delivery = request.url.path.startswith("/api/v1/meta-operations/delivery/")
+    meta_private = request.url.path.startswith(("/api/v1/meta-business/", "/api/v1/meta-operations/"))
     started_at = time.perf_counter()
     response = await call_next(request)
     elapsed = time.perf_counter() - started_at
@@ -307,7 +311,7 @@ async def add_security_and_observability_headers(request: Request, call_next):
         logging.getLogger("performance").warning(
             "Slow request method=%s path=%s status=%s duration=%.3fs request_id=%s",
             request.method,
-            "/api/v1/media-publication-images/delivery/[image].png" if image_delivery else request.url.path,
+            "/api/v1/media-publication-images/delivery/[image].png" if image_delivery else "/api/v1/meta-operations/delivery/[image].jpg" if meta_image_delivery else request.url.path,
             response.status_code,
             elapsed,
             request_id,
