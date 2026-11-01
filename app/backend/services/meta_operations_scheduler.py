@@ -83,6 +83,8 @@ async def run_tick(*, sessions=None, clock=None):
                     if user is None: raise HTTPException(409, "老板账号已失效")
                     ctx = await service.context(db, user)
                     await service._approved(db, ctx, row.draft_id, row.draft_revision, row.preview_hash)
+                    from services.media_monthly_meta import authorize_native
+                    await authorize_native(db, draft_id=row.draft_id, schedule_id=row.id)
                     row.status = "dispatching"; row.revision += 1; row.message = "已登记原排期，正在核对平台发送条件"; row.updated_at = at
                     job = {"schedule_id": row.id, "owner_id": row.owner_id, "draft_id": row.draft_id, "draft_revision": row.draft_revision,
                         "preview_hash": row.preview_hash, "request_id": str(uuid5(NAMESPACE_URL, "t24-meta-schedule:" + str(row.id) + ":" + row.request_id)), "continue": False}

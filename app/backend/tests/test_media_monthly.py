@@ -288,7 +288,7 @@ async def test_central_projection_owner_review_calendar_staff_and_inbox_boundari
     assert review.status_code == 200, review.text
     monthly_rows = [r for r in review.json()["items"] if r["kind"].startswith("monthly_")]
     assert len(monthly_rows) == 1 and monthly_rows[0]["kind"] == "monthly_run"
-    assert monthly_rows[0]["navigation"] == {"workspace": "monthly", "run_id": run["id"]}
+    assert monthly_rows[0]["navigation"] == {"workspace": "monthly", "run_id": run["id"], "platform": "google_business", "month": "2026-11"}
     assert monthly_rows[0]["review_eligible"] is False and review.json()["summary"]["review_candidates"] == 0
     calendar = await env.monthly_client.get("/api/v1/media-workspace/workspace", params={**params, "view": "calendar"})
     assert calendar.status_code == 200, calendar.text

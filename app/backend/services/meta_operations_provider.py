@@ -322,14 +322,13 @@ async def _authorized(db, user, binding):
     keys = ("revision", "source_binding_id", "credential_id", "connection_id", "connection_revision", "platform", "external_id", "page_id", "customer_id", "owner_id")
     try: expected = {key: getattr(binding, key) for key in keys}
     except AttributeError: raise OpsProviderError("target_changed") from None
-    if expected["customer_id"] != PILOT_CUSTOMER_ID: raise OpsProviderError("asset_not_authorized")
     if expected["platform"] not in {"facebook", "instagram"}: raise OpsProviderError("unsupported_kind")
     ctx = await meta_business.context(db, user)
     fresh = await db.scalar(select(MetaOperationsBinding).where(MetaOperationsBinding.id == binding.id, MetaOperationsBinding.owner_id == ctx.identity).execution_options(populate_existing=True))
     if not fresh or not fresh.active or any(getattr(fresh, key) != expected[key] for key in keys):
         raise OpsProviderError("target_changed")
     customer, _ = await meta_business.media._customer(db, ctx, fresh.customer_id)
-    if customer.id != PILOT_CUSTOMER_ID or customer.status != "closed" or customer.business_name.strip().casefold() != "pokeco": raise OpsProviderError("asset_not_authorized")
+    if customer.status != "closed": raise OpsProviderError("asset_not_authorized")
     # Historical canonical identity must still refer to the same customer and
     # platform. Read-only token expiry, pause and connection revision are not
     # operational authority; the independent Publisher grant controls writes.

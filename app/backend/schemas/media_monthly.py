@@ -47,6 +47,7 @@ class Consent(Input):
 
 
 class Generate(Input):
+    platform: Literal["google_business", "facebook", "instagram"] = "google_business"
     request_id: str = Field(min_length=36, max_length=36)
     expected_profile_revision: int = Field(ge=1)
     month: str = Field(pattern=r"^[0-9]{4}-(?:0[1-9]|1[0-2])$")

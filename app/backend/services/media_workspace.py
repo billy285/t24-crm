@@ -250,6 +250,15 @@ async def _meta(db, ctx, customers, start, end, platform, *, maps_only=False):
                 status=row.status, at=getattr(row, "planned_at", None) if model is Schedule else column_value(row, model),
                 basis="scheduled_publish" if model is Schedule else "record_created", revision=row.revision,
                 binding=b, timezone_name=getattr(row, "timezone", None), navigation=nav))
+    from models.media_monthly_workflow import MediaMonthlyWorkflow as MonthlyWorkflow
+    if await tables_available(db, {MonthlyWorkflow.__tablename__}):
+        packets = (await db.scalars(select(MonthlyWorkflow).where(MonthlyWorkflow.owner_id == ctx.identity, MonthlyWorkflow.customer_id.in_(customers)))).all()
+        monthly_drafts = {ref["draft_id"]: packet for packet in packets if packet.snapshot.get("platform") in {"facebook", "instagram"} for ref in packet.task_refs if "draft_id" in ref}
+        items = [r for r in items if r["kind"] != "meta_draft" or r["source_id"] not in monthly_drafts]
+        for r in items:
+            packet = monthly_drafts.get(r["navigation"].get("draft_id"))
+            if packet:
+                r["navigation"] = {"workspace": "monthly", "run_id": packet.run_id, "platform": r["platform"], "month": packet.snapshot.get("source", {}).get("month")}
     # The provider cache can contain several reads of one external object.
     # Take the newest valid snapshot, then validate the opaque parent chain.
     query = select(Target).where(Target.owner_id == ctx.identity, Target.binding_id.in_(bindings), Target.expires_at > now()).order_by(Target.created_at.desc(), Target.id.desc())
@@ -300,12 +309,12 @@ async def _optional(db, key, factory):
 async def _monthly(db, ctx, customers, start, end, platform, view):
     if not ctx.owner:
         return [], {}, _source("monthly", "locked", "月度草稿当前仅由老板核对，不开放额外员工权限"), False
-    if not customers or platform not in {None, "google_business"} or view == "inbox":
-        return [], {}, _source("monthly", message="当前范围不包含可查看的Google月度草稿"), False
+    if not customers or view == "inbox":
+        return [], {}, _source("monthly", message="当前范围不包含可查看的月度草稿"), False
     from services import media_monthly as monthly
     if not await tables_available(db, monthly.TABLES):
         return [], {}, _source("monthly", "missing", "月度草稿准备尚未启用"), False
-    rows = await monthly.workspace_rows(db, ctx.user, customer_ids=list(customers), start=start, end=end, view=view)
+    rows = await monthly.workspace_rows(db, ctx.user, customer_ids=list(customers), start=start, end=end, view=view, platform=platform)
     # A batch's editorial month is persisted on its exact run. Its creation
     # timestamp, display title and UTC query boundary are not that month.
     # In particular a Beijing November range starts on October31 in UTC.
@@ -461,7 +470,7 @@ async def _portfolio(db, ctx, customers, permissions, rows, gb, mb, *, platform,
         if platform and platform not in platforms[customer.id]: continue
         records = by_customer[customer.id]; summary = _summary(records)
         overdue = sum(r["kind"] == "task" and r["status"] not in {"completed"} and r["at"] and datetime.fromisoformat(r["at"]) < instant for r in records)
-        waiting = sum(r["kind"] == "task" and r["status"] == "in_review" or r["kind"] in {"meta_draft", "google_reply_draft"} and r["status"] == "draft" or r["kind"] == "monthly_run" and r["status"] in {"prepared", "reviewed", "generated"} for r in records)
+        waiting = sum(r["kind"] == "task" and r["status"] == "in_review" or r["kind"] in {"meta_draft", "google_reply_draft"} and r["status"] == "draft" or r["kind"] == "monthly_run" and r["status"] in {"prepared", "reviewed", "generated", "schedule_prepared"} for r in records)
         upcoming = future_by_customer[customer.id]
         next_publication = min(upcoming, key=lambda r: r["at"]) if upcoming else None
         operator = primary.get(customer.id)
@@ -534,11 +543,13 @@ async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, sta
     from models.customer_menu_items import Customer_menu_items as Menu
     from services import media_monthly as monthly
     month = _queue_month(start, end); profiles, runs, entries, workflows = {}, {}, {}, {}
-    owner_data = ctx.owner and platform in {None, "google_business"} and await tables_available(db, monthly.TABLES | {Workflow.__tablename__})
+    owner_data = ctx.owner and await tables_available(db, monthly.TABLES | {Workflow.__tablename__})
     if owner_data:
         profiles = {r.customer_id: r for r in (await _records(db, select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id.in_(customers))))[0]}
         if month:
-            for run in (await _records(db, select(Run).where(Run.owner_id == ctx.identity, Run.customer_id.in_(customers), Run.month == month, Run.status != "archived").order_by(Run.id.desc())))[0]: runs.setdefault(run.customer_id, run)
+            for run in (await _records(db, select(Run).where(Run.owner_id == ctx.identity, Run.customer_id.in_(customers), Run.month == month, Run.status != "archived").order_by(Run.id.desc())))[0]:
+                if platform and monthly.run_platform(run) != platform: continue
+                runs.setdefault((run.customer_id, monthly.run_platform(run)), run)
             ids = {r.id for r in runs.values()}
             for entry in (await _records(db, select(Item).where(Item.run_id.in_(ids))))[0]: entries.setdefault(entry.run_id, []).append(entry)
             workflows = {r.run_id: r for r in (await _records(db, select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id.in_(ids), Workflow.customer_id.in_(customers))))[0]}
@@ -559,7 +570,9 @@ async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, sta
     for row in rows: records[row["customer_id"]].append(row)
     for item in items:
         identity = item["id"]; current = records[identity]; customer = customers[identity]
-        profile = profiles.get(identity); run = runs.get(identity); workflow = workflows.get(run.id) if run else None
+        queue_platforms = sorted(set(item["platforms"]) & {"google_business", "facebook", "instagram"})
+        queue_platform = platform or ("google_business" if "google_business" in queue_platforms else queue_platforms[0] if queue_platforms else None)
+        profile = monthly.effective_profile(profiles.get(identity), queue_platform) if queue_platform else None; run = runs.get((identity, queue_platform)); workflow = workflows.get(run.id) if run else None
         target = None; rule_ok = False
         if profile and month:
             try: target = len(monthly.slots(month, profile.rules)); rule_ok = True
@@ -573,10 +586,10 @@ async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, sta
         if run:
             basis = "monthly_plan"; target = len(run.snapshot.get("slots", [])) or target
             prepared = len(batch)
-            task_ids = {ref["task_id"] for ref in workflow.task_refs} if workflow else {entry.task_id for entry in batch if entry.task_id}
+            task_ids = {ref["task_id"] for ref in workflow.task_refs if "task_id" in ref} if workflow else {entry.task_id for entry in batch if entry.task_id}
             reviewing = len(batch) if workflow and workflow.status == "prepared" else sum(r["navigation"].get("task_id") in task_ids and r["kind"] == "task" and r["status"] == "in_review" for r in current)
             schedule_ids = {ref["schedule_id"] for ref in workflow.schedule_refs} if workflow else set()
-            monthly_schedules = [r for r in current if r["kind"] == "google_schedule" and r["source_id"] in schedule_ids]
+            monthly_schedules = [r for r in current if r["kind"] in {"google_schedule", "meta_schedule"} and r["source_id"] in schedule_ids and r["platform"] == queue_platform]
             scheduled = sum(r["status"] in {"scheduled", "dispatching", "pending", "processing", "accepted"} for r in monthly_schedules)
             published = sum(r["status"] == "succeeded" for r in monthly_schedules)
         checks = []
@@ -587,7 +600,7 @@ async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, sta
         if identity in material_customers:
             check("materials", f"已有{len(mats.get(identity, []))}项共享素材，实际图片需逐项核对" if mats.get(identity) else "尚无共享素材", "ready" if mats.get(identity) else "missing" if sources_ok else "unknown")
         else: check("materials", "素材需由有权限的同事核对", "unknown")
-        if ctx.owner and "google_business" in item["platforms"] and platform in {None, "google_business"}:
+        if ctx.owner and queue_platform in item["platforms"]:
             if "google_business" in item["platforms"] and platform in {None, "google_business"}:
                 check("operator", "Google主要运营已指定" if item["assignment_state"] == "assigned" else "请老板指定Google主要运营", "ready" if item["assignment_state"] == "assigned" else "missing")
             check("rules", "月度频率与时区已保存" if rule_ok else "请选择整月并确认本商家频率与时区", "ready" if rule_ok else "missing" if owner_data else "unknown")
@@ -602,15 +615,48 @@ async def _work_queues(db, ctx, customers, permissions, items, rows, gb, mb, sta
         if item.get("blocked") or item.get("overdue"): check("exceptions", "先处理失败、受阻或逾期记录", "blocked")
         if not complete or not sources_ok: check("sources", "本地资料尚未完整读取", "unknown")
         readiness = "not_applicable" if not active else "blocked" if any(c["state"] == "blocked" for c in checks) else "unknown" if any(c["state"] == "unknown" for c in checks) else "needs_setup" if any(c["state"] == "missing" for c in checks) else "ready"
-        can_monthly = bool(ctx.owner and active and platform in {None, "google_business"} and "google_business" in item["platforms"] and owner_data and permissions[identity]["modules"]["delivery"]["write"] and permissions[identity]["modules"]["materials"]["read"])
+        can_monthly = bool(ctx.owner and active and queue_platform in item["platforms"] and owner_data and permissions[identity]["modules"]["delivery"]["write"] and permissions[identity]["modules"]["materials"]["read"])
         if not active: action = {"kind": "content", "label": "查看历史内容"}
-        elif can_monthly and run: action = {"kind": "monthly", "label": "继续本月清单", "run_id": run.id}
+        elif can_monthly and run: action = {"kind": "monthly", "label": "继续本月清单", "run_id": run.id, "platform": queue_platform, "month": run.month if run else month}
         elif item["operating_state"] != "active": action = {"kind": "accounts", "label": "核对平台账号"}
         elif not mats.get(identity) and identity in material_customers: action = {"kind": "materials", "label": "补齐共享素材"}
-        elif can_monthly: action = {"kind": "monthly", "label": "准备本月内容" if rule_ok else "设置月度规则"}
+        elif can_monthly: action = {"kind": "monthly", "label": "准备本月内容" if rule_ok else "设置月度规则", "platform": queue_platform, "month": run.month if run else month}
         elif reviewing: action = {"kind": "review", "label": "查看待审核内容"}
         else: action = {"kind": "content", "label": "查看授权工作内容"}
-        item["work_queue"] = {"month": month, "basis": basis, "target": target if ctx.owner else None,
+        progress = []
+        for candidate_platform in queue_platforms:
+            if platform and candidate_platform != platform: continue
+            candidate_run = runs.get((identity, candidate_platform)); candidate_flow = workflows.get(candidate_run.id) if candidate_run else None
+            candidate_profile = monthly.effective_profile(profiles.get(identity), candidate_platform)
+            candidate_target = None
+            if candidate_profile and month:
+                try: candidate_target = len(monthly.slots(month, candidate_profile.rules))
+                except HTTPException: pass
+            candidate_batch = entries.get(candidate_run.id, []) if candidate_run else []
+            candidate_refs = {r["schedule_id"] for r in candidate_flow.schedule_refs} if candidate_flow else set()
+            candidate_schedules = [r for r in current if r["platform"] == candidate_platform and r["kind"] in {"google_schedule", "meta_schedule"} and (not candidate_run or r["source_id"] in candidate_refs)]
+            candidate_status = candidate_flow.status if candidate_flow else candidate_run.status if candidate_run else "needs_setup"
+            progress.append({"platform": candidate_platform, "month": candidate_run.month if candidate_run else month, "run_id": candidate_run.id if candidate_run else None, "status": candidate_status,
+                "target": len(candidate_run.snapshot.get("slots", [])) if candidate_run else candidate_target,
+                "prepared": len(candidate_batch), "in_review": len(candidate_batch) if candidate_flow and candidate_flow.status == "prepared" else 0,
+                "schedule_prepared": sum(r["status"] == "prepared" for r in candidate_schedules),
+                "scheduled": sum(r["status"] in {"scheduled", "dispatching", "pending", "processing", "accepted"} for r in candidate_schedules),
+                "published": sum(r["status"] == "succeeded" for r in candidate_schedules),
+                "can_prepare_monthly": bool(ctx.owner and active and owner_data and permissions[identity]["modules"]["delivery"]["write"] and permissions[identity]["modules"]["materials"]["read"])})
+        if not platform and len(progress) > 1:
+            target = sum(r["target"] or 0 for r in progress) if any(r["target"] is not None for r in progress) else None
+            prepared = sum(r["prepared"] for r in progress); reviewing = sum(r["in_review"] for r in progress)
+            scheduled = sum(r["scheduled"] for r in progress); published = sum(r["published"] for r in progress)
+            basis = "multi_platform_monthly"
+            candidates = [r for r in progress if r["can_prepare_monthly"]]
+            if candidates:
+                priority = {"failed": 0, "unknown": 0, "prepared": 1, "generated": 1, "reviewed": 2, "schedule_prepared": 3, "needs_setup": 4, "scheduled": 5}
+                next_platform = min(candidates, key=lambda r: (priority.get(r["status"], 4), r["platform"]))
+                label = {"google_business": "Google", "facebook": "Facebook", "instagram": "Instagram"}[next_platform["platform"]]
+                action = {"kind": "monthly", "label": "继续" + label + "本月清单" if next_platform["run_id"] else "准备" + label + "本月内容", "platform": next_platform["platform"], "month": next_platform["month"]}
+                if next_platform["run_id"]: action["run_id"] = next_platform["run_id"]
+        if not platform and any(r["status"] == "needs_setup" for r in progress) and readiness == "ready": readiness = "needs_setup"
+        item["work_queue"] = {"platform": platform or (queue_platform if len(progress) <= 1 else None), "platforms": queue_platforms, "platform_progress": progress, "schedule_prepared": sum(r["schedule_prepared"] for r in progress), "month": month, "basis": basis, "target": target if ctx.owner else None,
             "prepared": prepared, "in_review": reviewing, "scheduled": scheduled, "published": published,
             "readiness": readiness, "checks": checks, "next_action": action, "can_prepare_monthly": can_monthly}
     return items
@@ -658,7 +704,7 @@ def _review_groups(rows, start):
             # Match the workspace date inputs/calendar/focus navigation basis,
             # not the provider timezone or the UTC representation of the row.
             month = datetime.fromisoformat(row["at"]).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m")
-        entry = result.setdefault((row["customer_id"], month), {"customer_id": row["customer_id"], "name": row["customer_name"], "month": month, "total": 0, "in_review": 0, "platforms": set()})
+        entry = result.setdefault((row["customer_id"], month, row["platform"]), {"customer_id": row["customer_id"], "name": row["customer_name"], "month": month, "platform": row["platform"], "total": 0, "in_review": 0, "platforms": set()})
         entry["total"] += 1; entry["in_review"] += int(row["status"] == "in_review"); entry["platforms"].add(row["platform"])
     return [r | {"platforms": sorted(r["platforms"])} for _, r in sorted(result.items())]
 

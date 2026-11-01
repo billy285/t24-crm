@@ -287,7 +287,7 @@ async def test_monthly_review_groups_use_persisted_run_month_for_beijing_default
     from services import media_monthly as monthly
     env = projection
     await seed_month_runs(env)
-    async def native_rows(db, user, customer_ids, start, end, view):
+    async def native_rows(db, user, customer_ids, start, end, view, platform=None):
         if 20 not in customer_ids: return []
         values = []
         # The native adapter filters by the proposed month but labels records
@@ -317,7 +317,7 @@ async def test_monthly_month_metadata_is_exact_owner_customer_bound_and_never_gu
     from services import media_monthly as monthly
     env = projection
     await seed_month_runs(env)
-    async def invalid_rows(db, user, customer_ids, start, end, view):
+    async def invalid_rows(db, user, customer_ids, start, end, view, platform=None):
         # Other-owner run, malformed stored month, missing run and wrong customer.
         return [service._row("monthly_run", SimpleNamespace(id=identity), SimpleNamespace(id=customer, business_name="Synthetic Monthly Merchant"),
             "google_business", title="2026-11 title is not authority", status="prepared", at=INSTANT)

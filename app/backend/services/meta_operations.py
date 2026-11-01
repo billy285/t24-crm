@@ -80,8 +80,6 @@ async def _binding(db, ctx, binding_id, *, lock=False, usable=True):
     source = await db.scalar(query)
     if source is None: raise HTTPException(404, "Meta 客户账号不存在或未获授权")
     customer, _ = await media._customer(db, ctx, source.customer_id)
-    if customer.id != PILOT_CUSTOMER_ID:
-        raise HTTPException(409, "本阶段仅开放 PokeCo 的独立运营试点")
     own_query = select(OperatingBinding).where(OperatingBinding.id == binding_id, OperatingBinding.owner_id == ctx.identity).execution_options(populate_existing=True)
     if lock: own_query = own_query.with_for_update()
     operating = await db.scalar(own_query)
@@ -94,12 +92,13 @@ async def _binding(db, ctx, binding_id, *, lock=False, usable=True):
             raise HTTPException(409, "此独立运营账号已暂停或需要重新授权")
         row = operating
     else:
+        if customer.id != PILOT_CUSTOMER_ID: raise HTTPException(409, "本客户尚无老板明确建立的独立运营授权")
         row = source
         connection = await db.scalar(select(Connection).where(Connection.id == row.connection_id, Connection.owner_id == ctx.identity).execution_options(populate_existing=True))
         if usable and (not row.active or not connection or not connection.active or connection.needs_reconnect or
                        connection.revision != row.connection_revision or not connection.token_encrypted):
             raise HTTPException(409, "请先核对只读连接，再为试点建立独立运营授权")
-    if usable and (customer.id != PILOT_CUSTOMER_ID or customer.status != "closed" or customer.business_name.strip().casefold() != "pokeco"):
+    if usable and (customer.status != "closed" or operating is None and (customer.id != PILOT_CUSTOMER_ID or customer.business_name.strip().casefold() != "pokeco")):
         raise HTTPException(409, "本阶段仅开放仍在合作的 PokeCo 试点")
     return row
 
@@ -141,12 +140,12 @@ async def status(db, user):
               "setup_missing": configured["setup_missing"], "authorization": configured["authorization"],
               "scheduler": configuration(), "bindings": []}
     ids = set((await db.scalars(select(Binding.id).where(Binding.owner_id == ctx.identity, Binding.customer_id == PILOT_CUSTOMER_ID, Binding.active.is_(True)).limit(1000))).all())
-    ids.update((await db.scalars(select(OperatingBinding.id).where(OperatingBinding.owner_id == ctx.identity, OperatingBinding.customer_id == PILOT_CUSTOMER_ID).limit(1000))).all())
+    ids.update((await db.scalars(select(OperatingBinding.id).where(OperatingBinding.owner_id == ctx.identity).limit(1000))).all())
     for identity in sorted(ids):
         try:
             row = await _binding(db, ctx, identity, usable=False)
             customer, _ = await media._customer(db, ctx, row.customer_id)
-            if customer.id != PILOT_CUSTOMER_ID or customer.status != "closed" or customer.business_name.strip().casefold() != "pokeco": continue
+            if customer.status != "closed" or not isinstance(row, OperatingBinding) and (customer.id != PILOT_CUSTOMER_ID or customer.business_name.strip().casefold() != "pokeco"): continue
             result["bindings"].append(await binding_data(db, ctx, row))
         except HTTPException as exc:
             if exc.status_code not in {403, 404, 409}: raise
@@ -458,6 +457,8 @@ async def _reserve(db, user, draft_id, *, request_id, expected_revision, preview
     previous = await _request(db, ctx, key, kind="action", fingerprint=fingerprint)
     if previous: return int(previous.result_id), False
     row, binding = await _draft(db, ctx, draft_id)
+    from services.media_monthly_meta import authorize_native
+    await authorize_native(db, draft_id=draft_id, schedule_id=schedule_id)
     snapshot, _, _ = await _snapshot(db, ctx, row, binding)
     capability = await provider.capabilities(db, user, _provider_binding(binding))
     if not capability["can_reply" if row.kind == "reply" else "can_publish"]:
@@ -467,6 +468,7 @@ async def _reserve(db, user, draft_id, *, request_id, expected_revision, preview
         previous = await _request(db, ctx, key, kind="action", fingerprint=fingerprint)
         if previous: return int(previous.result_id), False
         row, binding, approved = await _approved(db, ctx, draft_id, expected_revision, preview_hash)
+        await authorize_native(db, draft_id=draft_id, schedule_id=schedule_id)
         if snapshot != approved: raise HTTPException(409, "内容已变化，请重新预览")
         existing = await db.scalar(select(Action).where(Action.draft_id == row.id, Action.draft_revision == row.revision).limit(1))
         if existing: raise HTTPException(409, "此版本已有平台请求，请检查原操作记录，不能重复发送")
@@ -488,6 +490,9 @@ async def _claimed_action(db, user, action_id, *, expected_stage):
     row = await db.scalar(select(Action).where(Action.id == action_id, Action.owner_id == ctx.identity).with_for_update().execution_options(populate_existing=True))
     if row is None or row.dispatch_stage != expected_stage: raise HTTPException(409, "原发布请求已开始或已变化，请检查原结果")
     draft, binding, snapshot = await _approved(db, ctx, row.draft_id, row.draft_revision, row.preview_hash)
+    from services.media_monthly_meta import authorize_native
+    schedule = await db.scalar(select(Schedule).where(Schedule.action_id == row.id).limit(1))
+    await authorize_native(db, draft_id=row.draft_id, schedule_id=schedule.id if schedule else None, action=row)
     if snapshot != row.submitted_snapshot or binding.revision != row.binding_revision or binding.connection_revision != row.connection_revision:
         raise HTTPException(409, "原发布的账号、图片或内容已变化")
     return row, binding
@@ -606,6 +611,8 @@ async def prepare_schedule(db, user, draft_id, *, request_id, expected_revision,
     if previous: return (await request_result(db, user, key))["result"]
     from services.meta_operations_scheduler import configuration
     worker = configuration(); row, binding = await _draft(db, ctx, draft_id)
+    from services.media_monthly_meta import authorize_native
+    await authorize_native(db, draft_id=draft_id)
     capability = await provider.capabilities(db, user, _provider_binding(binding))
     async with write(db):
         ctx = await context(db, user); previous = await _request(db, ctx, key, kind="schedule", fingerprint=fingerprint)
@@ -643,6 +650,8 @@ async def activate_schedule(db, user, schedule_id, expected_revision):
     if not configuration()["enabled"]: raise HTTPException(409, "定时执行尚未启用，原排期仍只是准备记录")
     ctx = await context(db, user); row = await db.get(Schedule, schedule_id, populate_existing=True)
     if not row or row.owner_id != ctx.identity: raise HTTPException(404, "排期不存在")
+    from services.media_monthly_meta import authorize_native
+    await authorize_native(db, draft_id=row.draft_id)
     binding = await _binding(db, ctx, row.binding_id); capability = await provider.capabilities(db, user, _provider_binding(binding))
     if not capability["can_publish"]: raise HTTPException(409, "此账号尚未具备发布条件")
     async with write(db):

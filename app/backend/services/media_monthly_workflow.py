@@ -103,9 +103,13 @@ async def _sources(db, ctx, customer, run, choices=None):
             "owner_summary": item.owner_summary, "at": dto["proposed_publish_at"], "timezone": item.timezone, "menu_items": chosen_menus,
             "material": material_source, "image": dto["publication_image"], "rights_confirmed": choice.get("rights_confirmed") is True})
     profile = await db.get(Profile, run.profile_id, populate_existing=True)
-    binding = await _binding(db, ctx, customer)
+    if monthly.run_platform(run) == "google_business": binding = await _binding(db, ctx, customer)
+    else:
+        from services import media_monthly_meta
+        binding = await media_monthly_meta.binding_data(db, ctx, customer, monthly.run_platform(run))
     source = {"run_id": run.id, "run_revision": run.revision, "month": run.month, "customer_id": customer.id, "customer_status": customer.status,
-        "profile": monthly.profile_data(profile), "items": source_items, "binding": binding}
+        "profile": monthly.profile_data(profile, monthly.run_platform(run)), "items": source_items, "binding": binding}
+    if monthly.run_platform(run) != "google_business": source["platform"] = monthly.run_platform(run)
     return source, output, materials, binding
 
 
@@ -218,7 +222,17 @@ async def _view(db, ctx, customer, run, workflow):
             "can_cancel": bool(workflow and workflow.status != "cancelled")}}
 
 
+async def _is_meta(db, user, run_id):
+    ctx, _ = await monthly.context(db, user, None)
+    run = await monthly._owned_run(db, ctx, run_id)
+    await monthly.context(db, user, run.customer_id)
+    return monthly.run_platform(run) != "google_business"
+
+
 async def get_workflow(db, user, run_id):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.get_workflow(db, user, run_id)
     ctx, customer = await context(db, user, run_id=run_id); run, workflow = await _load(db, ctx, run_id)
     return await _view(db, ctx, customer, run, workflow)
 
@@ -239,6 +253,10 @@ async def _replay(db, ctx, request_id, kind, run_id, body):
 
 
 async def _receipt_current(db, ctx, request):
+    run = await monthly._owned_run(db, ctx, request.run_id)
+    if monthly.run_platform(run) != "google_business":
+        from services import media_monthly_meta
+        return await media_monthly_meta.receipt_current(db, ctx, request)
     workflow = await db.scalar(select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id == request.run_id).execution_options(populate_existing=True))
     original = request.result.get("workflow") or {}
     if not workflow or (workflow.revision, workflow.preview_hash, workflow.status) != (original.get("revision"), original.get("preview_hash"), original.get("status")):
@@ -258,6 +276,9 @@ async def _receipt(db, ctx, customer, run, workflow, request_id, kind, body):
 
 
 async def prepare(db, user, run_id, *, request_id, expected_run_revision, expected_workflow_revision, items, facts_confirmed):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.prepare(db, user, run_id, request_id=request_id, expected_run_revision=expected_run_revision, expected_workflow_revision=expected_workflow_revision, items=items, facts_confirmed=facts_confirmed)
     ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_run_revision": expected_run_revision, "expected_workflow_revision": expected_workflow_revision, "items": items, "facts_confirmed": facts_confirmed}
     if facts_confirmed is not True or any(row.get("rights_confirmed") is not True for row in items): raise HTTPException(422, "请核对本月事实、全部具体配图与使用权；本步骤不代表公开发布授权")
@@ -294,6 +315,9 @@ async def _confirmed(db, ctx, customer, run, workflow, expected_revision, previe
 
 
 async def review(db, user, run_id, *, request_id, expected_revision, preview_hash, confirmed):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.review(db, user, run_id, request_id=request_id, expected_revision=expected_revision, preview_hash=preview_hash, confirmed=confirmed)
     ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_revision": expected_revision, "preview_hash": preview_hash, "confirmed": confirmed}
     if confirmed is not True: raise HTTPException(422, "请逐篇核对具体文字、图片和日期，仅确认内部审核；本步骤不公开发布")
@@ -303,7 +327,7 @@ async def review(db, user, run_id, *, request_id, expected_revision, preview_has
         if replay is not None: return replay
         run, workflow = await _load(db, ctx, run_id, True)
         binding = await _confirmed(db, ctx, customer, run, workflow, expected_revision, preview_hash, "prepared")
-        other = await db.scalar(select(Workflow.id).join(Run, Run.id == Workflow.run_id).where(Workflow.customer_id == customer.id, Run.month == run.month, Workflow.run_id != run.id, Workflow.status.in_(("reviewed", "scheduled"))).limit(1))
+        other = await db.scalar(select(Workflow.id).join(Run, Run.id == Workflow.run_id).where(Workflow.customer_id == customer.id, Run.month == run.month, Workflow.run_id != run.id, monthly.platform_clause("google_business"), Workflow.status.in_(("reviewed", "scheduled"))).limit(1))
         if other: raise HTTPException(409, "此客户已有整月审核批次，请管理原批次，避免重复发布")
         old_refs = {row["item_id"]: row for row in workflow.task_refs}; task_refs = []
         for item in workflow.snapshot["items"]:
@@ -343,6 +367,9 @@ async def review(db, user, run_id, *, request_id, expected_revision, preview_has
 
 
 async def schedule(db, user, run_id, *, request_id, expected_revision, preview_hash, publication_confirmed, confirmation_version):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.schedule(db, user, run_id, request_id=request_id, expected_revision=expected_revision, preview_hash=preview_hash, publication_confirmed=publication_confirmed, confirmation_version=confirmation_version)
     ctx, customer = await context(db, user, run_id=run_id, write=True); request_id = media._key(request_id)
     body = {"expected_revision": expected_revision, "preview_hash": preview_hash, "publication_confirmed": publication_confirmed, "confirmation_version": confirmation_version}
     if publication_confirmed is not True or confirmation_version != PUBLIC_NOTICE_VERSION: raise HTTPException(422, "请另行确认本月具体文字、实际配图、门店与日期，将在到期时公开发布")
@@ -371,6 +398,9 @@ async def schedule(db, user, run_id, *, request_id, expected_revision, preview_h
 
 
 async def cancel(db, user, run_id, *, request_id, expected_revision, reason):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.cancel(db, user, run_id, request_id=request_id, expected_revision=expected_revision, reason=reason)
     ctx, customer = await context(db, user, run_id=run_id); request_id = media._key(request_id)
     reason = monthly._clean(reason, 200, required=True)
     if len(reason) < 3: raise HTTPException(422, "请填写至少3字的撤销原因")
@@ -404,6 +434,9 @@ async def request_result(db, user, request_id):
 
 
 async def workspace_status(db, user, run_id):
+    if await _is_meta(db, user, run_id):
+        from services import media_monthly_meta
+        return await media_monthly_meta.workspace_status(db, user, run_id)
     if monthly.normalized_role(user) != "super_admin": raise HTTPException(403, "月度流程仅老板可查看")
     if not await tables_available(db, TABLES): return None
     ctx, customer = await context(db, user, run_id=run_id); run, workflow = await _load(db, ctx, run_id)
@@ -417,11 +450,16 @@ async def workspace_status(db, user, run_id):
         "已内部审核，等待老板单独确认公开排期" if workflow.status == "reviewed" else "月度素材和内容已准备，等待老板逐篇确认" if pending else "仅按老板明确确认的日期执行，异常会单独列出"}
 
 
-async def alerts(db, user, customer_id=monthly.PILOT_CUSTOMER_ID, *, month=None):
+async def alerts(db, user, customer_id=monthly.PILOT_CUSTOMER_ID, *, month=None, platform="google_business"):
+    monthly.platform_value(platform)
+    if platform != "google_business":
+        from services import media_monthly_meta
+        return await media_monthly_meta.alerts(db, user, customer_id, month=month, platform=platform)
     ctx, customer = await context(db, user, customer_id=customer_id)
     query = select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.customer_id == customer.id)
+    query = query.join(Run, Run.id == Workflow.run_id).where(monthly.platform_clause(platform))
     if month is not None:
-        monthly.valid_month(month); query = query.join(Run, Run.id == Workflow.run_id).where(Run.month == month, Run.customer_id == customer.id, Run.owner_id == ctx.identity)
+        monthly.valid_month(month); query = query.where(Run.month == month, Run.customer_id == customer.id, Run.owner_id == ctx.identity)
     workflow = await db.scalar(query.order_by(Workflow.id.desc()).limit(1))
     if not workflow: return {"customer_id": customer.id, "month": month, "run_id": None, "items": [], "counts": {"attention": 0, "total": 0, "blocked": 0, "unknown": 0, "missed": 0, "failed": 0, "pending_confirmation": 0}}
     run, workflow = await _load(db, ctx, workflow.run_id); view = await _view(db, ctx, customer, run, workflow)
@@ -432,6 +470,10 @@ async def alerts(db, user, customer_id=monthly.PILOT_CUSTOMER_ID, *, month=None)
 
 
 async def guard_legacy(db, ctx, run_id, *, editing=False):
+    run = await monthly._owned_run(db, ctx, run_id)
+    if monthly.run_platform(run) != "google_business":
+        from services import media_monthly_meta
+        return await media_monthly_meta.guard_legacy(db, ctx, run_id, editing=editing)
     if not await tables_available(db, TABLES): return
     workflow = await db.scalar(select(Workflow).where(Workflow.owner_id == ctx.identity, Workflow.run_id == run_id))
     if workflow and (not editing or workflow.status in {"reviewed", "scheduled"} or await _nonrebuildable(db, workflow)):

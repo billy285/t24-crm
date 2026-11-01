@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 
 from models.employees import Employees
 from models.customer_menu_items import Customer_menu_items as Menu
@@ -124,7 +124,22 @@ def slots(month=MONTH, rules=None):
     return result
 
 
-def profile_data(row):
+def effective_profile(row, platform="google_business"):
+    if row is None: return None
+    if getattr(row, "_monthly_effective", False): return row
+    fields = {key: getattr(row, key, None) for key in ("id", "owner_id", "customer_id", "revision", "public_facts", "rules", "menu_item_ids", "images", "confirmed_at", "created_at", "updated_at")}
+    if platform == "google_business":
+        if row.revision < 1: return None
+        fields["rules"] = {key: value for key, value in row.rules.items() if key != "_meta_profiles"}
+    else:
+        local = row.rules.get("_meta_profiles", {}).get(platform)
+        if not local: return None
+        fields.update({key: local[key] for key in ("revision", "public_facts", "rules", "menu_item_ids", "images")})
+    return SimpleNamespace(**fields, _monthly_effective=True)
+
+
+def profile_data(row, platform="google_business"):
+    row = effective_profile(row, platform)
     if row is None: return None
     return {key: getattr(row, key) for key in ("id", "customer_id", "revision", "public_facts", "rules", "menu_item_ids", "images")}
 
@@ -175,7 +190,35 @@ async def _sources(db, ctx, customer):
     return menu_data, material_data, versions
 
 
+def platform_value(value="google_business"):
+    if value not in {"google_business", "facebook", "instagram"}: raise HTTPException(422, "请选择支持的月度内容平台")
+    return value
+
+
+def run_platform(run):
+    return platform_value((run.snapshot or {}).get("platform", "google_business"))
+
+
+def platform_clause(platform):
+    platform_value(platform)
+    value = Run.snapshot["platform"].as_string()
+    return or_(value.is_(None), value == "google_business") if platform == "google_business" else value == platform
+
+
+async def _platform_input(db, ctx, customer, profile, month, platform):
+    profile = effective_profile(profile, platform)
+    result = await _input(db, ctx, customer, profile, month)
+    if platform == "google_business": return result
+    from services import media_monthly_meta
+    binding = await media_monthly_meta.binding_data(db, ctx, customer, platform)
+    if not binding or not binding["active"]: raise HTTPException(409, "请老板先核对本客户、本平台已有独立运营授权；只读连接不能用于整月运营")
+    if result[0] is None: return result
+    snapshot = dict(result[0], platform=platform, meta_binding=binding)
+    return snapshot, digest(snapshot), *result[2:]
+
+
 async def _input(db, ctx, customer, profile, month=MONTH):
+    profile = effective_profile(profile)
     menu_data, material_data, versions = await _sources(db, ctx, customer)
     if profile is None: return None, None, menu_data, material_data, ["请先确认公开事实、菜单及素材选择"]
     menus = {r["id"]: r for r in menu_data}; materials = {r["id"]: r for r in material_data}
@@ -208,12 +251,14 @@ async def _input(db, ctx, customer, profile, month=MONTH):
     return snapshot, digest(snapshot), menu_data, material_data, list(dict.fromkeys(gaps))
 
 
-async def setup(db, user, customer_id, *, month=MONTH):
+async def setup(db, user, customer_id, *, month=MONTH, platform="google_business"):
+    platform_value(platform)
     valid_month(month)
     ctx, customer = await context(db, user, customer_id)
     profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).execution_options(populate_existing=True))
+    profile = effective_profile(profile, platform)
     try:
-        snapshot, input_hash, menus, materials, gaps = await _input(db, ctx, customer, profile, month)
+        snapshot, input_hash, menus, materials, gaps = await _platform_input(db, ctx, customer, profile, month, platform)
     except HTTPException as exc:
         if exc.status_code not in {409, 422}: raise
         # Retain owner access to existing copy and current image choices even
@@ -222,21 +267,28 @@ async def setup(db, user, customer_id, *, month=MONTH):
         menus, materials, _ = await _sources(db, ctx, customer)
         snapshot = None; input_hash = None
         gaps = ["原资料引用已变化，请在整月清单重新选择当前配图并核对菜单；已写好的文案保留"]
+        if platform != "google_business":
+            from services import media_monthly_meta
+            if not await media_monthly_meta.binding_data(db, ctx, customer, platform): gaps = ["本商家此平台尚无有效独立运营授权，或授权需要重连；请老板先核对平台账号，只读连接不能用于整月运营"]
     _, runtime = await _runtime(db)
     if not menus: gaps.append("尚无结构化菜单；只能使用老板另行确认的公开事实，不会从图片猜菜名或价格")
     if customer.status != "closed": gaps.append("客户当前未在合作，仅可查看历史内容与异常；不会生成或发布新内容")
     menu_ready = bool(profile and (profile.menu_item_ids or profile.rules.get("generic_mode")))
     if profile and not menu_ready: gaps.append("请确认所选菜单，或明确选择只使用公开事实的通用草稿模式")
     quality_ack = bool(profile and snapshot and all(not r["quality_warnings"] or r.get("quality_confirmed") is True for r in snapshot["images"]))
-    return {"month": month, "slots": snapshot["slots"] if snapshot else [], "customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
+    return {"platform": platform, "month": month, "slots": snapshot["slots"] if snapshot else [], "customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
         "materials": materials, "runtime": runtime, "input_hash": input_hash, "source_hash": input_hash, "gaps": gaps,
-        "capabilities": {"is_owner": True, "can_generate": bool(customer.status == "closed" and runtime["enabled"] and profile and quality_ack and menu_ready),
+        "capabilities": {"is_owner": True, "can_generate": bool(customer.status == "closed" and runtime["enabled"] and profile and quality_ack and menu_ready and snapshot),
             "cooperation_active": customer.status == "closed", "read_only_reason": None if customer.status == "closed" else "客户当前未在合作，仅查看历史和异常，不再创建内容"},
         "notice": {"version": NOTICE_VERSION, "text": NOTICE, "send_fields": SEND_FIELDS}}
 
 
-async def save_profile(db, user, customer_id, *, month=MONTH, expected_revision, public_facts, rules, menu_item_ids, images: list, confirmed_facts):
+async def save_profile(db, user, customer_id, *, month=MONTH, platform="google_business", expected_revision, public_facts, rules, menu_item_ids, images: list, confirmed_facts):
+    platform_value(platform)
     ctx, customer = await context(db, user, customer_id, write=True)
+    if platform != "google_business":
+        from services import media_monthly_meta
+        await media_monthly_meta.binding_for(db, ctx, customer, platform)
     if confirmed_facts is not True: raise HTTPException(422, "请先核对本次公开事实和图片对应关系")
     facts = {"public_name": _clean(public_facts["public_name"], 200, required=True), "location": _clean(public_facts["location"], 300, required=True),
         "highlights": [_clean(value, 300, required=True) for value in public_facts["highlights"]]}
@@ -248,20 +300,27 @@ async def save_profile(db, user, customer_id, *, month=MONTH, expected_revision,
     async with media._write(db):
         ctx, customer = await context(db, user, customer_id, write=True)
         row = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).with_for_update().execution_options(populate_existing=True))
-        if (row.revision if row else 0) != expected_revision: raise HTTPException(409, "规则版本已变化，请读取后重新确认")
-        if row is not None and (row.public_facts, row.rules, row.menu_item_ids, row.images) == (facts, rules, menu_item_ids, images):
-            # A repeated confirmation of identical rules is not a new input
-            # version and cannot bypass semantic monthly generation dedup.
-            await _input(db, ctx, customer, row, month)
-        elif row is None:
-            row = Profile(owner_id=ctx.identity, customer_id=customer.id, revision=1, created_at=now()); db.add(row)
-            row.public_facts = facts; row.rules = rules; row.menu_item_ids = menu_item_ids; row.images = images; row.confirmed_at = now(); row.updated_at = now()
-            await db.flush(); await _input(db, ctx, customer, row, month)
-        else:
-            row.revision += 1
-            row.public_facts = facts; row.rules = rules; row.menu_item_ids = menu_item_ids; row.images = images; row.confirmed_at = now(); row.updated_at = now()
-            await db.flush(); await _input(db, ctx, customer, row, month)
-    return await setup(db, user, customer_id, month=month)
+        current = effective_profile(row, platform)
+        if (current.revision if current else 0) != expected_revision: raise HTTPException(409, "本平台规则版本已变化，请读取后重新确认")
+        changed = current is None or (current.public_facts, current.rules, current.menu_item_ids, current.images) != (facts, rules, menu_item_ids, images)
+        if row is None:
+            row = Profile(owner_id=ctx.identity, customer_id=customer.id, revision=0, public_facts={}, rules={}, menu_item_ids=[], images=[], created_at=now(), confirmed_at=now(), updated_at=now()); db.add(row)
+            await db.flush()
+        if changed:
+            if platform == "google_business":
+                retained = row.rules.get("_meta_profiles")
+                row.revision += 1; row.public_facts = facts; row.rules = {**rules, **({"_meta_profiles": retained} if retained else {})}
+                row.menu_item_ids = menu_item_ids; row.images = images; row.confirmed_at = now()
+            else:
+                # Each Meta profile has its own CAS/facts/images/frequency. A
+                # Meta-only edit cannot stale an existing Google/other Meta
+                # packet or change an already confirmed publishing frequency.
+                profiles = dict(row.rules.get("_meta_profiles", {}))
+                profiles[platform] = {"revision": (current.revision if current else 0) + 1, "public_facts": facts, "rules": rules, "menu_item_ids": menu_item_ids, "images": images}
+                row.rules = {**row.rules, "_meta_profiles": profiles}
+            row.updated_at = now(); await db.flush()
+        await _platform_input(db, ctx, customer, row, month, platform)
+    return await setup(db, user, customer_id, month=month, platform=platform)
 
 
 def _copy_hash(title, content): return digest({"title": title, "content": content})
@@ -289,7 +348,7 @@ async def run_data(db, row):
     items = [{key: getattr(item, key) for key in ("id", "slot_id", "title", "content", "owner_summary", "timezone", "material_id", "image_version_id", "image_sha256", "menu_item_ids", "revision", "copy_hash", "task_id", "quality_warnings")} | {"proposed_publish_at": iso(item.proposed_publish_at)} for item in entries]
     preview = digest({"run_id": row.id, "revision": row.revision, "input_hash": row.input_hash, "items": items})
     state = "unknown" if row.status == "generating" and now() - aware(row.updated_at) > timedelta(minutes=5) else row.status
-    return {"id": row.id, "customer_id": row.customer_id, "month": row.month, "status": state, "revision": row.revision,
+    return {"id": row.id, "platform": run_platform(row), "customer_id": row.customer_id, "month": row.month, "status": state, "revision": row.revision,
         "input_hash": row.input_hash, "ai_used": row.ai_used, "message": row.message,
         "profile_snapshot": {key: row.snapshot[key] for key in ("public_facts", "rules")}, "items": items, "preview_hash": preview,
         "adoptable": bool(row.status == "generated" and len(entries) == len(slots(row.month, row.snapshot["rules"])) and all(not item.quality_warnings for item in entries)),
@@ -300,13 +359,13 @@ async def get_run(db, user, identity):
     ctx, _ = await context(db, user, None)
     row = await _owned_run(db, ctx, identity)
     ctx, customer = await context(db, user, row.customer_id)
-    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month))
+    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month, run_platform(row)))
 
 
-async def _freshness(db, ctx, customer, month=MONTH):
+async def _freshness(db, ctx, customer, month=MONTH, platform="google_business"):
     try:
         profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).execution_options(populate_existing=True))
-        _, input_hash, _, _, _ = await _input(db, ctx, customer, profile, month)
+        _, input_hash, _, _, _ = await _platform_input(db, ctx, customer, profile, month, platform)
         _, runtime = await _runtime(db)
         return input_hash, runtime["fingerprint"]
     except HTTPException: return None, None
@@ -321,13 +380,14 @@ async def _fresh_data(db, row, current):
     return data
 
 
-async def list_runs(db, user, customer_id, *, month=None):
+async def list_runs(db, user, customer_id, *, month=None, platform="google_business"):
+    platform_value(platform)
     ctx, customer = await context(db, user, customer_id)
-    query = select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id)
+    query = select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, platform_clause(platform))
     if month is not None:
         valid_month(month); query = query.where(Run.month == month)
     rows = list((await db.scalars(query.order_by(Run.id.desc()).limit(20))).all())
-    currents = {month: await _freshness(db, ctx, customer, month) for month in {row.month for row in rows}}
+    currents = {month: await _freshness(db, ctx, customer, month, platform) for month in {row.month for row in rows}}
     return {"items": [await _fresh_data(db, row, currents[row.month]) for row in rows]}
 
 
@@ -347,7 +407,7 @@ async def request_result(db, user, request_id):
                 return receipt.result
         raise HTTPException(404, "原请求尚未登记，请保留请求编号")
     ctx, customer = await context(db, user, row.customer_id)
-    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month))
+    return await _fresh_data(db, row, await _freshness(db, ctx, customer, row.month, run_platform(row)))
 
 
 def _ai_payload(snapshot):
@@ -429,10 +489,13 @@ async def _receipt_used(db, ctx, request_id):
     return await tables_available(db, {Receipt.__tablename__}) and bool(await db.scalar(select(Receipt.id).where(Receipt.owner_id == ctx.identity, Receipt.request_id == request_id).limit(1)))
 
 
-async def generate(db, user, customer_id, *, request_id, expected_profile_revision, month, input_hash, consent):
+async def generate(db, user, customer_id, *, request_id, expected_profile_revision, month, input_hash, consent, platform="google_business"):
+    platform_value(platform)
     valid_month(month)
     ctx, customer = await context(db, user, customer_id, write=True); key = media._key(request_id)
-    fingerprint = digest({"customer_id": customer_id, "expected_profile_revision": expected_profile_revision, "month": month, "input_hash": input_hash, "consent": consent})
+    fingerprint_body = {"customer_id": customer_id, "expected_profile_revision": expected_profile_revision, "month": month, "input_hash": input_hash, "consent": consent}
+    if platform != "google_business": fingerprint_body["platform"] = platform
+    fingerprint = digest(fingerprint_body)
     async with media._write(db):
         ctx, customer = await context(db, user, customer_id, write=True)
         old = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, (Run.request_id == key) | (Run.adopt_request_id == key)))
@@ -441,10 +504,11 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
             return await run_data(db, old)
         if await _receipt_used(db, ctx, key): raise HTTPException(409, "此请求编号已用于其他月度流程，请读取原结果")
         profile = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer_id).with_for_update().execution_options(populate_existing=True))
-        if not profile or profile.revision != expected_profile_revision: raise HTTPException(409, "公开规则版本已变化，请重新读取并确认")
-        snapshot, actual, _, _, _ = await _input(db, ctx, customer, profile, month)
+        effective = effective_profile(profile, platform)
+        if not effective or effective.revision != expected_profile_revision: raise HTTPException(409, "公开规则版本已变化，请重新读取并确认")
+        snapshot, actual, _, _, _ = await _platform_input(db, ctx, customer, profile, month, platform)
         if input_hash != actual: raise HTTPException(409, "菜单、素材或公开事实已变化，请重新核对")
-        if not snapshot["menu_items"] and not profile.rules.get("generic_mode"):
+        if not snapshot["menu_items"] and not effective.rules.get("generic_mode"):
             raise HTTPException(422, "尚未选择已确认菜单；如只用公开事实写通用草稿，请明确启用通用模式")
         runtime, public_runtime = await _runtime(db)
         if not public_runtime["enabled"]: raise HTTPException(409, "AI 服务尚未配置；本功能不会用通用模板假装月度生成成功")
@@ -455,14 +519,14 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
         if semantic:
             if semantic.status == "archived": raise HTTPException(409, "相同资料已有归档草案；请保留原文案，确需重新生成请先明确更新本月资料或规则")
             return await run_data(db, semantic)
-        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.month == month,
+        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.month == month, platform_clause(platform),
             Run.status.in_(("generating", "unknown", "generated", "adopted"))).limit(1)):
             raise HTTPException(409, "该商家本月已有内容批次，请先管理原批次，不会因资料调整另建重复排期")
-        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, Run.status == "generating", Run.updated_at > now() - timedelta(minutes=5)).limit(1)):
+        if await db.scalar(select(Run.id).where(Run.owner_id == ctx.identity, Run.customer_id == customer_id, platform_clause(platform), Run.status == "generating", Run.updated_at > now() - timedelta(minutes=5)).limit(1)):
             raise HTTPException(409, "已有生成请求待确认，请先读取原请求，不能同时重复生成")
         selected_images = snapshot["images"]
         selected_menu_ids = [value["id"] for value in snapshot["menu_items"]]
-        snapshot["slots"] = [dict(slot, image_index=index % len(selected_images), menu_item_ids=[selected_images[index % len(selected_images)]["menu_item_id"]] if selected_images[index % len(selected_images)].get("menu_item_id") else ([selected_menu_ids[index % len(selected_menu_ids)]] if selected_menu_ids else [])) for index, slot in enumerate(slots(month, profile.rules))]
+        snapshot["slots"] = [dict(slot, image_index=index % len(selected_images), menu_item_ids=[selected_images[index % len(selected_images)]["menu_item_id"]] if selected_images[index % len(selected_images)].get("menu_item_id") else ([selected_menu_ids[index % len(selected_menu_ids)]] if selected_menu_ids else [])) for index, slot in enumerate(slots(month, effective.rules))]
         _ai_payload(snapshot)  # Reject excessive input before reserving/calling AI.
         row = Run(owner_id=ctx.identity, customer_id=customer_id, profile_id=profile.id, request_id=key, fingerprint=fingerprint,
             input_hash=input_hash, month=month, snapshot=snapshot, runtime=public_runtime, consent=consent, status="generating", revision=1,
@@ -481,7 +545,7 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
         if result is not None:
             try:
                 profile = await db.get(Profile, row.profile_id, populate_existing=True)
-                _, current_hash, _, _, _ = await _input(db, ctx, customer, profile, row.month)
+                _, current_hash, _, _, _ = await _platform_input(db, ctx, customer, profile, row.month, run_platform(row))
                 _, current_runtime = await _runtime(db)
                 fresh = current_hash == row.input_hash and current_runtime["fingerprint"] == row.runtime["fingerprint"]
             except HTTPException: fresh = False
@@ -525,6 +589,7 @@ async def edit_item(db, user, run_id, item_id, *, expected_revision, title, cont
 async def adopt(db, user, run_id, *, request_id, expected_revision, preview_hash, confirmed):
     ctx, _ = await context(db, user, None); key = media._key(request_id)
     original = await _owned_run(db, ctx, run_id)
+    if run_platform(original) != "google_business": raise HTTPException(409, "Meta整月内容请使用集中审核与原生排期，不会采用为Google任务")
     ctx, customer = await context(db, user, original.customer_id, write=True)
     if confirmed is not True: raise HTTPException(422, "请核对本批具体文案、图片和客户后确认仅加入待准备任务")
     fingerprint = digest({"expected_revision": expected_revision, "preview_hash": preview_hash, "confirmed": True})
@@ -543,7 +608,7 @@ async def adopt(db, user, run_id, *, request_id, expected_revision, preview_hash
         if await db.scalar(select(Run.id).where(Run.customer_id == row.customer_id, Run.month == row.month, Run.status == "adopted", Run.id != row.id).limit(1)):
             raise HTTPException(409, "该客户本月已有采用批次，请管理原12条任务；本阶段不支持重复采用或隐式替代")
         profile = await db.get(Profile, row.profile_id, populate_existing=True)
-        _, current_hash, _, _, _ = await _input(db, ctx, customer, profile, row.month)
+        _, current_hash, _, _, _ = await _platform_input(db, ctx, customer, profile, row.month, run_platform(row))
         if current_hash != row.input_hash: raise HTTPException(409, "规则、菜单或图片已变化，请重新生成后核对")
         _, runtime = await _runtime(db)
         if runtime["fingerprint"] != row.runtime["fingerprint"]: raise HTTPException(409, "AI 服务配置已变化，请重新核对草稿来源")
@@ -603,7 +668,7 @@ async def archive(db, user, run_id, *, request_id, expected_revision, confirmed)
         await db.flush(); return result
 
 
-async def workspace_rows(db, user, customer_ids, start, end, view):
+async def workspace_rows(db, user, customer_ids, start, end, view, platform=None):
     """Saved multi-merchant monthly summary, without per-store image reads.
 
     Exact current bytes, binding, permission and content versions are rechecked
@@ -615,7 +680,9 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
         ctx, customer = await context(db, user, customer_ids[0])
         candidates = (await db.scalars(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer.id).order_by(Run.id.desc()))).all()
         latest = {}
-        for candidate in candidates: latest.setdefault(candidate.month, candidate)
+        for candidate in candidates:
+            if platform and run_platform(candidate) != platform: continue
+            latest.setdefault((candidate.month, run_platform(candidate)), candidate)
         output = []
         for candidate in latest.values():
             try: proposed = slots(candidate.month, candidate.snapshot["rules"])
@@ -630,7 +697,9 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
     customers = {r.id: r for r in (await db.scalars(select(Customers).where(Customers.id.in_(customer_ids)))).all()}
     candidates = (await db.scalars(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id.in_(customers)).order_by(Run.id.desc()))).all()
     latest = {}
-    for run in candidates: latest.setdefault((run.customer_id, run.month), run)
+    for run in candidates:
+        if platform and run_platform(run) != platform: continue
+        latest.setdefault((run.customer_id, run.month, run_platform(run)), run)
     runs = {run.id: run for run in latest.values() if run.status not in {"adopted", "archived"}}
     entries = {identity: [] for identity in runs}
     for item in (await db.scalars(select(Item).where(Item.run_id.in_(runs)).order_by(Item.slot_id))).all(): entries[item.run_id].append(item)
@@ -642,7 +711,7 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
     for identity, run in runs.items():
         customer = customers[run.customer_id]; batch = entries[identity]; workflow = workflows.get(identity)
         profile = profiles.get(customer.id)
-        stale = not profile or profile_data(profile) != (workflow.snapshot.get("source", {}).get("profile") if workflow else
+        stale = not profile or profile_data(profile, run_platform(run)) != (workflow.snapshot.get("source", {}).get("profile") if workflow else
             {"id": run.profile_id, "customer_id": run.customer_id, "revision": run.snapshot.get("profile_revision"),
              "public_facts": run.snapshot.get("public_facts"), "rules": run.snapshot.get("rules"),
              "menu_item_ids": [item["id"] for item in run.snapshot.get("menu_items", [])],
@@ -651,9 +720,9 @@ async def workspace_rows(db, user, customer_ids, start, end, view):
         zone = run.snapshot.get("rules", {}).get("timezone")
         def dto(kind, source_id, title, content, at, basis, revision, version):
             return {"id": kind + ":" + str(source_id), "kind": kind, "customer_id": customer.id, "customer_name": customer.business_name,
-                "platform": "google_business", "title": title, "content": content, "status": state, "at": iso(at), "time_basis": basis,
+                "platform": run_platform(run), "title": title, "content": content, "status": state, "at": iso(at), "time_basis": basis,
                 "timezone": zone, "revision": revision, "version": version, "source_id": source_id, "binding_id": None, "binding_revision": None,
-                "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": run.id}}
+                "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": run.id, "platform": run_platform(run), "month": run.month}}
         if view == "calendar":
             if workflow and workflow.schedule_refs: continue
             result.extend(dto("monthly_item", item.id, item.title, item.content, item.proposed_publish_at, "proposed_publish", item.revision, item.copy_hash)
@@ -672,7 +741,7 @@ async def _single_workspace_rows(db, user, customer_ids, start, end, view, *, ru
     latest = await db.scalar(select(Run).where(Run.owner_id == ctx.identity, Run.customer_id == customer.id, Run.id == run_id).limit(1))
     if not latest or latest.status in {"adopted", "archived"}: return []
     data = await run_data(db, latest)
-    source_fresh = await _freshness(db, ctx, customer, latest.month) == (latest.input_hash, latest.runtime["fingerprint"])
+    source_fresh = await _freshness(db, ctx, customer, latest.month, run_platform(latest)) == (latest.input_hash, latest.runtime["fingerprint"])
     status = "blocked" if not source_fresh or data["status"] == "failed" or data["status"] == "generated" and not data["adoptable"] else data["status"]
     from services.schema_readiness import tables_available
     workflow = None
@@ -684,9 +753,9 @@ async def _single_workspace_rows(db, user, customer_ids, start, end, view, *, ru
         status = "blocked" if workflow["source_stale"] or workflow["exception_count"] else workflow["status"]
     def row(kind, identity, title, content, at, basis, revision, version=None):
         return {"id": kind + ":" + str(identity), "kind": kind, "customer_id": customer.id, "customer_name": customer.business_name,
-            "platform": "google_business", "title": title, "content": content, "status": status, "at": iso(at), "time_basis": basis,
+            "platform": run_platform(latest), "title": title, "content": content, "status": status, "at": iso(at), "time_basis": basis,
             "timezone": latest.snapshot["rules"]["timezone"], "revision": revision, "version": version, "source_id": identity, "binding_id": None, "binding_revision": None,
-            "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": latest.id}}
+            "account_label": None, "review_eligible": False, "navigation": {"workspace": "monthly", "run_id": latest.id, "platform": run_platform(latest), "month": latest.month}}
     if view == "inbox": return []
     if view == "calendar":
         # Actual native schedules already appear in the central calendar.
