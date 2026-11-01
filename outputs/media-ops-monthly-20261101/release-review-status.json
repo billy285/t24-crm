@@ -1,0 +1,30 @@
+{
+  "application_freeze_sha256": "2196fcdb66246691141206b121099e7e0a8f67f91099cec1264b7feea1aa8547",
+  "artifact_sha256": {
+    "deployments/media-ops-monthly-20261101/artifacts/manifest.json": "3891c1776653d2456ea2c3c1871f70571be621dff2578556fa3101ab6821b0f4",
+    "deployments/media-ops-monthly-20261101/artifacts/payload.tar.gz": "9d19a52e6bc838870146bd81e38c682fcf8ffb1a2b802cd19a4a5cfd30bf92fa"
+  },
+  "existing_credential_environment_and_private_boundaries_preserved": true,
+  "files_sha256": {
+    "deployments/media-ops-monthly-20261101/build_payload.py": "3d59cad6950e20e02efd613088308b8e8cbe46bd6050e778686227d4200b6320",
+    "deployments/media-ops-monthly-20261101/make_capture.py": "1240c90e28fe1ec1d3526077f44a9e3f3daff2486e25ac2bebc7624cb47aced5",
+    "deployments/media-ops-monthly-20261101/make_commands.py": "4a05a29314ad24cf92e91a060527fdd5a3b4778e4345aa5c82e85651b6326a73",
+    "deployments/media-ops-monthly-20261101/preflight.py": "e7df079112d11603114c4acb7dc1917b59983b25af0544c583d5a39c0686445f",
+    "deployments/media-ops-monthly-20261101/release.py": "7619cff40c9c7fa856fa9a8318cb544382aced8a08b95c8b5fb4b0f76be9e560",
+    "deployments/media-ops-monthly-20261101/test_commands.py": "7c396a5941fe7486dc217c4e0e2d2228fc049c819478f9e8ba301c77c32f69b0",
+    "deployments/media-ops-monthly-20261101/test_monthly_transport.py": "4e881b9742c33efbc77bf24b0307325bb3caad166ff1f32a0346aee59755c70a",
+    "deployments/media-ops-monthly-20261101/test_package.py": "74093df4e5dc68d61633206c8fb79286f4358be684fd2c71cf56ee5d66a37fe2",
+    "deployments/media-ops-monthly-20261101/test_preflight.py": "19cab51a432af820df2b02f19eb17a619cc14260e455b3198be9cc1cb1719ec8",
+    "deployments/media-ops-monthly-20261101/test_release.py": "8d8756fdf3262c908ae0009930707cbf2483b30ef68c9df71e7fd2007ef8fe87",
+    "deployments/media-ops-monthly-20261101/test_schema_migration.py": "b1e5fd90b9d8bbc3455e0c45312811327f5ce060f84e2cf5531bb50177e4ca18"
+  },
+  "frontend_version": "628bd059a499",
+  "new_table_count": 153,
+  "original_table_count": 150,
+  "preflight_sha256": "d2129acab27861e9b6270a47aee2b9258f9b77f1d9a72db1cee477f962ebe9a5",
+  "production_actions": false,
+  "provider_actions": false,
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "stage": "MONTHLY_RELEASE_TOOLS_FROZEN_PENDING_CARRIER",
+  "synthetic_checks_passed": 126
+}

@@ -1,0 +1,19 @@
+{
+  "stage": "MONTHLY_FRONTEND_IMPLEMENTED_PENDING_ROOT_QA",
+  "files": {
+    "app/frontend/src/components/MediaMonthlyWorkspace.tsx": "2db85bdf1fda1c46e0dacd7cac8906714986ede1ead255d74496c715193430b7",
+    "app/frontend/src/components/media-monthly-workspace.css": "9fc3aa306edd256f2943ffafbb2487fd578d29fd65dfaca1a908457a6e62279b",
+    "app/frontend/src/lib/media-monthly-api.ts": "318dd5d82a6333e43b29a338ad8dd6268fb561beeec860679c80623e16c69a84",
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "d5a67a52600a1b28179bd47a1e298661924a78f9ae0208619904137fea951057",
+    "app/frontend/tests/media-monthly-workflow.test.mjs": "bb20cfa2a9c9d439e67f637b040b4d32e3ec93f595d7326b50e63c8458f5fe09",
+    "app/frontend/tests/media-merchant-workflow.test.mjs": "0e1cc60499338357c9d3db66aeda1a4940486a6996ef2c2977cdce0ccba8332d"
+  },
+  "new_monthly_tests": 19,
+  "related_frontend_tests": 133,
+  "eslint_errors": 0,
+  "eslint_warnings": 0,
+  "tsc_only_baseline": "Finance.tsx:5778 TS2322 unchanged",
+  "provider_actions": false,
+  "deployment_performed": false,
+  "local_qa_url": "http://127.0.0.1:8897/work/media-monthly-preview/index.html"
+}

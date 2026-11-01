@@ -1,0 +1,28 @@
+{
+  "stage": "MONTHLY_ROOT_LOCAL_QA_PASSED",
+  "application_source": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "frontend_version": "628bd059a499",
+  "viewports": [
+    {
+      "width": 1280,
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "width": 320,
+      "overflow": false
+    }
+  ],
+  "low_resolution_candidates": 12,
+  "low_resolution_adoption_blocked": true,
+  "valid_fixed_previews_loaded": 12,
+  "fixture_adopted_internal_draft_tasks": 12,
+  "real_provider_actions": 0,
+  "new_projection_and_workflow_tests": 49,
+  "vite_build": "passed",
+  "typecheck": "unchanged Finance.tsx:5778 TS2322 only",
+  "real_monthly_generation": "pending_production_deployment"
+}

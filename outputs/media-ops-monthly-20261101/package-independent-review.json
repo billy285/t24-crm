@@ -1,0 +1,24 @@
+{
+  "stage": "INDEPENDENT_MONTHLY_PACKAGE_REPRODUCTION_PASS",
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "frontend_version": "628bd059a499",
+  "application_freeze_sha256": "2196fcdb66246691141206b121099e7e0a8f67f91099cec1264b7feea1aa8547",
+  "builder_sha256": "3d59cad6950e20e02efd613088308b8e8cbe46bd6050e778686227d4200b6320",
+  "payload_sha256": "9d19a52e6bc838870146bd81e38c682fcf8ffb1a2b802cd19a4a5cfd30bf92fa",
+  "manifest_sha256": "3891c1776653d2456ea2c3c1871f70571be621dff2578556fa3101ab6821b0f4",
+  "dist_inventory_sha256": "42ee2c5205b984e24d6981292abc64172f585160cf55e84e82b9d122200961a0",
+  "runtime_member_count": 146,
+  "application_delta_count": 15,
+  "old_schema_revision": "cefa9b12a358",
+  "schema_revision": "df0ba123b469",
+  "additive_tables": [
+    "media_monthly_items",
+    "media_monthly_profiles",
+    "media_monthly_runs"
+  ],
+  "reproduced_payload_exact": true,
+  "reproduced_manifest_exact": true,
+  "production_actions": false,
+  "provider_actions": false,
+  "artifact_overwrite": false
+}

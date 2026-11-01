@@ -1,0 +1,49 @@
+{
+  "source": "https://t24marketing.wixsite.com/northern-pasta/menu",
+  "verified": "2026-11-01",
+  "customer_id": 20,
+  "prices_imported": false,
+  "customer": "北方面食",
+  "items": [
+    "葱油饼",
+    "豆腐脑",
+    "白菜猪肉饺子",
+    "凉皮",
+    "腊汁肉夹馍",
+    "油泼面"
+  ],
+  "menuOptions": [
+    {
+      "id": "all",
+      "label": "全部项目"
+    },
+    {
+      "id": "unbound",
+      "label": "未绑定项目"
+    },
+    {
+      "id": "6",
+      "label": "葱油饼 · 早餐"
+    },
+    {
+      "id": "5",
+      "label": "豆腐脑 · 早餐"
+    },
+    {
+      "id": "4",
+      "label": "白菜猪肉饺子 · 手工水饺"
+    },
+    {
+      "id": "3",
+      "label": "凉皮 · 肉夹馍／面条／凉皮"
+    },
+    {
+      "id": "2",
+      "label": "腊汁肉夹馍 · 肉夹馍／面条／凉皮"
+    },
+    {
+      "id": "1",
+      "label": "油泼面 · 肉夹馍／面条／凉皮"
+    }
+  ]
+}

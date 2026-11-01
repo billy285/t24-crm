@@ -1,0 +1,26 @@
+{
+  "all150_old_rows_and_objects_preserved": true,
+  "migration_sha256": "c42e71383a1dfc68cd290db612429f5fcae20ff82f2c442dadbcc9555158da36",
+  "network_requests": false,
+  "new_indexes": [
+    "ix_media_monthly_items_run_id",
+    "ix_media_monthly_runs_customer_id"
+  ],
+  "new_revision": "df0ba123b469",
+  "new_table_count": 153,
+  "new_table_shapes": {
+    "media_monthly_items": "d6d15f21b8b3ab3d7af1ae5088520ff90b17b5558159ea19d2b85f39ec0cc07f",
+    "media_monthly_profiles": "c4ae7f6cce537b81ee774e2f85e1b2de79f382f26392cbb6c327971e52a94dfe",
+    "media_monthly_runs": "d04c1ce1c4d49dd598f63af86d4c696f7df153e1de4ba33c3307c70905ca6678"
+  },
+  "new_tables": [
+    "media_monthly_items",
+    "media_monthly_profiles",
+    "media_monthly_runs"
+  ],
+  "new_tables_empty": true,
+  "old_revision": "cefa9b12a358",
+  "original_table_count": 150,
+  "production_database_used": false,
+  "stage": "MONTHLY_SCHEMA_DERIVED_FROM_ACTUAL_FROZEN_ADDITIVE_MIGRATION"
+}

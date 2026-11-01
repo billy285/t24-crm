@@ -1,0 +1,12 @@
+{
+  "stage": "MONTHLY_NAVIGATION_VALIDATOR_TESTS_PASS",
+  "new_test_file": "app/frontend/tests/media-monthly-navigation.test.mjs",
+  "new_test_sha256": "f46cf5dad786cea50299c38ad15d3ffd5abf069c9672bc35cf92a532f400d24f",
+  "new_test_bytes": 5556,
+  "validator_sha256": "ecdc0eaa9f258f26f27a4515c39f57eddba8c1dae5dd62186574cb77aab4f27f",
+  "new_tests": 9,
+  "focused_total_tests": 49,
+  "app_files_changed_by_this_review": false,
+  "provider_actions": false,
+  "server_actions": false
+}
