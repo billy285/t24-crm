@@ -17,12 +17,15 @@ export function OperationalFilters({ status, operatorId, operators, summary, onS
 }
 export function PortfolioOverview({ data, isOwner, onFilter, onMerchant }: { data: WorkspacePortfolio; isOwner: boolean; onFilter: (status: WorkspaceStatusFilter) => void; onMerchant: (merchant: WorkspaceMerchant) => void }) {
   const cards: WorkspaceStatusFilter[] = ['attention', 'review', 'no_schedule', 'unassigned'];
+  const priorityMerchants = data.exceptions.map(merchant => ({ merchant, high: merchant.issues?.filter(issue => issue.severity === 'high').length || 0, medium: merchant.issues?.filter(issue => issue.severity === 'medium').length || 0 }))
+    .sort((left, right) => right.high - left.high || right.medium - left.medium || left.merchant.id - right.merchant.id)
+    .slice(0, 6).map(item => item.merchant);
   return <section className="mw-portfolio" aria-label={isOwner ? '老板异常总览' : '我的运营待办'}>
     <header className="mw-section-heading"><div><span className="mw-eyebrow">{isOwner ? '老板总览' : '我的工作'}</span><h3>先处理需要关注的商家</h3></div><span>{data.filtered_merchants ?? data.summary.merchants} 家匹配 · 授权共 {data.summary.merchants} 家</span></header>
     {!data.sources_complete && <p className="mw-alert" role="status"><AlertCircle/>部分本地来源尚未就绪，当前数量暂不代表全部；请展开数据说明核对。</p>}
     <div className="mw-portfolio-metrics">{cards.map(key => <button type="button" key={key} onClick={() => onFilter(key)} className={key === 'attention' ? 'attention' : ''}><span>{labels[key]}</span><strong>{data.summary[key]}</strong><ChevronRight/></button>)}</div>
     <div className="mw-section-heading mw-queue-heading"><h3>需要关注的商家</h3><button type="button" onClick={() => onFilter('attention')}>查看全部<ArrowRight/></button></div>
-    {!data.exceptions.length ? <div className="mw-queue-empty"><Check/><div><strong>当前已保存记录中暂无待处理异常</strong><span>可继续核对排期覆盖和未分配商家；实时评论需在门店同步。</span></div></div> : <div className="mw-attention-list">{data.exceptions.slice(0, 6).map(merchant => <article key={merchant.id}><div><button type="button" className="mw-link" onClick={() => onMerchant(merchant)}>{merchant.name}</button><p>{merchant.issues?.slice(0, 2).map(issue => <span key={issue.code} className={`mw-issue ${issue.severity}`}>{issue.label}</span>)}</p></div><span className="mw-assignee">{operatorLabel(merchant)}</span><Button variant="outline" onClick={() => onMerchant(merchant)}>去处理<ArrowRight/></Button></article>)}</div>}
+    {!priorityMerchants.length ? <div className="mw-queue-empty"><Check/><div><strong>当前已保存记录中暂无待处理异常</strong><span>可继续核对排期覆盖和未分配商家；实时评论需在门店同步。</span></div></div> : <div className="mw-attention-list">{priorityMerchants.map(merchant => <article key={merchant.id}><div><button type="button" className="mw-link" onClick={() => onMerchant(merchant)}>{merchant.name}</button><p>{merchant.issues?.slice(0, 2).map(issue => <span key={issue.code} className={`mw-issue ${issue.severity}`}>{issue.label}</span>)}</p></div><span className="mw-assignee">{operatorLabel(merchant)}</span><Button variant="outline" onClick={() => onMerchant(merchant)}>去处理<ArrowRight/></Button></article>)}</div>}
     <p className="mw-caption">本地汇总更新：{compactTime(data.observed_at)}（北京时间）。待审、逾期、失败与结果待确认分别列示，平台实时状态以同步结果为准。</p>
   </section>;
 }
