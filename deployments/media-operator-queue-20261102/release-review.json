@@ -1,0 +1,26 @@
+{
+  "application_findings_fixed": [
+    "google_monthly_progress_must_not_appear_under_facebook_filter",
+    "monthly_run_list_must_match_requested_month"
+  ],
+  "helper_sha256": "cd69c5c551cc270643e0b1f193539bf9e20b77d4e6cca32c8fcc8b09337cbfcf",
+  "production_acceptance_requires_parent": true,
+  "real_publication_performed": false,
+  "runtime_canaries_require_server_preparation": true,
+  "scope": [
+    "exact_completed_parent_receipts_and_runtime",
+    "all162_rows_schema_env_credentials_private_csp_preservation",
+    "fresh_process_stopped_parent_recovery_without_exec",
+    "exact27_application_delta",
+    "seven_existing_runtime_files_no_migration",
+    "actual_payload_determinism_and_python310_syntax",
+    "native_route_registration_and_denied_roles",
+    "monthly_customer_month_rules_and_archive_owner_boundary",
+    "separate_internal_review_and_explicit_publication_confirmation",
+    "no_prod_provider_or_business_mutation_by_tools"
+  ],
+  "source_sha": "e0f39295a912ac6f7518d523a860ee9ca649d54e",
+  "stage": "MEDIA_OPERATOR_QUEUE_RELEASE_REVIEW",
+  "tool_tests_passed": 125,
+  "unresolved_release_blockers": []
+}
