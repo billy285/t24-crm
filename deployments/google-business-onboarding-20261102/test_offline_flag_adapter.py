@@ -17,7 +17,7 @@ old=load(ROOT/'deployments/media-ops-management-20261031/release.py','onboarding
 def info(rows=None):
     return {'Config':{'Env':['T24_GBP_ENABLED=false','T24_GBP_API_APPROVED=false','T24_GBP_SCHEDULER_ENABLED=false','STRIPE_AUTO_POSTING_ENABLED=false','STRIPE_HISTORY_DAILY_SCAN_ENABLED=false',*(rows if rows is not None else [KEY+'=false'])]},'Mounts':[],'HostConfig':{'NetworkMode':'none'}}
 
-def verify(value):return r.Methods.verify_offline_environment(SimpleNamespace(base=old),value)
+def verify(value):return r.Methods.verify_offline_environment(SimpleNamespace(_original_offline_validator=old.verify_disabled_environment),value)
 
 def test_original_rejection_is_reproduced_then_one_false_flag_projection_passes_without_mutation():
     value=info();saved=copy.deepcopy(value)
@@ -45,7 +45,7 @@ def test_all_other_original_offline_guards_remain_unchanged(attack):
 
 def test_final_r2_source_is_only_new_scope_adapter_and_call_site_delta():
     before=(HERE/'attempt1-release.py').read_bytes();assert hashlib.sha256(before).hexdigest()=='c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a'
-    current=(HERE/'release.py').read_text()
+    current=(HERE/'attempt2-release.py').read_text()
     start=current.index('    def verify_offline_environment(self,info):\n');end=current.index('    def offline_args(self,data,image):\n',start)
     restored=current[:start]+current[end:]
     assert restored.count("SCOPE = 'google-business-onboarding-r2'")==1

@@ -1,0 +1,15 @@
+{
+  "actual_native_create_settle_start_wait_exit_replay_retry_recovery_dispatch_tests": true,
+  "application_manifest_payload_freeze_unchanged": true,
+  "cause": "retained migration name used source prefix without scope; separate settlement used old unprojected validator",
+  "error_code": "UNKNOWN_MIGRATION_NAME_OCCUPIED",
+  "exit_code": 1,
+  "failed_release_tool_sha256": "e926a51afafa913e9aec7bcc48cf099cb123fa49ca43346a647dcc3fc2ec8c43",
+  "failed_scope": "google-business-onboarding-r2",
+  "failed_server_stages_or_containers_deleted_or_reused": false,
+  "fix": "private shared globals for actual native run/settle; strict preserved original validator; one name literal includes complete fresh scope; inherited directory fsync barrier retained",
+  "new_scope": "google-business-onboarding-r3",
+  "server_actions_by_release_agent": false,
+  "status": "FAILED_PREPARE2_PRESERVED_NO_PRODUCTION_SWITCH",
+  "task_id": "t-hk071tqf5zgg9vk"
+}

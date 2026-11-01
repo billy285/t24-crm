@@ -1,0 +1,39 @@
+{
+  "files": {
+    "deployments/google-business-onboarding-20261102/attempt2-release.py": {
+      "bytes": 58819,
+      "sha256": "e926a51afafa913e9aec7bcc48cf099cb123fa49ca43346a647dcc3fc2ec8c43"
+    },
+    "deployments/google-business-onboarding-20261102/release.py": {
+      "bytes": 61025,
+      "sha256": "0ac3a706567118506831853d425983f119d469451aea32c31f07d6f23a4b69a8"
+    },
+    "deployments/google-business-onboarding-20261102/test_native_migration_chain.py": {
+      "bytes": 12253,
+      "sha256": "039e24c4d0a7feb494ab626b2f8cb1e2d641d07476425759b2099372cf6eee7d"
+    },
+    "deployments/google-business-onboarding-20261102/test_offline_flag_adapter.py": {
+      "bytes": 3719,
+      "sha256": "c4562e8a7e63fa36426d06751a257f0393342c26a3635252bfdae829930a8147"
+    },
+    "outputs/google-business-onboarding-20261102/package-freeze-r3.json": {
+      "bytes": 3612,
+      "sha256": "bad2fcbd99fe54f366777b5af272cdd301f9fc4556ca30df98ff5c228c9496b2"
+    },
+    "outputs/google-business-onboarding-20261102/prepare-attempt2-failure-review.json": {
+      "bytes": 941,
+      "sha256": "714a605e426ad7e48262ef909e382bb156884459c483028cc905c682f82bbb7b"
+    }
+  },
+  "manifest_payload_application_unchanged": true,
+  "paths": [
+    "deployments/google-business-onboarding-20261102/release.py",
+    "deployments/google-business-onboarding-20261102/attempt2-release.py",
+    "deployments/google-business-onboarding-20261102/test_native_migration_chain.py",
+    "deployments/google-business-onboarding-20261102/test_offline_flag_adapter.py",
+    "outputs/google-business-onboarding-20261102/package-freeze-r3.json",
+    "outputs/google-business-onboarding-20261102/prepare-attempt2-failure-review.json"
+  ],
+  "server_actions": false,
+  "status": "RETRY3_CARRIER_RECOMMENDATION_ONLY"
+}

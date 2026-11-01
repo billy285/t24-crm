@@ -1,0 +1,34 @@
+{
+  "actual_create_settle_start_wait_known_retry_production_and_forward_recovery_dispatch_exercised": true,
+  "adapter_original_validator_separately_saved_no_recursion": true,
+  "application_or_tool_mutations": false,
+  "application_payload_manifest_freeze_and_17_source_delta_unchanged": true,
+  "directory_fsync_barrier_before_start_preserved_and_writer_restored": true,
+  "exact_in_memory_payload_manifest_reproduced": true,
+  "exact_reviewed_delta_reverse_proof_to_r2": true,
+  "frontend_version": "b0e161d74fe5",
+  "independent_tests": {
+    "additional_postpilot_tests": 52,
+    "all_current_release_directory_passed": 196,
+    "exit_code": 0,
+    "includes_frozen_release_tests": 144,
+    "seconds": 5.64
+  },
+  "limits": [
+    "Actual r3 candidate prepare acceptance and canonical receipt still required before switch.",
+    "Review performed no server/provider/Git actions or application/release source/artifact mutations."
+  ],
+  "manifest_sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0",
+  "native_run_settle_original_code_guards_preserved_with_one_name_constant_replacement": true,
+  "package_freeze_r3_sha256": "bad2fcbd99fe54f366777b5af272cdd301f9fc4556ca30df98ff5c228c9496b2",
+  "payload_sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1",
+  "private_globals_snapshot_retains_current_migration_script_and_no_original_module_global_mutation": true,
+  "provider_requests": false,
+  "release_scope": "google-business-onboarding-r3",
+  "release_sha256": "0ac3a706567118506831853d425983f119d469451aea32c31f07d6f23a4b69a8",
+  "server_execution": false,
+  "source_inode_image_command_rootfs_mount_secret_flag_network_and_unknown_name_fences_reject_drift": true,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_R3_PACKAGE_FRONTEND_INDEPENDENT_REVIEW",
+  "status": "PASS"
+}

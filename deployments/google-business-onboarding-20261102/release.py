@@ -23,7 +23,7 @@ import time
 import types
 
 HOST='iZj6c4cj7edgnhdimts4l7Z'
-SCOPE = 'google-business-onboarding-r2'
+SCOPE = 'google-business-onboarding-r3'
 SOURCE_SHA = '8b429dad8a2f144ea27527717d4811fb7ddc9b3c'
 FRONTEND = 'b0e161d74fe5'
 APPLICATION_FREEZE_SHA = 'e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd'
@@ -267,6 +267,23 @@ def _load(args):
 
 
 
+def scoped_migration_methods(base,validator):
+    # Preserve every native command/inode/image/mount/retry guard. Clone only
+    # these two functions into a private shared globals snapshot, leaving the
+    # frozen helper module itself unmodified. One literal supplies a fresh name.
+    run=base.Release.run_migration;settle=base.Release.settle_migration
+    need(run.__globals__ is settle.__globals__ and run.__globals__['verify_disabled_environment'] is base.verify_disabled_environment,'EXACT_NATIVE_MIGRATION_GLOBALS_REQUIRED')
+    previous='t24-management-migration-';constants=run.__code__.co_consts
+    need(constants.count(previous)==1,'EXACT_NATIVE_MIGRATION_NAME_LITERAL_REQUIRED')
+    namespace=dict(run.__globals__);namespace['verify_disabled_environment']=validator
+    code=run.__code__.replace(co_consts=tuple('t24-'+SCOPE+'-migration-' if value==previous else value for value in constants))
+    def clone(function,code):
+        value=types.FunctionType(code,namespace,function.__name__,function.__defaults__,function.__closure__)
+        value.__kwdefaults__=copy.copy(function.__kwdefaults__)
+        return value
+    return clone(run,code),clone(settle,settle.__code__)
+
+
 class Methods:
     def __init__(self,args,pf,flow,inventory,retained):
         self.args,self.pf,self.flow,self.retained=args,pf,flow,retained
@@ -280,6 +297,8 @@ class Methods:
         m.public_root=lambda:self.public;m.next_nginx=lambda original:next_nginx(original,p['public_root'],self.public)
         self.base.OLD_REVISION,self.base.NEW_REVISION,self.base.MIGRATION=OLD_REVISION,NEW_REVISION,MIGRATION
         self.base.migration_script=retained.migration_script
+        self._original_offline_validator=self.base.verify_disabled_environment
+        self._native_migration_run,self._native_migration_settle=scoped_migration_methods(self.base,self.verify_offline_environment)
         self.pf.google_environment=self.ctx.workflow.pf.google_environment;self.pf.meta_environment=self.environment;self.pf.security_headers=self.ctx.workflow.pf.security_headers;self.pf.ACTIVATION_FROM='2026-10-30T19:42:04Z'
         self.old_name='t24-crm-before-'+SCOPE+'-'+SOURCE_SHA[:12];self.candidate_name='t24-crm-candidate-'+SCOPE+'-'+SOURCE_SHA[:12];self.offline_name='t24-'+SCOPE+'-probe-'+SOURCE_SHA[:12]
 
@@ -395,6 +414,23 @@ asyncio.run(check())
 print('EXACT_PY310_TWO_GET_PROJECTION_ROUTES_ROLE_DENIED')
 """
 
+    def run_migration(self,data,image,*,retry=False):
+        # Retain the existing directory fsync barrier before container start.
+        _,identity_path=self.migration_identity(data);original_write=self.m.write
+        def durable_identity_write(path,value):
+            sha=original_write(path,value)
+            if path==identity_path:
+                fd=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+                try:os.fsync(fd)
+                finally:os.close(fd)
+            return sha
+        self.m.write=durable_identity_write
+        try:return self._native_migration_run(self,data,image,retry=retry)
+        finally:self.m.write=original_write
+
+    def settle_migration(self,data,*,required=False):
+        return self._native_migration_settle(self,data,required=required)
+
     def verify_offline_environment(self,info):
         # The frozen validator predates this one explicit non-secret flag.
         # Prove its sole value first, then validate an inspection-only copy;
@@ -406,7 +442,7 @@ print('EXACT_PY310_TWO_GET_PROJECTION_ROUTES_ROLE_DENIED')
         need(selected==[key+'=false'],'EXACT_OFFLINE_ONBOARDING_WORKER_DISABLED_REQUIRED')
         projected=copy.deepcopy(info)
         projected['Config']['Env']=[row for row in rows if row.split('=',1)[0]!=key]
-        self.base.verify_disabled_environment(projected)
+        self._original_offline_validator(projected)
 
     def offline_args(self,data,image):
         command=self.ctx.module.OperationsMethods.offline_args(self,data,image)
