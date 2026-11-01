@@ -129,7 +129,7 @@
   .gbo-read-meta { gap: 6px; flex-direction: column; align-items: flex-start; }
   .gbo-counts { gap: 7px; grid-template-columns: repeat(2,minmax(0,1fr)); }
   .gbo-counts > div { padding: 12px; }
-  .gbo-actionbar { bottom: calc(72px + env(safe-area-inset-bottom)); flex-wrap: wrap; gap: 12px; padding: 13px; }
+  .gbo-actionbar { position: static; bottom: auto; flex-wrap: wrap; gap: 12px; padding: 13px; }
   .gbo-actionbar > button, .gbo-confirm-actions > button { width: 100%; }
   .gbo-confirm-actions { flex-direction: column-reverse; }
   .gbo-alert, .gbo-recovery, .gbo-progress { padding: 12px; }
