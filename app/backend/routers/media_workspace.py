@@ -32,20 +32,26 @@ class PrivateRoute(APIRoute):
 
 router = APIRouter(prefix="/api/v1/media-workspace", tags=["media-workspace"], route_class=PrivateRoute)
 Platform = Literal["google_business", "facebook", "instagram", "tiktok", "xiaohongshu", "other"]
+Status = Literal["all", "attention", "review", "unassigned", "no_schedule"]
 
 
 @router.get("/merchants")
 async def merchants(q: str | None = Query(None, max_length=100), platform: Platform | None = None,
+                    customer_id: int | None = Query(None, ge=1),
+                    start: str | None = Query(None, max_length=80), end: str | None = Query(None, max_length=80),
+                    status: Status = "all", operator_id: int | None = Query(None, ge=1),
                     cursor: str | None = Query(None, max_length=6000), limit: int = Query(50, ge=1, le=100),
                     user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await service.merchants(db, user, q=q, platform=platform, cursor=cursor, limit=limit)
+    return await service.merchants(db, user, q=q, platform=platform, customer_id=customer_id, start=start, end=end,
+                                   status=status, operator_id=operator_id, cursor=cursor, limit=limit)
 
 
 @router.get("/workspace")
 async def workspace(start: str = Query(max_length=80), end: str = Query(max_length=80),
                     customer_id: int | None = Query(None, ge=1), platform: Platform | None = None,
                     view: Literal["overview", "calendar", "review", "inbox"] = "overview",
+                    status: Status = "all", operator_id: int | None = Query(None, ge=1),
                     cursor: str | None = Query(None, max_length=6000), limit: int = Query(50, ge=1, le=100),
                     user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await service.workspace(db, user, start=start, end=end, customer_id=customer_id, platform=platform,
-                                   view=view, cursor=cursor, limit=limit)
+                                   view=view, status=status, operator_id=operator_id, cursor=cursor, limit=limit)

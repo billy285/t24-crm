@@ -269,13 +269,12 @@ async def test_meta_cache_current_owner_target_parent_and_credential_bound(ops_e
 
 
 @pytest.mark.asyncio
-async def test_source_cap_is_explicit_partial_and_counts_never_claim_full_portfolio(projection, monkeypatch):
-    env = projection; monkeypatch.setattr(service, "SOURCE_CAP", 1)
+async def test_database_fetch_size_never_truncates_source_counts(projection, monkeypatch):
+    env = projection; monkeypatch.setattr(service, "READ_BATCH_SIZE", 1)
     result = await workspace(env)
     assert result.status_code == 200, result.text
-    assert result.json()["partial"] is True
-    assert result.json()["summary"]["tasks"] == 1
-    assert len(result.json()["items"]) == 1
+    assert result.json()["summary"]["tasks"] == 3
+    assert len(result.json()["items"]) == 3
 
 
 @pytest.mark.asyncio

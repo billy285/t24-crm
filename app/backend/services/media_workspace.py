@@ -1,4 +1,4 @@
-"""Bounded, local-only merchant projection over existing operating permissions.
+"""Complete, local-only merchant projection over existing operating permissions.
 
 This module does not refresh providers, approve content, dispatch publications,
 change grants, or persist a cache. Native workspaces remain authoritative for
@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -26,11 +27,12 @@ from services.customers import CustomersService
 from services.role_permissions import normalized_role
 from services.schema_readiness import tables_available, SchemaUnavailableError
 
-CUSTOMER_CAP = 1000
-SOURCE_CAP = 500
-BINDING_CAP = 200
+# A database fetch size, never a maximum number of merchants/source records.
+# All batches are consumed before totals or a signed response page are made.
+READ_BATCH_SIZE = 200
 VIEWS = {"overview", "calendar", "review", "inbox"}
 PUBLIC_KINDS = {"post_publish", "review_reply"}
+FILTERS = {"all", "attention", "review", "unassigned", "no_schedule"}
 
 
 def now(): return datetime.now(timezone.utc)
@@ -68,17 +70,34 @@ async def _customers(db, ctx, customer_id=None, q=None):
         query = query.where(Customers.id == customer_id)
     if q:
         query = query.where(Customers.business_name.ilike("%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", escape="\\"))
-    candidates = list((await db.scalars(query.limit(CUSTOMER_CAP + 1))).all())
-    truncated = len(candidates) > CUSTOMER_CAP
-    candidates = candidates[:CUSTOMER_CAP]
-    permissions = await customer_permissions_for_rows(db, ctx.user, candidates, config=ctx.config) if candidates else {}
-    rows = {r.id: r for r in candidates if permissions[r.id]["modules"]["delivery"]["read"] and (ctx.owner or permissions[r.id]["explicit"])}
-    return rows, {k: permissions[k] for k in rows}, truncated
+    rows, permissions = {}, {}
+    stream = await db.stream_scalars(query.execution_options(yield_per=READ_BATCH_SIZE))
+    async for candidates in stream.partitions(READ_BATCH_SIZE):
+        current = await customer_permissions_for_rows(db, ctx.user, candidates, config=ctx.config)
+        for row in candidates:
+            if current[row.id]["modules"]["delivery"]["read"] and (ctx.owner or current[row.id]["explicit"]):
+                rows[row.id] = row
+                permissions[row.id] = current[row.id]
+    return rows, permissions, False
 
 
-async def _limited(db, query):
-    values = list((await db.scalars(query.limit(SOURCE_CAP + 1))).all())
-    return values[:SOURCE_CAP], len(values) > SOURCE_CAP
+async def _records(db, query):
+    """Traverse the complete filtered SQL result using bounded database fetches.
+
+    Native authority/opaque snapshot validation is still applied before a row
+    enters the merged projection. A SQL UNION must not bypass those checks.
+    """
+    values = []
+    stream = await db.stream_scalars(query.execution_options(yield_per=READ_BATCH_SIZE))
+    async for batch in stream.partitions(READ_BATCH_SIZE): values.extend(batch)
+    return values, False
+
+
+async def _tuples(db, query):
+    values = []
+    stream = await db.stream(query.execution_options(yield_per=READ_BATCH_SIZE))
+    async for batch in stream.partitions(READ_BATCH_SIZE): values.extend(batch)
+    return values
 
 
 def _row(kind, record, customer, platform, *, title="", content="", status="", at=None,
@@ -98,13 +117,15 @@ async def _tasks(db, ctx, customers, permissions, start, end, platform):
     query = select(Task).where(Task.customer_id.in_(customers), Task.due_at >= start, Task.due_at < end).order_by(Task.due_at, Task.id)
     if not ctx.owner: query = query.where(Task.assignee_id == ctx.identity)
     if platform: query = query.where(Task.platform == platform)
-    records, truncated = await _limited(db, query)
+    records, truncated = await _records(db, query)
     items = []
     for record in records:
         data = media._data(record, ctx, permissions[record.customer_id])
-        items.append(_row("task", record, customers[record.customer_id], record.platform, title=record.title,
+        item = _row("task", record, customers[record.customer_id], record.platform, title=record.title,
             content=record.content, status=record.status, at=record.due_at, basis="task_due",
-            revision=record.revision, timezone_name=record.timezone, review=data["permissions"]["can_review"]))
+            revision=record.revision, timezone_name=record.timezone, review=data["permissions"]["can_review"])
+        item.update(assignee_id=record.assignee_id, assignee_name=record.assignee_name)
+        items.append(item)
     return items, truncated
 
 
@@ -120,15 +141,18 @@ async def _google(db, ctx, customers, start, end, platform, *, maps_only=False):
     else:
         from models.google_business import GoogleBusinessGrant as Grant
         candidates = candidates.join(Grant, Grant.binding_id == Binding.id).where(Grant.employee_id == ctx.identity, (Grant.can_reply.is_(True) | Grant.can_publish.is_(True)))
-    raw = list((await db.scalars(candidates.limit(BINDING_CAP + 1))).all())
-    truncated = len(raw) > BINDING_CAP
+    raw, truncated = await _records(db, candidates)
     bindings = {}
-    for candidate in raw[:BINDING_CAP]:
-        try:
-            binding, _, _ = await g._binding(db, ctx, candidate.id)
-            bindings[binding.id] = binding
-        except HTTPException as exc:
-            if exc.status_code not in {403, 404, 409}: raise
+    # The candidate query already enforces active binding + connection and
+    # exact Google grants for staff. _customers applied the same explicit
+    # delivery-read check as media._customer. Validate connection owners in
+    # bulk rather than making four native _binding reads for every merchant.
+    connections, _ = await _records(db, select(Connection).where(Connection.id.in_({r.connection_id for r in raw})))
+    owners, _ = await _records(db, select(Employees).where(Employees.id.in_({r.owner_id for r in connections})))
+    valid_owners = {r.id for r in owners if r.status in {"active", "probation"} and normalized_role(SimpleNamespace(role=r.role)) == "super_admin"}
+    valid_connections = {r.id for r in connections if r.active and r.owner_id in valid_owners and (not ctx.owner or r.owner_id == ctx.identity)}
+    for candidate in raw:
+        if candidate.connection_id in valid_connections: bindings[candidate.id] = candidate
     if not bindings: return [], {}, _source("google", "missing", "当前范围没有已授权 Google 门店；尚需在门店同步评论"), truncated
     source = _source("google", message="仅本地已保存草稿、排期及操作记录；完整评论尚需在门店同步")
     if maps_only: return [], bindings, source, truncated
@@ -139,23 +163,27 @@ async def _google(db, ctx, customers, start, end, platform, *, maps_only=False):
             Schedule.planned_at >= start, Schedule.planned_at < end).order_by(Schedule.planned_at, Schedule.id)
         if not ctx.owner:
             query = query.where(Schedule.task_id.in_(select(Task.id).where(Task.assignee_id == ctx.identity)))
-        schedules, cut = await _limited(db, query); truncated |= cut
+        schedules, cut = await _records(db, query); truncated |= cut
+        submitted_rows, _ = await _records(db, select(Action).where(Action.id.in_({r.action_id for r in schedules if r.action_id})))
+        submitted_actions = {r.id: r for r in submitted_rows}
         for row in schedules:
             b = bindings[row.binding_id]
             status = row.status
             if row.action_id:
-                submitted = await db.get(Action, row.action_id, populate_existing=True)
+                submitted = submitted_actions.get(row.action_id)
                 if submitted and submitted.binding_id == b.id and submitted.task_id == row.task_id and submitted.kind == "post_publish":
                     status = submitted.status
                 else: status = "unknown"
             # Content frozen by the existing publication approval is presented
             # only in its native preview, never reconstructed from today's task.
-            items.append(_row("google_schedule", row, customers[b.customer_id], "google_business", title="Google 帖子排期",
+            item = _row("google_schedule", row, customers[b.customer_id], "google_business", title="Google 帖子排期",
                 status=status, at=row.planned_at, basis="scheduled_publish", revision=row.revision, binding=b,
-                timezone_name=row.timezone, navigation={"workspace": "google", "binding_id": b.id, "schedule_id": row.id, "task_id": row.task_id}))
+                timezone_name=row.timezone, navigation={"workspace": "google", "binding_id": b.id, "schedule_id": row.id, "task_id": row.task_id})
+            item.update(assignee_id=row.operator_id, assignee_name=None)
+            items.append(item)
     else: truncated = True
     query = select(Action).where(Action.binding_id.in_(bindings), Action.kind.in_(PUBLIC_KINDS), Action.created_at >= start, Action.created_at < end).order_by(Action.created_at, Action.id)
-    actions, cut = await _limited(db, query); truncated |= cut
+    actions, cut = await _records(db, query); truncated |= cut
     for row in actions:
         b = bindings[row.binding_id]
         data = g.action_data(row, ctx)
@@ -166,7 +194,7 @@ async def _google(db, ctx, customers, start, end, platform, *, maps_only=False):
         query = select(Draft).where(Draft.binding_id.in_(bindings), Draft.created_at >= start, Draft.created_at < end,
             Draft.expires_at > now(), Draft.status == "generated").order_by(Draft.created_at, Draft.id)
         if not ctx.owner: query = query.where(Draft.actor_id == ctx.identity)
-        drafts, cut = await _limited(db, query); truncated |= cut
+        drafts, cut = await _records(db, query); truncated |= cut
         for row in drafts:
             b = bindings[row.binding_id]
             if not isinstance(row.review_name, str) or not row.review_name.startswith(b.location_name + "/reviews/"): continue
@@ -186,9 +214,9 @@ async def _meta(db, ctx, customers, start, end, platform, *, maps_only=False):
     opctx = await ops.context(db, ctx.user)
     query = select(Binding).where(Binding.owner_id == ctx.identity, Binding.customer_id.in_(customers), Binding.active.is_(True)).order_by(Binding.id)
     if platform: query = query.where(Binding.platform == platform)
-    raw = list((await db.scalars(query.limit(BINDING_CAP + 1))).all()); truncated = len(raw) > BINDING_CAP
+    raw, truncated = await _records(db, query)
     bindings = {}
-    for candidate in raw[:BINDING_CAP]:
+    for candidate in raw:
         try:
             b = await ops._binding(db, opctx, candidate.id)
             if b.source_binding_id != b.id: continue
@@ -208,7 +236,7 @@ async def _meta(db, ctx, customers, start, end, platform, *, maps_only=False):
     for model, kind in ((Draft, "meta_draft"), (Schedule, "meta_schedule"), (Action, "meta_action")):
         column = model.planned_at if model is Schedule else (model.updated_at if model is Draft else model.created_at)
         query = select(model).where(model.owner_id == ctx.identity, model.binding_id.in_(bindings), column >= start, column < end).order_by(column, model.id)
-        records, cut = await _limited(db, query); truncated |= cut
+        records, cut = await _records(db, query); truncated |= cut
         for row in records:
             b = bindings[row.binding_id]
             snap = row.submitted_snapshot if model in {Schedule, Action} else None
@@ -225,7 +253,7 @@ async def _meta(db, ctx, customers, start, end, platform, *, maps_only=False):
     # The provider cache can contain several reads of one external object.
     # Take the newest valid snapshot, then validate the opaque parent chain.
     query = select(Target).where(Target.owner_id == ctx.identity, Target.binding_id.in_(bindings), Target.expires_at > now()).order_by(Target.created_at.desc(), Target.id.desc())
-    targets, cut = await _limited(db, query); truncated |= cut
+    targets, cut = await _records(db, query); truncated |= cut
     seen = set()
     for row in targets:
         b = bindings[row.binding_id]
@@ -321,56 +349,9 @@ def _paginate(items, *, ctx, scope, sources, cursor, limit):
     return items[offset:following], next_cursor
 
 
-async def merchants(db, user, *, q=None, platform=None, cursor=None, limit=50):
-    ctx = await context(db, user); platform = _platform(platform)
-    q = q.strip() if isinstance(q, str) else None
-    if q and len(q) > 100: raise HTTPException(422, "搜索内容过长")
-    customers, permissions, truncated = await _customers(db, ctx, q=q)
-    # Merchant choices derive from the authorized portfolio plus task platform
-    # associations, not a provider request for each merchant.
-    query = select(Task.customer_id, Task.platform, Task.timezone).where(Task.customer_id.in_(customers)).distinct().order_by(Task.customer_id, Task.platform, Task.timezone)
-    if not ctx.owner: query = query.where(Task.assignee_id == ctx.identity)
-    pairs = list((await db.execute(query.limit(CUSTOMER_CAP * 6 + 1))).all())
-    pair_cut = len(pairs) > CUSTOMER_CAP * 6; truncated |= pair_cut
-    platforms = {k: set() for k in customers}
-    zones = {k: set() for k in customers}
-    for identity, value, zone in pairs[:CUSTOMER_CAP * 6]:
-        if value in dict(media.PLATFORMS): platforms[identity].add(value)
-        if isinstance(zone, str) and zone: zones[identity].add(zone)
-    # No interaction/content queries are needed to discover current authorized
-    # native bindings; maps_only avoids reading hundreds of cached targets.
-    instant = now()
-    _, gb, gs, cut = await _optional(db, "google", lambda: _google(db, ctx, customers, instant, instant, platform, maps_only=True)); truncated |= cut
-    _, mb, ms, cut = await _optional(db, "meta", lambda: _meta(db, ctx, customers, instant, instant, platform, maps_only=True)); truncated |= cut
-    for b in gb.values(): platforms[b.customer_id].add("google_business")
-    for b in mb.values(): platforms[b.customer_id].add(b.platform)
-    operators = {}
-    for binding in gb.values():
-        if not binding.primary_operator_id or binding.lifecycle != "active": continue
-        employee = await db.get(Employees, binding.primary_operator_id, populate_existing=True)
-        if employee and employee.status in {"active", "probation"}:
-            operators[binding.customer_id] = employee.name
-    items = [{"id": r.id, "name": r.business_name, "platforms": sorted(platforms[r.id]),
-        "can_create": bool(ctx.can_create and permissions[r.id]["modules"]["delivery"]["write"]),
-        "can_edit": bool(ctx.can_edit and permissions[r.id]["modules"]["delivery"]["write"]),
-        "region": ", ".join(x for x in (r.city, r.state) if isinstance(x, str) and x.strip()) or None if permissions[r.id]["modules"]["basic"]["read"] else None,
-        "industry": r.industry if permissions[r.id]["modules"]["basic"]["read"] else None,
-        "timezone": next(iter(zones[r.id])) if not pair_cut and len(zones[r.id]) == 1 else None,
-        "primary_operator_name": operators.get(r.id)} for r in customers.values()
-        if not platform or platform in platforms[r.id]]
-    sources = [_source("tasks", message="仅当前已授权商家与任务平台"), gs, ms]
-    page, following = _paginate(items, ctx=ctx, scope={"q": q, "platform": platform, "view": "merchants"}, sources=sources, cursor=cursor, limit=limit)
-    return {"items": page, "next_cursor": following, "total": len(items), "partial": bool(truncated or following), "sources": sources, "observed_at": iso(now())}
-
-
-async def workspace(db, user, *, start, end, customer_id=None, platform=None, view="overview", cursor=None, limit=50):
-    ctx = await context(db, user); start, end = planning.window(start, end, maximum=366); platform = _platform(platform)
-    if view not in VIEWS: raise HTTPException(422, "请选择有效工作视图")
-    customers, permissions, truncated = await _customers(db, ctx, customer_id)
-    rows, _, _, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform, view); truncated |= cut
-    rows.sort(key=lambda r: (r["at"] or "", r["id"]), reverse=True)
-    summary = {"tasks": sum(r["kind"] == "task" for r in rows),
-        "drafts": sum(r["kind"] in {"meta_draft", "google_reply_draft"} and r["status"] == "draft" or r["kind"] == "task" and r["status"] == "draft" for r in rows),
+def _summary(rows):
+    return {"tasks": sum(r["kind"] == "task" for r in rows),
+        "drafts": sum(r["kind"] in {"meta_draft", "google_reply_draft", "task"} and r["status"] == "draft" for r in rows),
         "in_review": sum(r["kind"] == "task" and r["status"] == "in_review" for r in rows),
         "ready": sum(r["kind"] == "task" and r["status"] == "ready" for r in rows),
         "scheduled": sum(r["kind"] in {"google_schedule", "meta_schedule"} and r["status"] == "scheduled" for r in rows),
@@ -378,14 +359,227 @@ async def workspace(db, user, *, start, end, customer_id=None, platform=None, vi
         "unknown": sum(r["status"] in {"unknown", "pending", "accepted"} for r in rows),
         "inbox": sum(r["kind"] in {"meta_comment", "google_reply_draft"} for r in rows),
         "review_candidates": sum(r["review_eligible"] for r in rows)}
-    if view == "review": rows = [r for r in rows if r["review_eligible"] or r["kind"] in {"meta_draft", "google_reply_draft", "monthly_run"}]
+
+
+def _filters(status, operator_id):
+    if status not in FILTERS: raise HTTPException(422, "请选择有效的商家工作筛选")
+    if operator_id is not None and (type(operator_id) is not int or operator_id < 1):
+        raise HTTPException(422, "请选择有效的主要运营")
+
+
+def _period(start, end):
+    if (start is None) != (end is None): raise HTTPException(422, "请同时提供开始和结束日期")
+    if start is None:
+        start = now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = (start + timedelta(days=32)).replace(day=1)
+    return planning.window(start, end, maximum=366)
+
+
+def _review_row(row):
+    return row["review_eligible"] or row["kind"] in {"meta_draft", "google_reply_draft", "monthly_run"}
+
+
+async def _upcoming(db, ctx, gb, mb):
+    """Exact saved future queues, independent of the selected reporting month.
+
+    These are not a provider-wide content audit. Already dispatched, cancelled
+    and merely suggested times never count as upcoming scheduled coverage.
+    """
+    from models.google_business import GoogleBusinessSchedule as GSchedule, GoogleBusinessBinding as GBinding
+    from models.meta_operations import MetaOperationsSchedule as MSchedule
+    values, complete = [], True
+    if gb:
+        if await tables_available(db, {GSchedule.__tablename__}):
+            query = select(GSchedule).join(Task, Task.id == GSchedule.task_id).join(GBinding, GBinding.id == GSchedule.binding_id).where(
+                GSchedule.binding_id.in_(gb), GSchedule.status == "scheduled", GSchedule.action_id.is_(None), GSchedule.planned_at >= now(),
+                Task.customer_id == GBinding.customer_id, Task.platform == "google_business").order_by(GSchedule.planned_at, GSchedule.id)
+            if not ctx.owner: query = query.where(Task.assignee_id == ctx.identity)
+            records, _ = await _records(db, query)
+            values.extend({"customer_id": gb[r.binding_id].customer_id, "at": aware(r.planned_at), "timezone": r.timezone} for r in records)
+        else: complete = False
+    if mb:
+        if await tables_available(db, {MSchedule.__tablename__}):
+            records, _ = await _records(db, select(MSchedule).where(MSchedule.owner_id == ctx.identity, MSchedule.binding_id.in_(mb),
+                MSchedule.status == "scheduled", MSchedule.action_id.is_(None), MSchedule.planned_at >= now()).order_by(MSchedule.planned_at, MSchedule.id))
+            values.extend({"customer_id": mb[r.binding_id].customer_id, "at": aware(r.planned_at), "timezone": r.timezone} for r in records)
+        else: complete = False
+    return values, complete
+
+
+async def _portfolio(db, ctx, customers, permissions, rows, gb, mb, *, platform, complete):
+    platforms = {k: set() for k in customers}; zones = {k: set() for k in customers}
+    pairs = select(Task.customer_id, Task.platform, Task.timezone).where(Task.customer_id.in_(customers)).distinct().order_by(Task.customer_id, Task.platform, Task.timezone)
+    if not ctx.owner: pairs = pairs.where(Task.assignee_id == ctx.identity)
+    for identity, value, zone in await _tuples(db, pairs):
+        if value in dict(media.PLATFORMS): platforms[identity].add(value)
+        if isinstance(zone, str) and zone: zones[identity].add(zone)
+    for b in gb.values(): platforms[b.customer_id].add("google_business")
+    for b in mb.values(): platforms[b.customer_id].add(b.platform)
+    identities = {b.primary_operator_id for b in gb.values() if b.primary_operator_id}
+    identities.update(r.get("assignee_id") for r in rows if r.get("assignee_id"))
+    people, _ = await _records(db, select(Employees).where(Employees.id.in_(identities), Employees.status.in_({"active", "probation"})))
+    people = {r.id: r for r in people}
+    active_google = {b.id: b for b in gb.values() if b.lifecycle == "active" and customers[b.customer_id].status == "closed"}
+    active_meta = {b.id: b for b in mb.values() if customers[b.customer_id].status == "closed"}
+    primary = {b.customer_id: people[b.primary_operator_id] for b in active_google.values() if b.primary_operator_id in people}
+    google_customers = {b.customer_id for b in active_google.values()}
+    connected_customers = google_customers | {b.customer_id for b in active_meta.values()}
+    from models.google_business import GoogleBusinessConnection as Connection
+    reconnect = set()
+    if gb:
+        connections, _ = await _records(db, select(Connection).where(Connection.id.in_({b.connection_id for b in gb.values()}), Connection.needs_reconnect.is_(True)))
+        reconnect = {b.customer_id for b in gb.values() if b.connection_id in {r.id for r in connections}}
+    try:
+        async with db.begin_nested():
+            future, queues_complete = await _upcoming(db, ctx, active_google, active_meta)
+    except (SQLAlchemyError, SchemaUnavailableError):
+        future, queues_complete = [], False
+    complete = bool(complete and queues_complete)
+    by_customer = {k: [] for k in customers}; future_by_customer = {k: [] for k in customers}
+    for row in rows: by_customer[row["customer_id"]].append(row)
+    for row in future: future_by_customer[row["customer_id"]].append(row)
+    instant = now(); horizon = instant + timedelta(days=7)
+    items = []
+    for customer in customers.values():
+        if platform and platform not in platforms[customer.id]: continue
+        records = by_customer[customer.id]; summary = _summary(records)
+        overdue = sum(r["kind"] == "task" and r["status"] not in {"completed"} and r["at"] and datetime.fromisoformat(r["at"]) < instant for r in records)
+        waiting = sum(r["kind"] == "task" and r["status"] == "in_review" or r["kind"] in {"meta_draft", "google_reply_draft"} and r["status"] == "draft" or r["kind"] == "monthly_run" and r["status"] in {"prepared", "reviewed", "generated"} for r in records)
+        upcoming = future_by_customer[customer.id]
+        next_publication = min(upcoming, key=lambda r: r["at"]) if upcoming else None
+        operator = primary.get(customer.id)
+        operating = "not_cooperating" if customer.status != "closed" else "active" if customer.id in connected_customers else "pending_connection" if complete else "unknown"
+        assignment = "assigned" if operator else "unassigned" if customer.id in google_customers else "not_applicable"
+        issues = []
+        if operating == "active" and customer.id in reconnect: issues.append({"code": "authorization", "label": "Google 需要重新授权", "severity": "high"})
+        if summary["blocked"]: issues.append({"code": "blocked", "label": f"{summary['blocked']} 条受阻或失败记录", "severity": "high"})
+        if summary["unknown"]: issues.append({"code": "result_unknown", "label": f"{summary['unknown']} 条执行结果待核对", "severity": "high"})
+        if waiting: issues.append({"code": "review", "label": f"{waiting} 项待审核或确认", "severity": "medium"})
+        if overdue and operating != "not_cooperating": issues.append({"code": "overdue", "label": f"{overdue} 项任务已逾期", "severity": "medium"})
+        if assignment == "unassigned": issues.append({"code": "unassigned", "label": "尚未指定 Google 主要运营", "severity": "medium"})
+        if not complete: issues.append({"code": "source_unavailable", "label": "部分本地来源尚未完整读取", "severity": "medium"})
+        next_seven = sum(instant <= value["at"] < horizon for value in upcoming)
+        if complete and operating == "active" and not next_seven: issues.append({"code": "no_schedule", "label": "未来7天暂无已保存排期", "severity": "info"})
+        items.append({"id": customer.id, "name": customer.business_name, "platforms": sorted(platforms[customer.id]),
+            "can_create": bool(ctx.can_create and permissions[customer.id]["modules"]["delivery"]["write"]),
+            "can_edit": bool(ctx.can_edit and permissions[customer.id]["modules"]["delivery"]["write"]),
+            "region": (", ".join(x for x in (customer.city, customer.state) if isinstance(x, str) and x.strip()) or None) if permissions[customer.id]["modules"]["basic"]["read"] else None,
+            "industry": customer.industry if permissions[customer.id]["modules"]["basic"]["read"] else None,
+            "timezone": next(iter(zones[customer.id])) if len(zones[customer.id]) == 1 else None,
+            "cooperation_status": customer.status if permissions[customer.id]["modules"]["basic"]["read"] else None,
+            "operating_state": operating, "assignment_state": assignment,
+            "primary_operator_id": operator.id if operator else None, "primary_operator_name": operator.name if operator else None,
+            "in_review": waiting, "blocked": summary["blocked"], "overdue": overdue, "scheduled": summary["scheduled"],
+            "next_publish_at": iso(next_publication["at"]) if next_publication else None,
+            "next_publish_timezone": next_publication["timezone"] if next_publication else None,
+            "next_7_days_count": next_seven if complete and operating == "active" else None,
+            "coverage_state": "not_applicable" if operating == "not_cooperating" else "not_connected" if operating == "pending_connection" else "scheduled" if next_seven else "none_saved" if complete else "unknown",
+            "data_state": "complete" if complete else "partial", "issues": issues})
+    summary = {"merchants": len(items), "attention": sum(any(x["severity"] != "info" for x in r["issues"]) for r in items),
+        "review": sum(r["in_review"] > 0 for r in items), "unassigned": sum(r["assignment_state"] == "unassigned" for r in items),
+        "no_schedule": sum(r["coverage_state"] == "none_saved" for r in items)}
+    operators = {}
+    for identity, employee in people.items():
+        if not ctx.owner and identity != ctx.identity: continue
+        operators[identity] = {"id": identity, "name": employee.name, "merchants": 0, "tasks": 0, "in_review": 0, "overdue": 0, "blocked": 0, "completed": 0, "scheduled": 0}
+    selected = {r["id"] for r in items}
+    for row in items:
+        if row["primary_operator_id"] in operators: operators[row["primary_operator_id"]]["merchants"] += 1
+    for row in rows:
+        if row["customer_id"] not in selected or row.get("assignee_id") not in operators: continue
+        operator = operators[row["assignee_id"]]
+        if row["kind"] == "task":
+            operator["tasks"] += 1
+            for key in ("in_review", "blocked", "completed"):
+                operator[key] += int(row["status"] == key)
+            operator["overdue"] += int(row["status"] != "completed" and bool(row["at"]) and datetime.fromisoformat(row["at"]) < instant)
+        elif row["kind"] == "google_schedule" and row["status"] == "scheduled": operator["scheduled"] += 1
+    return {"items": items, "summary": summary, "exceptions": [r for r in items if any(x["severity"] != "info" for x in r["issues"])],
+        "operators": sorted(operators.values(), key=lambda r: (-r["overdue"], -r["tasks"], r["id"])),
+        "sources_complete": complete, "source_mode": "local_saved", "observed_at": iso(instant)}
+
+
+def _matching(items, status, operator_id):
+    return [r for r in items if (operator_id is None or r["primary_operator_id"] == operator_id) and (
+        status == "all" or status == "attention" and any(i["severity"] != "info" for i in r["issues"]) or
+        status == "review" and r["in_review"] > 0 or status == "unassigned" and r["assignment_state"] == "unassigned" or
+        status == "no_schedule" and r["coverage_state"] == "none_saved")]
+
+
+def _calendar_days(rows):
+    result = {}
+    for row in rows:
+        if not row["at"]: continue
+        day = datetime.fromisoformat(row["at"]).astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        entry = result.setdefault(day, {"date": day, "total": 0, "scheduled": 0, "suggested": 0, "task_due": 0, "blocked": 0})
+        entry["total"] += 1
+        entry["scheduled"] += int(row["time_basis"] == "scheduled_publish" and row["status"] == "scheduled")
+        entry["suggested"] += int(row["time_basis"] == "proposed_publish")
+        entry["task_due"] += int(row["time_basis"] == "task_due")
+        entry["blocked"] += int(row["status"] in {"blocked", "failed", "missed", "rejected"})
+    return sorted(result.values(), key=lambda r: r["date"])
+
+
+def _review_groups(rows, start):
+    result = {}
+    for row in rows:
+        if not _review_row(row): continue
+        month = (datetime.fromisoformat(row["at"]) if row["at"] and row["kind"] != "monthly_run" else start).strftime("%Y-%m")
+        entry = result.setdefault((row["customer_id"], month), {"customer_id": row["customer_id"], "name": row["customer_name"], "month": month, "total": 0, "in_review": 0, "platforms": set()})
+        entry["total"] += 1; entry["in_review"] += int(row["status"] == "in_review"); entry["platforms"].add(row["platform"])
+    return [r | {"platforms": sorted(r["platforms"])} for _, r in sorted(result.items())]
+
+
+async def merchants(db, user, *, q=None, platform=None, customer_id=None, start=None, end=None, status="all", operator_id=None, cursor=None, limit=50):
+    ctx = await context(db, user); platform = _platform(platform); _filters(status, operator_id)
+    q = q.strip() if isinstance(q, str) else None
+    if q and len(q) > 100: raise HTTPException(422, "搜索内容过长")
+    start, end = _period(start, end)
+    customers, permissions, truncated = await _customers(db, ctx, customer_id, q=q)
+    rows, gb, mb, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform)
+    portfolio = await _portfolio(db, ctx, customers, permissions, rows, gb, mb, platform=platform, complete=not(truncated or cut))
+    items = _matching(portfolio["items"], status, operator_id)
+    items.sort(key=lambda r: (-sum(i["severity"] == "high" for i in r["issues"]), -sum(i["severity"] == "medium" for i in r["issues"]), r["id"]))
+    scope = {"q": q, "platform": platform, "customer_id": customer_id, "view": "merchants", "status": status, "operator_id": operator_id, "start": iso(start), "end": iso(end)}
+    page, following = _paginate(items, ctx=ctx, scope=scope, sources=sources, cursor=cursor, limit=limit)
+    return {"items": page, "next_cursor": following, "total": len(items), "has_more": bool(following),
+        "partial": bool(not portfolio["sources_complete"] or following), "sources_complete": portfolio["sources_complete"],
+        "sources": sources, "observed_at": portfolio["observed_at"], "summary": portfolio["summary"], "operators": portfolio["operators"],
+        "source_mode": "local_saved", "scope": scope, "range": {"start": iso(start), "end": iso(end)}}
+
+
+async def workspace(db, user, *, start, end, customer_id=None, platform=None, view="overview", status="all", operator_id=None, cursor=None, limit=50):
+    ctx = await context(db, user); start, end = _period(start, end); platform = _platform(platform); _filters(status, operator_id)
+    if view not in VIEWS: raise HTTPException(422, "请选择有效工作视图")
+    customers, permissions, truncated = await _customers(db, ctx, customer_id)
+    # Portfolio decisions use one canonical source view. A monthly batch is
+    # one review batch everywhere; suggested calendar slots do not change the
+    # merchant's review/exception totals when the user switches tabs.
+    rows, gb, mb, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform, "overview")
+    portfolio = await _portfolio(db, ctx, customers, permissions, rows, gb, mb, platform=platform, complete=not(truncated or cut))
+    matches = _matching(portfolio.pop("items"), status, operator_id)
+    selected = {r["id"] for r in matches}; rows = [r for r in rows if r["customer_id"] in selected]
+    portfolio["exceptions"] = [r for r in portfolio["exceptions"] if r["id"] in selected]
+    portfolio["filtered_merchants"] = len(matches)
+    rows.sort(key=lambda r: (r["at"] or "", r["id"]), reverse=True)
+    summary = _summary(rows)
+    groups = _review_groups(rows, start)
+    if view == "review": rows = [r for r in rows if _review_row(r)]
     elif view == "inbox": rows = [r for r in rows if r["kind"] in {"meta_comment", "google_reply_draft"}]
-    # Calendar includes internal deadlines with an explicit task_due basis so
-    # the UI can place them in a separate preparation list.
-    elif view == "calendar": rows = [r for r in rows if r["kind"] in {"task", "google_schedule", "meta_schedule", "meta_post", "monthly_item"}]
-    scope = {"customer_id": customer_id, "platform": platform, "view": view}
+    elif view == "calendar":
+        slots, _, monthly_source, calendar_cut = await _optional(db, "monthly", lambda: _monthly(db, ctx,
+            {k: v for k, v in customers.items() if k in selected}, start, end, platform, "calendar"))
+        if calendar_cut:
+            portfolio["sources_complete"] = False
+            sources = [monthly_source if r["key"] == "monthly" else r for r in sources]
+        rows = [r for r in rows if r["kind"] in {"task", "google_schedule", "meta_schedule", "meta_post"}] + slots
+        rows.sort(key=lambda r: (r["at"] or "", r["id"]), reverse=True)
+    days = _calendar_days(rows) if view == "calendar" else []
+    scope = {"customer_id": customer_id, "platform": platform, "view": view, "status": status, "operator_id": operator_id}
     period = {"start": iso(start), "end": iso(end)}
     page, following = _paginate(rows, ctx=ctx, scope={**scope, **period}, sources=sources, cursor=cursor, limit=limit)
-    return {"items": page, "next_cursor": following, "total": len(rows),
-        "partial": bool(truncated or following or view == "inbox"), "sources": sources, "observed_at": iso(now()),
-        "scope": scope, "range": period, "summary": summary, "capabilities": {"is_owner": ctx.owner, "meta_owner_only": True}}
+    return {"items": page, "next_cursor": following, "total": len(rows), "has_more": bool(following),
+        "sources_complete": portfolio["sources_complete"], "inbox_complete": False,
+        "partial": bool(not portfolio["sources_complete"] or following or view == "inbox"), "sources": sources, "observed_at": iso(now()),
+        "scope": scope, "range": period, "summary": summary, "portfolio": portfolio, "calendar_days": days, "review_groups": groups,
+        "capabilities": {"is_owner": ctx.owner, "meta_owner_only": True}}
