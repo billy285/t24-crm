@@ -1,5 +1,5 @@
 {
-  "status": "READY_FOR_ISOLATED_PREPARE_NOT_DEPLOYED",
+  "status": "DEPLOYED_PRIVATE_PACKET_WAITING_FOR_OWNER_REVIEW",
   "application_source": "d39337fccfd622e506ca3c1a655a126f5218dc42",
   "carrier": "78764a3fab9e0b905d4b978533bb99f92c8b554e",
   "carrier_pushed": true,
@@ -7,21 +7,14 @@
   "manifest_sha256": "d0953971efc1715dc0d68596e60e682e6c3748d8ccdbc10b5b393f044fdb0dc4",
   "payload_sha256": "3c57bc3a60082031c563f7f67dfab9d8da8c99989206418829aa4ecea535fd05",
   "prepare_command_sha256": "aead1328767e1424fb3ae192383e1168f4aa151a96ce1a42f3e94b17347b0963",
-  "prepare_command_executed": false,
-  "production_changed_this_phase": false,
-  "production_private_packet_prepared": false,
+  "prepare_command_executed": true,
+  "production_changed_this_phase": true,
+  "production_private_packet_prepared": true,
   "actual_public_schedules_created": 0,
   "production_google_writes": 0,
   "image_delivery_enabled": false,
-  "pending_external_step": "Close localhost8897 synthetic QA tab and any leave/alert modal to restore browser operation; user asked via async question",
-  "resume": [
-    "Restore authenticated Ali console44 after local QA tab45 closed",
-    "Run independently reviewed exact prepare wrapper",
-    "Review canonical prepared receipt before generating any activation command",
-    "Execute independently reviewed switch, verify155schema andall153legacyrows",
-    "Live owner UI prepare private month packet only; preserve12reviewedtexts, oneexistingstorefrontimage, confirmed12Chicago11dates",
-    "Stop beforeinternalapproval/nativeReady, imagepublicdelivery andpublicschedule pendingownerconfirmation"
-  ],
+  "pending_external_step": null,
+  "resume": [],
   "boundaries": [
     "No finance, closing, commission, currentpermissions orprivatechanges",
     "No historical catch-up or unknown automatic resend",
@@ -33,5 +26,16 @@
     "meta_workspace": 113,
     "release_tools": 97
   },
-  "local_tsc": "unchanged Finance.tsx:5778 baseline error only"
+  "local_tsc": "unchanged Finance.tsx:5778 baseline error only",
+  "activate_command_executed": true,
+  "recovery_executed": false,
+  "canonical_deployed_receipt_sha256": "8bc2907a55706ebc229faeb9b0f10ee24f08dd10de81c29412afce6e8a787197",
+  "production_workflow_id": 1,
+  "production_workflow_revision": 1,
+  "production_workflow_status": "prepared",
+  "production_preview_hash": "df6f87e1bbe9974593af7bca325677576c2e8b5c2f969a3265cac6902eb02971",
+  "internal_content_review_approved": false,
+  "real_publication_authorized": false,
+  "remaining_action": "Owner must review exact twelve copies, selected image and dates; no internal approval or actual publication scheduling performed by agent",
+  "verified_at_utc": "2026-11-01T04:50:24.277270+00:00"
 }

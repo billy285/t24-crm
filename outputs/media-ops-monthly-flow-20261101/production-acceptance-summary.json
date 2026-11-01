@@ -1,0 +1,53 @@
+{
+  "status": "DEPLOYED_AND_LIVE_PRIVATE_REVIEW_ACCEPTANCE_PASS",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "frontend_version": "8113d14d204f",
+  "prepared_receipt": "d07abd82d72dabdae727618fbb5ba0375c5cd05b61b691d0a06c1e4851578e43",
+  "deployed_receipt": "8bc2907a55706ebc229faeb9b0f10ee24f08dd10de81c29412afce6e8a787197",
+  "original153_tables_preserved_at_release": true,
+  "two_additive_workflow_tables_empty_at_release": true,
+  "private_packet_created_after_release": true,
+  "private_packet_status": "prepared",
+  "packet_revision": 1,
+  "copy_and_dates_preserved": true,
+  "review_post_cards": 12,
+  "shared_real_photo_count": 1,
+  "calendar_proposed_items": 12,
+  "calendar_month_days": 30,
+  "central_review_batch_visible": true,
+  "generic_batch_approval_disabled_for_monthly_packet": true,
+  "owner_pending_batch_count": 1,
+  "owner_actual_exception_count": 0,
+  "desktop": {
+    "width": 1280,
+    "scroll_width": 1280
+  },
+  "mobile": [
+    {
+      "width": 390,
+      "scroll_width": 390,
+      "oversized_controls": 0,
+      "review_button_clear_of_bottom_navigation": true
+    },
+    {
+      "width": 320,
+      "scroll_width": 320,
+      "oversized_controls": 0
+    }
+  ],
+  "persisted_packet_reopened_from_owner_reminder": true,
+  "internal_content_approval_performed": false,
+  "public_schedules_created": 0,
+  "real_provider_publishing_exercised": false,
+  "public_image_delivery_enabled": false,
+  "finance_closing_commissions_current_permissions_private_space_unchanged": true,
+  "qa_evidence_local_only": [
+    "production-desktop-flow.png",
+    "production-desktop-month-review.png",
+    "production-mobile-flow.png",
+    "production-mobile-review-gate.png",
+    "production-ui-acceptance.json",
+    "production-central-review.txt",
+    "production-calendar.txt"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "actions": {
+    "artifact_overwrites": 0,
+    "git_writes": 0,
+    "provider_requests": 0,
+    "review_evidence_only": true,
+    "server_executions": 0
+  },
+  "at_utc": "2026-11-01T04:44:01.548983+00:00",
+  "canonical_prepared_matches_envelope": true,
+  "carrier": "78764a3fab9e0b905d4b978533bb99f92c8b554e",
+  "checks": {
+    "activation_uses_only_actual_canonical_receipt": true,
+    "actual_offline153_to155_flags_all_pass": true,
+    "additive_migration_after_original_stopped_snapshot": true,
+    "bounded_no_follow_exact_root_helper_execution": true,
+    "candidate_identity_durable_before_original_stop": true,
+    "exact_candidate_image_and_schema_receipts": true,
+    "exact_original_runtime_matches_preflight": true,
+    "forward_only_recovery_no_database_restore": true,
+    "fresh_source_schema_inventory_env_private_checks": true,
+    "full_public_inventory_includes_historical_assets_dist_not_confused": true,
+    "new2_tables_empty_original153_rows_preserved": true,
+    "no_real_post_schedule_or_ai_actions_in_deployment": true,
+    "offline_no_credentials_no_network_workers_off": true,
+    "old_google_worker_on_meta_off_and_env_preserved": true,
+    "only_static_root_nginx_change": true
+  },
+  "command_and_pin_bytes_reproduced_in_memory": true,
+  "command_bytes": {
+    "activate-command.sh": 2248,
+    "prepare-command.sh": 3227,
+    "recover-command.sh": 2247
+  },
+  "command_sha256": {
+    "activate-command.sh": "f02a582270f97514361d92b379d9786e79743387dc0e7f2c1918379a3d92cd25",
+    "prepare-command.sh": "aead1328767e1424fb3ae192383e1168f4aa151a96ce1a42f3e94b17347b0963",
+    "recover-command.sh": "5596fb8efa87bf1afbe22450f39a737daa209b3af1a187afc7235b8a014e3b40"
+  },
+  "frontend_version": "8113d14d204f",
+  "prepared_sha256": "d07abd82d72dabdae727618fbb5ba0375c5cd05b61b691d0a06c1e4851578e43",
+  "reviewer": "north_month_frontend",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "status": "PASS"
+}
