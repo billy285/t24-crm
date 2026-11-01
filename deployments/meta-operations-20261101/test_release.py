@@ -35,7 +35,7 @@ def test_unknown_final_pins_prevent_any_release_or_command_generation(monkeypatc
 
 
 def test_actual_preflight_summary_required_and_drift_rejected():
-    summary = json.loads((ROOT / "outputs/meta-operations-20261101/preflight-summary.json").read_text())
+    summary = json.loads((ROOT / "outputs/meta-operations-20261101/preflight-summary-v2.json").read_text())
     r.validate_summary(summary)
     for key,value in (("sha256", "0"*64), ("table_count", 140), ("google_scheduler_enabled", False), ("google_scheduler_activation_from", "2020-01-01T00:00:00Z")):
         changed = {**summary, key:value}
@@ -233,7 +233,7 @@ def command_inputs(tmp_path,monkeypatch):
         if argv[1]=="rev-parse":return b"SYNTHETIC-IDENTICAL-APPLICATION-TREE\n"
         assert argv[1]=="show";return values[argv[2].split(":"+c.DIRECTORY+"/",1)[1]]
     monkeypatch.setattr(c.subprocess,"check_output",git)
-    summary=json.loads((ROOT/"outputs/meta-operations-20261101/preflight-summary.json").read_text())
+    summary=json.loads((ROOT/"outputs/meta-operations-20261101/preflight-summary-v2.json").read_text())
     return values,summary
 
 

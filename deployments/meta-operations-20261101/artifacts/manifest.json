@@ -225,7 +225,7 @@
     "sha256": "f0606c8bf2cdefea14a43530f7657cbbb7ecf1c4222512492ef4a4434a9501ec",
     "source": "https://pypi.org/pypi/Pillow/12.3.0/json"
   },
-  "preflight_sha256": "3ee6ceadf311ed15fdb63be14461fc0460e2b560a6be422af05a5cd2ec2a4262",
+  "preflight_sha256": "9f8a8877a9934496cfbe100e03f62ff6189b53a5c99056e6c7060e1f114b7b18",
   "production_seed_rows": false,
   "protected_source_inventory": {
     "app/.dockerignore": "00904b81cc471610bce2ea2881a3d8f85c31a05f863952f6917a9a8a09a7c8b4",

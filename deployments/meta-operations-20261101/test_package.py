@@ -39,7 +39,7 @@ def package(tmp_path,monkeypatch):
         'schema_revision':b.r.NEW_REVISION,'old_schema_revision':b.r.OLD_REVISION,'files':{name:after[name] for name in b.r.SOURCE_FILES},
         'dist_inventory_sha256':b.static_inventory(b.read_static(dist)),**{name:True for name in b.TRUE_FLAGS},**{name:False for name in b.FALSE_FLAGS}}
     freeze_path=tmp_path/'freeze.json';freeze_path.write_bytes(b.r.encoded(freeze))
-    summary=json.loads((ROOT/'outputs/meta-operations-20261101/preflight-summary.json').read_text())
+    summary=json.loads((ROOT/'outputs/meta-operations-20261101/preflight-summary-v2.json').read_text())
     args={'source_sha':source,'frontend':frontend,'freeze_path':freeze_path,'freeze_sha':b.H(freeze_path.read_bytes()),'wheel_path':wheel,'dist':dist}
     return summary,args,before,after,freeze
 

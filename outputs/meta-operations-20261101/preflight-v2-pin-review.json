@@ -1,0 +1,15 @@
+{
+  "application_freeze_sha256": "6d6e6e75d7db2b4423ce5cc368af97210485a8800da72446b0e8f10a916bd9d9",
+  "artifacts_written": false,
+  "files": {
+    "deployments/meta-operations-20261101/release.py": "3fe35f4fa23bb22db32134221a90eeed79b48079253c2cfbc3dc35f6bc0fcdad",
+    "deployments/meta-operations-20261101/test_package.py": "2052f33588fc0d328876271d1bf2813001e54e7ad078e2f56d6e8fafc5940913",
+    "deployments/meta-operations-20261101/test_release.py": "2f47b4b0533c58520b5cede0eacb287cd67ad4e0fb90991df87a398141636a2b"
+  },
+  "focused_tests_passed": 60,
+  "frontend_version": "d2dbd67fa15d",
+  "preflight_sha256": "9f8a8877a9934496cfbe100e03f62ff6189b53a5c99056e6c7060e1f114b7b18",
+  "row_validation_weakened": false,
+  "server_mutations": false,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6"
+}

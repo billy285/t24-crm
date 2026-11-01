@@ -1,0 +1,13 @@
+{
+  "code": "CURRENT_BUSINESS_ROWS_DRIFT",
+  "exit_code": 1,
+  "fresh_preflight_sha256": "9f8a8877a9934496cfbe100e03f62ff6189b53a5c99056e6c7060e1f114b7b18",
+  "production_container_stopped": false,
+  "production_database_migrated": false,
+  "recovery": "Preserve failed four-file staging and refresh protected aggregate baseline; no row-check exception",
+  "runtime_environment_changed": false,
+  "server_finished": "2026-11-01 08:33:53 Asia/Shanghai",
+  "server_started": "2026-11-01 08:33:49 Asia/Shanghai",
+  "stage": "META_OPERATIONS_PREPARE_ATTEMPT1_REJECTED",
+  "task_id": "t-hk071r0idh0ry80"
+}
