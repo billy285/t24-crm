@@ -1,0 +1,45 @@
+{
+  "application_freeze_sha256": "a57d42847bddadf58947edefab63b654bdcd37bc55227bae38bbe23f1fbcb168",
+  "canonical_prepared_receipt_not_present": true,
+  "carrier": "56c0454a105c844967c84f0b2310e0dc9295eeb6",
+  "command_bytes": 3233,
+  "command_sha256": {
+    "prepare-command.sh": "0d51b92250885ba40810d97c3d9871036308a5d1942beb6f7d1865acaa228996"
+  },
+  "deployment_tool_tests_passed": 103,
+  "executed": false,
+  "frontend_version": "42de3d4757db",
+  "generator_sha256": "e17cf331008ac4ce901871a3725e7472583504781e9cd070fca8a19fcb5dc233",
+  "immutable_committed_app_tree_and_four_members_verified": true,
+  "in_memory_regeneration_exact": true,
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "83abbc803879894490afbdc4836d19d82bd90df0580d94109619f0478a71fa8b",
+      139242
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "3bd98d9ea2ab84f81cf4f5e48399d36fba5ceec3e2bf53ffce1e308f0edae6b9",
+      2207594
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "ef93dc311c7706c8d06ca16673724cd608158f7963ea3e8899764db2fec14ac2",
+      9102
+    ],
+    "release.py": [
+      "release.py",
+      "485ac303342b486a589697d514ee7a1b7bb237bf23b61585d4eb32197b8398c4",
+      34862
+    ]
+  },
+  "observed_at": "2026-11-01T02:28:35.800565+00:00",
+  "preflight_sha256": "1f47d56afc3c79de9b905ad5d95a0e15617a3ca53c934fb2e8a1d24327a7ead9",
+  "release_sha256": "485ac303342b486a589697d514ee7a1b7bb237bf23b61585d4eb32197b8398c4",
+  "result": "PASS",
+  "server_provider_or_git_mutations": false,
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "stage": "MERCHANT_VIEW_FINAL_PREPARE_INDEPENDENT_REVIEW",
+  "switch_commands_emitted": false
+}

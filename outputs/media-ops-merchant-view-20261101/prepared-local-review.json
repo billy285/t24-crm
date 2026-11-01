@@ -1,0 +1,18 @@
+{
+  "actual_python310_exact_get_routes_and_role_denial_verified": true,
+  "all150_rows_schema_metadata_unchanged": true,
+  "candidate_image": "sha256:af0ba571d5b5a2dc46187c7083be17162803b4d98f8d45347c5da2b0f4378479",
+  "canonical_prepared_sha256": "572d0848eafb8eb17d79167452ca971cfd82156de646d046a1131dd89bf20cc9",
+  "frontend_version": "42de3d4757db",
+  "full_environment_credentials_preserved": true,
+  "manifest_sha256": "83abbc803879894490afbdc4836d19d82bd90df0580d94109619f0478a71fa8b",
+  "payload_sha256": "3bd98d9ea2ab84f81cf4f5e48399d36fba5ceec3e2bf53ffce1e308f0edae6b9",
+  "preflight_sha256": "1f47d56afc3c79de9b905ad5d95a0e15617a3ca53c934fb2e8a1d24327a7ead9",
+  "provider_requests": false,
+  "result": "PASS",
+  "reviewer_executed_server_action": false,
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "stage": "MERCHANT_VIEW_ACTUAL_PREPARED_REVIEW",
+  "table_count": 150,
+  "transport_receipt_sha256": "ea7178cbe2ed6f58647614d8d7586bada5b4c1b2ddf7687af89051915eae7ea0"
+}

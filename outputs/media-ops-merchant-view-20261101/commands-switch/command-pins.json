@@ -1,0 +1,36 @@
+{
+  "carrier": "56c0454a105c844967c84f0b2310e0dc9295eeb6",
+  "command_sha256": {
+    "activate-command.sh": "6165c21ee1a6a1e16c248b8d6a010ef7de83be06c5a693d4a2ea67e8c8e03bbf",
+    "prepare-command.sh": "0d51b92250885ba40810d97c3d9871036308a5d1942beb6f7d1865acaa228996",
+    "recover-command.sh": "95248832e61aa788e7c222e409e38b422fece7556874d55cffac4020fa1c65bd"
+  },
+  "executed": false,
+  "frontend_version": "42de3d4757db",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "83abbc803879894490afbdc4836d19d82bd90df0580d94109619f0478a71fa8b",
+      139242
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "3bd98d9ea2ab84f81cf4f5e48399d36fba5ceec3e2bf53ffce1e308f0edae6b9",
+      2207594
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "ef93dc311c7706c8d06ca16673724cd608158f7963ea3e8899764db2fec14ac2",
+      9102
+    ],
+    "release.py": [
+      "release.py",
+      "485ac303342b486a589697d514ee7a1b7bb237bf23b61585d4eb32197b8398c4",
+      34862
+    ]
+  },
+  "preflight_sha256": "1f47d56afc3c79de9b905ad5d95a0e15617a3ca53c934fb2e8a1d24327a7ead9",
+  "prepared_sha256": "572d0848eafb8eb17d79167452ca971cfd82156de646d046a1131dd89bf20cc9",
+  "release": "/opt/t24-crm/releases/media-ops-merchant-view-5a904dd925f0-20261101",
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08"
+}

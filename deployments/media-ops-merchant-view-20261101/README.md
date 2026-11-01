@@ -21,3 +21,7 @@ python -m pytest -q deployments/media-ops-merchant-view-20261101
 ```
 
 Only the root agent executes reviewed commands against the authenticated target. These tools do not authorize any real post, comment reply or scheduled publication.
+
+Verified deployment on 2026-11-01: prepare task `t-hk071rarstfaneo` and switch task `t-hk071rayynsh3wg` both exited 0. Production source is `5a904dd925f03296c07018f83e97277f5f90dd08`, frontend `42de3d4757db`, schema `cefa9b12a358`. The canonical deployed receipt is `48938f84d097d4938652218fe405a464d6f7dd5737e3bf8e590e8aeab74d0f16`; all 150 table rows/schema and existing environment, credentials, permissions, private boundary and Google scheduling cutoff were preserved.
+
+Owner-session live UI acceptance verified the six views at 390px and 1024px with persistent Pokeco scope and no horizontal overflow, fixed-customer new-task opening/closing without save, and a Facebook account selector containing only PokeCo. The 320px review footer and an eight-item/two-merchant batch were tested only against isolated synthetic data. See `outputs/media-ops-merchant-view-20261101/acceptance.json` and screenshots. Full provider inbox coverage still requires explicit selected-account synchronization; Meta execution/scheduling remain off. No real post, reply, schedule, new task or permission change was performed during UI acceptance.

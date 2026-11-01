@@ -1,0 +1,29 @@
+{
+  "actual_python310_exact_get_routes_and_role_denial_verified": true,
+  "all150_rows_schema_preserved": true,
+  "canonical_deployed_sha256": "48938f84d097d4938652218fe405a464d6f7dd5737e3bf8e590e8aeab74d0f16",
+  "canonical_prepared_sha256": "572d0848eafb8eb17d79167452ca971cfd82156de646d046a1131dd89bf20cc9",
+  "crm": {
+    "config": "0917719968304d79f94c6023c6b7f807bd5cfddef9a7982b7e3631a49d425b48",
+    "id": "199e8a448aa3e93a5347f1e93cb3e98600c8433fa18098f7b546a3d63f6eaa03",
+    "image": "sha256:af0ba571d5b5a2dc46187c7083be17162803b4d98f8d45347c5da2b0f4378479",
+    "restart": 0,
+    "started": "2026-11-01T02:31:21.827377617Z"
+  },
+  "database_restored": false,
+  "existing_full_environment_credentials_private_and_google_cutoff_preserved": true,
+  "frontend_version": "42de3d4757db",
+  "operations_execution_enabled": false,
+  "operations_scheduler_enabled": false,
+  "original_id": "2901ff5b7ff74a4746070400d802d27da7dbaf517b3e98282c826d5bb9cff1d2",
+  "preflight_sha256": "1f47d56afc3c79de9b905ad5d95a0e15617a3ca53c934fb2e8a1d24327a7ead9",
+  "privacy_probe_verified": true,
+  "provider_requests": false,
+  "result": "PASS",
+  "reviewer_live_actions": false,
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "stage": "MERCHANT_VIEW_ACTUAL_DEPLOYED_INDEPENDENT_REVIEW",
+  "table_count": 150,
+  "transport_receipt_sha256": "c6131049f833fc77341752b3d918fe4b81495577c07f7e73a69c67a836e9d518",
+  "ui_acceptance_by_root_pending": true
+}

@@ -1,0 +1,98 @@
+[
+  {
+    "view": "工作台",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "商家",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "内容日历",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "审核台",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "互动收件箱",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "交付报表",
+    "alerts": [],
+    "height": 844,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 390
+  },
+  {
+    "view": "工作台",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  },
+  {
+    "view": "商家",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  },
+  {
+    "view": "内容日历",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  },
+  {
+    "view": "审核台",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  },
+  {
+    "view": "互动收件箱",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  },
+  {
+    "view": "交付报表",
+    "alerts": [],
+    "height": 768,
+    "overflow": false,
+    "scope": "当前范围：Pokeco · 切换功能时保留该商家返回全部商家",
+    "width": 1024
+  }
+]

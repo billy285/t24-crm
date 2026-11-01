@@ -1,0 +1,52 @@
+{
+  "artifacts": [
+    "live-desktop.png",
+    "live-mobile.png",
+    "qa-live-responsive.json",
+    "qa-live-native-account.json",
+    "qa-local-responsive.json",
+    "qa-local-320-review.png"
+  ],
+  "carrier_sha": "56c0454a105c844967c84f0b2310e0dc9295eeb6",
+  "coverage": "Unified inbox uses saved local snapshots; complete current Google/Meta interactions require explicit selected-account refresh. No publication or permission change was performed during UI acceptance.",
+  "deploy_task": "t-hk071rayynsh3wg",
+  "deployed_canonical_sha256": "48938f84d097d4938652218fe405a464d6f7dd5737e3bf8e590e8aeab74d0f16",
+  "frontend_version": "42de3d4757db",
+  "prepare_task": "t-hk071rarstfaneo",
+  "safety": {
+    "all150_rows_schema_preserved": true,
+    "existing_customer_permissions_unchanged": true,
+    "existing_full_environment_preserved": true,
+    "financial_closing_commission_code_unchanged": true,
+    "google_existing_cutoff_preserved": true,
+    "meta_execution_enabled": false,
+    "meta_scheduler_enabled": false,
+    "private_boundary_preserved": true,
+    "production_tasks_created": false,
+    "real_posts_or_replies_sent": false
+  },
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "status": "DEPLOYED_AND_LIVE_OWNER_UI_VERIFIED",
+  "ui": {
+    "live_390_and_1024_all_six_views_no_horizontal_overflow": true,
+    "live_merchant_scope_persisted": true,
+    "live_owner_session_verified": true,
+    "live_staff_session_tested": false,
+    "local_320_review_footer_fits": true,
+    "local_batch_merchants": 2,
+    "local_batch_review_success": 8,
+    "local_synthetic_merchants": 240,
+    "native_facebook_account_scope": [
+      "Pokeco · Facebook 主页 · PokeCo"
+    ],
+    "new_task_closed_without_save": true,
+    "new_task_customer_fixed": "Pokeco"
+  },
+  "validation": {
+    "backend_regression_tests_passed": 437,
+    "existing_finance_ts5778_baseline_not_changed": true,
+    "frontend_workflow_tests_passed": 113,
+    "release_tool_tests_passed": 103,
+    "vite_build_passed": true
+  }
+}
