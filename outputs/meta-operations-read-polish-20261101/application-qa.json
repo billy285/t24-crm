@@ -1,0 +1,39 @@
+{
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "application_files": [
+    {
+      "path": "app/backend/services/meta_operations_provider.py",
+      "sha256": "25824eb333332b267c83983ba028dfbf08d70cf626964d27286584d28fcea7ee",
+      "bytes": 34476
+    },
+    {
+      "path": "app/backend/tests/test_meta_operations_provider.py",
+      "sha256": "97c4cd6cc8d32af1e16b0b5a19e915492cc67720e343768ccc23ae80f4c6cf6f",
+      "bytes": 24173
+    },
+    {
+      "path": "app/frontend/src/components/MetaOperationsWorkspace.tsx",
+      "sha256": "d632964d51996ab2448f9b4102a038d4c402c85b25a5a893787c55156563b123",
+      "bytes": 63056
+    },
+    {
+      "path": "app/frontend/tests/meta-operations-workflow.test.mjs",
+      "sha256": "f3d9e53c10ee9aed591ede08b1a69bfc759f47e64a611430a99150cc3d31305e",
+      "bytes": 38608
+    }
+  ],
+  "backend_tests": {
+    "passed": 88,
+    "failed": 0
+  },
+  "frontend_tests": {
+    "passed": 49,
+    "failed": 0
+  },
+  "frontend_production_build": "PASS",
+  "frontend_version": "866ebc073a31",
+  "independent_timestamp_ast_review": "Only _timestamp runtime node changed",
+  "scope": "No financial, permission, scheduler or provider-write logic changed",
+  "real_post_or_reply_sent": false,
+  "scheduler_execution_enabled": false
+}

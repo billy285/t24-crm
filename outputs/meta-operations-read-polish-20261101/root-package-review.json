@@ -1,0 +1,14 @@
+{
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "application_freeze_sha256": "f471734f50af2416632faac806efc977585dc2a598d08aa3d50602a45178d533",
+  "preflight_sha256": "4792c2350a251e545ec2da15fb95d24dc2261fab002f2a63f5f5b76e974f8088",
+  "payload_sha256": "bd3039b962fd7fc515762cb9e59422ea864142dcaa5e824db2c61dd533aa9f91",
+  "manifest_sha256": "9c2a7b7075f373fb75aa53bc7a5d09632d46ff373dd9430d479f347465e27dbc",
+  "deterministic_rebuild_matches_exact_files": true,
+  "all_141_member_names_hashes_and_regular_modes_verified": true,
+  "runtime_backend_overlay_count": 1,
+  "static_files": 140,
+  "credentials_dependencies_or_migrations_in_payload": false,
+  "package_and_preflight_tests_passed": 52,
+  "server_actions_performed_by_review": false
+}

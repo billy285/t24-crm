@@ -1,0 +1,51 @@
+{
+  "actual_commands_generated": false,
+  "actual_python310_offline_timestamp_canary_required": true,
+  "all150_populated_rows_and_schema_fenced": true,
+  "all_followup_tool_tests_passed": 98,
+  "application_freeze_sha256": "f471734f50af2416632faac806efc977585dc2a598d08aa3d50602a45178d533",
+  "blocking_findings": [],
+  "durable_candidate_identity_before_original_stop": true,
+  "execution_and_scheduler_remain_off": true,
+  "frontend_version": "866ebc073a31",
+  "full_existing_environment_and_eleven_ops_keys_preserved": true,
+  "independent_reviewed_members": {
+    "make_commands.py": {
+      "bytes": 10188,
+      "sha256": "91625f3967568dc7cebab33548443d31f03657880a222377c53ac9a4f0653e0f"
+    },
+    "preflight.py": {
+      "bytes": 9189,
+      "sha256": "6e12f110a6cf02172e41cdb91305fb2dc2c5b80fb4e64b545ccf7829556d0814"
+    },
+    "release.py": {
+      "bytes": 30137,
+      "sha256": "5f0d006aa0a469863b05aa01d3a497ef11a85655ced8f92f61d68d0495a50ad4"
+    },
+    "test_commands.py": {
+      "bytes": 8656,
+      "sha256": "d1b117dafe893ed06a66fb6877123413bdf19c4ccb14be2263532aecc4f9fcfd"
+    },
+    "test_release.py": {
+      "bytes": 10186,
+      "sha256": "69f9d99a67f2a64b5212e65e8384d03a23174743ba59da330178dcb1cfe45b9a"
+    }
+  },
+  "independent_rows_preserved_during_recovery": true,
+  "known_candidate_only_containment_and_compatible_original_recovery": true,
+  "no_database_restore_or_schema_migration": true,
+  "old_and_new_static_inventories_rechecked": true,
+  "privacy_callback_and_jpeg_routes_unchanged": true,
+  "result": "PASS",
+  "review_finding_closed": "Full staged static inventory rechecked in fresh() with drift-rejection regression",
+  "reviewer_application_edits_in_this_review": false,
+  "reviewer_authored_files": [
+    "make_commands.py",
+    "test_commands.py"
+  ],
+  "reviewer_independence_scope": "release.py and test_release.py; generator independently reviewed by frontend agent",
+  "reviewer_release_edits": false,
+  "server_or_provider_actions": false,
+  "source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "stage": "META_OPERATIONS_READ_POLISH_RELEASE_INDEPENDENT_REVIEW"
+}
