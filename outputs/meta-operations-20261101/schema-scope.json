@@ -1,0 +1,129 @@
+{
+  "down_revision": "bde8da01f247",
+  "indexes": [
+    "ix_meta_operations_actions_binding_id",
+    "ix_meta_operations_actions_owner_id",
+    "ix_meta_operations_bindings_customer_id",
+    "ix_meta_operations_bindings_owner_id",
+    "ix_meta_operations_credentials_owner_id",
+    "ix_meta_operations_drafts_binding_id",
+    "ix_meta_operations_drafts_owner_id",
+    "ix_meta_operations_media_customer_id",
+    "ix_meta_operations_media_owner_id",
+    "ix_meta_operations_oauth_states_expires_at",
+    "ix_meta_operations_schedules_binding_id",
+    "ix_meta_operations_schedules_owner_id",
+    "ix_meta_operations_schedules_planned_at",
+    "ix_meta_operations_schedules_status",
+    "ix_meta_operations_targets_binding_id",
+    "ix_meta_operations_targets_owner_id",
+    "uq_meta_ops_active_customer_platform",
+    "uq_meta_ops_active_global_asset"
+  ],
+  "routes": [
+    [
+      "/api/v1/meta-operations/actions/{action_id}",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/actions/{action_id}/continue",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/comments",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/disconnect",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/drafts",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/media",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/posts",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/bindings/{binding_id}/workspace",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/delivery/{token}.jpg",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/delivery/{token}.jpg",
+      "HEAD"
+    ],
+    [
+      "/api/v1/meta-operations/drafts/{draft_id}",
+      "PATCH"
+    ],
+    [
+      "/api/v1/meta-operations/drafts/{draft_id}/approve",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/drafts/{draft_id}/preview",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/drafts/{draft_id}/publish",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/drafts/{draft_id}/schedules",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/media/{media_id}/preview",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/oauth/callback",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/oauth/requests/{request_id}",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/oauth/start",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/requests/{request_id}",
+      "GET"
+    ],
+    [
+      "/api/v1/meta-operations/schedules/{schedule_id}/activate",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/schedules/{schedule_id}/cancel",
+      "POST"
+    ],
+    [
+      "/api/v1/meta-operations/status",
+      "GET"
+    ]
+  ],
+  "schema_revision": "cefa9b12a358",
+  "table_shapes": {
+    "meta_operations_actions": "b837b84e3db60ad68de21a2710a830ee4cc41bd0495b6b2d3c2bc76219664fdc",
+    "meta_operations_bindings": "321593fbe0a6a3a78fc0501f83e427127383bde67266a9298dc24f6fd50e5dcf",
+    "meta_operations_credentials": "68ada61fdaba718a9c11ca178c32ba9730331dd906f2ad5460c9b788cd4884f2",
+    "meta_operations_drafts": "a9fef0a13643eec45715a3a17a8d96fbb0b5124932049801cc70f5e8613ee239",
+    "meta_operations_media": "91c1218e8ff115711975024a687b75c5f30cdf5a830642a50e5b8ed2b75da923",
+    "meta_operations_oauth_states": "d8cc159b4a6c1bf76e416c62d4344e0c8a43462efbdfd990a7a695aa62f28753",
+    "meta_operations_requests": "8e5c6d0391562f70e205621bd81f1edb63852de0ad6c1918b297b468ea564ae5",
+    "meta_operations_schedules": "c408b85d8502ad9ced6e2f3c95a14df6ad3fe104eb9f38be497171c631fd55f6",
+    "meta_operations_targets": "ae167a6d61cae837d4d008368a3bb752b358d699a10230115f1323e718e32821"
+  }
+}

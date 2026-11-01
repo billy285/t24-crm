@@ -1,0 +1,75 @@
+{
+  "app_typecheck": "Only pre-existing Finance.tsx:5778 FinanceClosingChecklistItem handler mismatch; no new file errors",
+  "default_pilot_timezone": "America/Denver",
+  "eslint_targeted": "PASS",
+  "files": {
+    "app/frontend/src/components/MetaBusinessWorkspace.tsx": {
+      "bytes": 29769,
+      "sha256": "5044973ec61c75f6a305ea2a16bdc8f8264451f18dc1a695ece20a61943610b0"
+    },
+    "app/frontend/src/components/MetaOperationsWorkspace.tsx": {
+      "bytes": 62841,
+      "sha256": "61a9a2c6b147d96ab2bef6a93e007fcb9f82ba756a8c3b4ed1e7dcb50e3d65ba"
+    },
+    "app/frontend/src/components/meta-operations.css": {
+      "bytes": 9163,
+      "sha256": "a2b11cb767e8d8d29d43afa4c7c76b1f1de42330c648a5deeb1fb452656af67c"
+    },
+    "app/frontend/src/lib/meta-operations-api.ts": {
+      "bytes": 18129,
+      "sha256": "10c75b4226097816681fd2ee0e4b978260c83ee0f9dc5124f1f349854f08b63a"
+    },
+    "app/frontend/src/pages/MediaOperations.tsx": {
+      "bytes": 53137,
+      "sha256": "e29e64dfdb26ff312432ef31eff3127a2eb13c83b53629b2ddb84c1b8eebd08c"
+    },
+    "app/frontend/tests/meta-business-workflow.test.mjs": {
+      "bytes": 20699,
+      "sha256": "91291c524e910d940b324926989b216b5f31c939ac42324688d8fe7ffd08038a"
+    },
+    "app/frontend/tests/meta-operations-workflow.test.mjs": {
+      "bytes": 35618,
+      "sha256": "a5df40e86d1916c238bfe24f1142e87eefbb60878a3a128697a40a83e101907e"
+    }
+  },
+  "final_production_build": "Root to run after this freeze; earlier intermediate Vite build passed",
+  "fixes_after_first_freeze": [
+    "Private image verification epoch advances with parent readiness resets, including preview to schedule and unchanged action reread",
+    "Prior image callbacks cannot authorize a later verification epoch",
+    "Upload 409 and approval 409 refresh same-image previews while preserving edited text and existing media selection",
+    "Internal editor typing does not reload unchanged immutable image bytes"
+  ],
+  "focused_tests_passed": 46,
+  "git_changes_by_author": false,
+  "local_visual_harness": {
+    "runtime_files_exclude_harness": true,
+    "session_id": 88310,
+    "status": "running",
+    "synthetic_only": true,
+    "url": "http://127.0.0.1:8895/work/meta-ops-preview/index.html",
+    "visual_browser_acceptance": "Root to verify desktop/mobile/current frozen source"
+  },
+  "operations_authority": "Independent publisher authority; old read route and exact read3 DTO guards unchanged",
+  "production_changes_by_author": false,
+  "react_quality_review": "Read React best practices; owner/data fences, effect cleanup, unknown recovery, private image data URL and clear per-action consent reviewed",
+  "real_provider_actions_by_author": false,
+  "regression_coverage_added": [
+    "loaded image preview to future schedule",
+    "same action version reread",
+    "approval conflict image readiness",
+    "upload conflict preserving draft and immutable selection",
+    "actual image effect scope replacement and old load rejection"
+  ],
+  "runtime_files": 5,
+  "scope_constraints": [
+    "company finance calculations unchanged",
+    "closing conditions unchanged",
+    "commission attribution unchanged",
+    "existing employee/customer permissions unchanged",
+    "private workspace unchanged",
+    "Google integration unchanged"
+  ],
+  "stage": "META_OPERATIONS_FRONTEND_SOURCE_FROZEN_V2",
+  "supersedes": "frontend-code-freeze.json",
+  "test_files": 2
+}

@@ -1,0 +1,18 @@
+{
+  "application_freeze_sha256": "6d6e6e75d7db2b4423ce5cc368af97210485a8800da72446b0e8f10a916bd9d9",
+  "artifacts_written": false,
+  "deployment_performed": false,
+  "directory_fd_swap_regressions": 3,
+  "files": {
+    "deployments/meta-operations-20261101/build_payload.py": "f6888c8f769bf12ea50da6a6c34c5748069a44d32d272f01781e2f6a569ed21d",
+    "deployments/meta-operations-20261101/make_commands.py": "07e3bf059d5904d03dd51faf63aef4174d4cec6829e32679d142d87aa8c7c15c",
+    "deployments/meta-operations-20261101/release.py": "be7f3c282d84f7049b5d7ec4a804ba5e0d7238c6d5dc4ff18b1b0eb22147db5d",
+    "deployments/meta-operations-20261101/test_package.py": "6180c969dcacd11d7ba519274e28cfae340510f909de32dd706aa75f0ac899ec",
+    "deployments/meta-operations-20261101/test_release.py": "8fd0dbfe27ecb8f51f28842e1a2185532588c55a7367d14cc60c99402f6bfa24"
+  },
+  "final_release_pins_set": true,
+  "frontend_version": "d2dbd67fa15d",
+  "package_tests": 29,
+  "release_tests": 31,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6"
+}

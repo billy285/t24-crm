@@ -1,0 +1,9 @@
+{
+  "bytes": 6925605,
+  "filename": "pillow-12.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "requires_python": ">=3.10",
+  "sha256": "f0606c8bf2cdefea14a43530f7657cbbb7ecf1c4222512492ef4a4434a9501ec",
+  "source": "https://pypi.org/pypi/Pillow/12.3.0/json",
+  "url": "https://files.pythonhosted.org/packages/4e/89/36f4cd76cf4baf05c50ababb976249153f18c959171c7f6ba09a6f217260/pillow-12.3.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "version": "12.3.0"
+}

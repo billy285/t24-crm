@@ -1,0 +1,32 @@
+{
+  "backend_broad_tests_passed": 657,
+  "files": {
+    "deployments/meta-operations-20261101/artifacts/manifest.json": "fea6f7513b7ba2c96ce7193a592b3aa1be25e534e5860079b94b97045d443a42",
+    "deployments/meta-operations-20261101/artifacts/payload.tar.gz": "3283bf5f1c1d25faa04e7a0eda205e3326009345762712a657c949a4d6f4dacb",
+    "deployments/meta-operations-20261101/build_payload.py": "f6888c8f769bf12ea50da6a6c34c5748069a44d32d272f01781e2f6a569ed21d",
+    "deployments/meta-operations-20261101/capture-freeze.json": "bf1a3f4042d292d621d7fa4fe087ec8cab1fec118185fc8cb0921c04a22c13ae",
+    "deployments/meta-operations-20261101/capture-preflight-command.sh": "530d4c68440730d524ccfa71b6626eedf711ac5681e2d0013787b3e1f51991c5",
+    "deployments/meta-operations-20261101/make_capture.py": "fb9e5deb5736e4d0e9fc7642e42ad5ea2d3bb071ce95bb5c3da431e268fd7a7d",
+    "deployments/meta-operations-20261101/make_commands.py": "07e3bf059d5904d03dd51faf63aef4174d4cec6829e32679d142d87aa8c7c15c",
+    "deployments/meta-operations-20261101/preflight.py": "f08cc8d90fe726b4fe89b18b0c4018ceed0b0b32c54763e7bb04ace911ed45dc",
+    "deployments/meta-operations-20261101/release.py": "be7f3c282d84f7049b5d7ec4a804ba5e0d7238c6d5dc4ff18b1b0eb22147db5d",
+    "deployments/meta-operations-20261101/test_package.py": "6180c969dcacd11d7ba519274e28cfae340510f909de32dd706aa75f0ac899ec",
+    "deployments/meta-operations-20261101/test_release.py": "8fd0dbfe27ecb8f51f28842e1a2185532588c55a7367d14cc60c99402f6bfa24"
+  },
+  "frontend_version": "d2dbd67fa15d",
+  "initial_execution_scheduler_disabled": true,
+  "initial_operations_environment_absent": true,
+  "nine_new_tables_empty": true,
+  "offline_vendor_wheel_only": true,
+  "original_141_tables_preserved": true,
+  "output_directory_swap_regression_independently_passed": true,
+  "real_external_actions": false,
+  "root_backend_tests_passed": 64,
+  "root_frontend_tests_passed": 46,
+  "root_release_package_tests_passed": 60,
+  "server_execution": false,
+  "source_delta": 18,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_PACKAGE_ROOT_REVIEW",
+  "unknown_results_never_resent": true
+}

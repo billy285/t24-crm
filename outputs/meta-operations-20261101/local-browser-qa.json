@@ -1,0 +1,23 @@
+{
+  "backend_broad_passed": 657,
+  "checked_conversion": "2026-11-03T12:00 America/Denver = 2026-11-04T03:00 Asia/Shanghai",
+  "comment_read_draft_save_internal_approval_then_public_consent_reset": true,
+  "desktop": true,
+  "fixtures_only": true,
+  "frontend_freeze_sha256": "a4079850dd18d4f4927ae8c8106a2137fae1b68c2efcb104eb5c2dc74ee18cf2",
+  "frontend_version": "d2dbd67fa15d",
+  "image_preview_to_schedule_revalidated": true,
+  "mobile_viewport": "390x844",
+  "new_editor_fixed_header_footer": true,
+  "post_preview_requires_independent_public_consent": true,
+  "prepared_schedule_save_only_worker_off": true,
+  "root_backend_focused_passed": 64,
+  "root_frontend_focused_passed": 46,
+  "server_worker_and_provider_contacts": false,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_LOCAL_BROWSER_ACCEPTANCE",
+  "store_timezone": "America/Denver",
+  "typescript_full_app": "existing Finance.tsx:5778 mismatch remains; finance unchanged",
+  "vite_production_build": "PASS",
+  "write_gated_public_button_remains_disabled": true
+}
