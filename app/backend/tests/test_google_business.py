@@ -100,6 +100,13 @@ async def gbp_env(tmp_path, monkeypatch):
             fake.reads.append(("locations", getattr(self.connection, "id", None)))
             await wait_for_read()
             return {"items": copy.deepcopy(fake.location_items), "truncated": False}
+        async def discover_locations(self):
+            return await self.locations()
+        async def verify_location(self, location_name):
+            fake.reads.append(("verify_location", location_name))
+            await wait_for_read()
+            target = next((x for x in fake.location_items if x["location_name"] == location_name), None)
+            return copy.deepcopy(target)
         async def reviews(self, location, page_token=None):
             fake.reads.append(("reviews", location, page_token))
             await wait_for_read()
@@ -679,14 +686,14 @@ async def test_disconnect_scrubs_own_tokens_and_all_delegations_without_touching
 async def test_binding_requires_current_owner_discovery_and_exact_customer_mapping(gbp_env):
     env = gbp_env
     async with env.sessions() as db:
-        db.add(Customers(id=30, business_name="New Synthetic Merchant", contact_name="Synthetic", phone="333")); await db.commit()
+        db.add(Customers(id=30, business_name="New Synthetic Merchant", contact_name="Synthetic", phone="333", status="closed")); await db.commit()
     body = {"request_id": str(uuid4()), "customer_id": 30, "connection_id": 1, "location_name": HIDDEN_LOCATION, "confirmed": True}
     not_discovered = await env.client.post(PREFIX + "/bindings", json=body)
     assert not_discovered.status_code == 422
-    body.update(location_name=LOCATION)
+    body.update(location_name=LOCATION, request_id=str(uuid4()))
     already_bound = await env.client.post(PREFIX + "/bindings", json=body)
     assert already_bound.status_code == 409
-    body.update(connection_id=2)
+    body.update(connection_id=2, request_id=str(uuid4()))
     wrong_owner = await env.client.post(PREFIX + "/bindings", json=body)
     assert wrong_owner.status_code == 404
     assert not env.fake.writes
@@ -696,7 +703,7 @@ async def test_binding_requires_current_owner_discovery_and_exact_customer_mappi
 async def test_same_global_google_location_under_another_account_cannot_bind_different_customer(gbp_env):
     env = gbp_env
     async with env.sessions() as db:
-        db.add(Customers(id=30, business_name="New Synthetic Merchant", contact_name="Synthetic", phone="333")); await db.commit()
+        db.add(Customers(id=30, business_name="New Synthetic Merchant", contact_name="Synthetic", phone="333", status="closed")); await db.commit()
     alias = "accounts/300/locations/1000"
     env.fake.location_items.append({"location_name": alias, "title": "Same physical Google location via another parent", "address": "100 Synthetic Street, CA"})
     response = await env.client.post(PREFIX + "/bindings", json={"request_id": str(uuid4()), "customer_id": 30, "connection_id": 1, "location_name": alias, "confirmed": True})

@@ -31,6 +31,7 @@ from services.stripe_auto_posting import start_auto_posting, stop_auto_posting
 from services.google_business_scheduler import start_scheduler as start_google_business_scheduler, stop_scheduler as stop_google_business_scheduler
 from services.meta_operations_scheduler import start_scheduler as start_meta_operations_scheduler, stop_scheduler as stop_meta_operations_scheduler
 from services.media_asset_studio import start_worker as start_media_asset_worker, stop_worker as stop_media_asset_worker
+from services import google_business_onboarding
 from core.database import db_manager, get_db
 from core.auth import decode_access_token as decode_platform_access_token
 from dependencies.auth import employee_status_enforcement_enabled, normalize_system_role
@@ -124,6 +125,7 @@ async def lifespan(app: FastAPI):
     google_business_scheduler = start_google_business_scheduler()
     meta_operations_scheduler = start_meta_operations_scheduler()
     media_asset_worker = start_media_asset_worker()
+    google_onboarding_worker = await google_business_onboarding.start_worker()
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
@@ -135,6 +137,7 @@ async def lifespan(app: FastAPI):
     await stop_google_business_scheduler(google_business_scheduler)
     await stop_meta_operations_scheduler(meta_operations_scheduler)
     await stop_media_asset_worker(media_asset_worker)
+    await google_business_onboarding.stop_worker(google_onboarding_worker)
     await close_database()
     # MODULE_SHUTDOWN_END
 

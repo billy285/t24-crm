@@ -1,6 +1,7 @@
 """Google-owned endpoints only. No URL fetching, cookies, private credentials or logs."""
 from __future__ import annotations
 import base64
+import asyncio
 import hashlib
 import ipaddress
 import json
@@ -208,6 +209,81 @@ class GoogleClient:
                 if not token: break
             if token: truncated = True
         return {"items": result, "truncated": truncated}
+
+    @staticmethod
+    def _location_rows(account, data):
+        items = data.get("locations", [])
+        if not isinstance(items, list) or len(items) > 100 or any(not isinstance(x, dict) for x in items): raise ProviderError("invalid_response")
+        result = []
+        for item in items:
+            name = item.get("name", "")
+            if not isinstance(name,str) or not re.fullmatch(r"locations/[0-9]+", name) or len(account+"/"+name)>200: raise ProviderError("invalid_response")
+            addr = item.get("storefrontAddress") or {}
+            if not isinstance(addr, dict) or not isinstance(addr.get("addressLines", []), list): raise ProviderError("invalid_response")
+            values=[*(addr.get("addressLines") or []),addr.get("locality"),addr.get("administrativeArea"),addr.get("postalCode")]
+            if any(v is not None and not isinstance(v,str) for v in values): raise ProviderError("invalid_response")
+            address = ", ".join(v for v in values if v);title=item.get("title") or ""
+            if not isinstance(title,str) or len(title)>255 or len(address)>1000: raise ProviderError("invalid_response")
+            result.append({"location_name": account+"/"+name, "title":title, "address":address})
+        return result
+
+    async def verify_location(self, location_name):
+        """Verify the selected account/location association, never a global alias.
+
+        Uses the already-established accounts.locations.list endpoint. A global
+        locations.get alone would not prove membership of the chosen account.
+        """
+        if not LOCATION.fullmatch(location_name): raise ProviderError("invalid_request")
+        account = location_name.split("/locations/", 1)[0]
+        async def read():
+            token = None
+            for _ in range(20):
+                data = await self.request("GET", "locations", account+"/locations", params={"readMask":"name,title,storefrontAddress", "pageSize":100, **({"pageToken":token} if token else {})})
+                for item in self._location_rows(account, data):
+                    if item["location_name"] == location_name: return item
+                token = data.get("nextPageToken")
+                if not token: return None
+            raise ProviderError("listing_too_large")
+        try: return await asyncio.wait_for(read(), timeout=12)
+        except asyncio.TimeoutError: raise ProviderError("provider_unavailable")
+
+    async def discover_locations(self):
+        """Bounded asynchronous discovery: 90s overall, 3 accounts in flight."""
+        async def read():
+            accounts = []; token = None
+            for _ in range(10):
+                data = await self.request("GET", "accounts", "accounts", params={"pageSize":20, **({"pageToken":token} if token else {})})
+                items = data.get("accounts", [])
+                if not isinstance(items, list) or len(items) > 20 or any(not isinstance(x, dict) for x in items): raise ProviderError("invalid_response")
+                if any(not isinstance(x.get("name"),str) or not re.fullmatch(r"accounts/[0-9]+",x["name"]) for x in items): raise ProviderError("invalid_response")
+                accounts.extend(x["name"] for x in items)
+                token = data.get("nextPageToken")
+                if not token: break
+            if token: raise ProviderError("listing_too_large")
+            semaphore = asyncio.Semaphore(3); result = {}; truncated = False
+            async def account_locations(account):
+                nonlocal truncated
+                async with semaphore:
+                    token = None
+                    for _ in range(20):
+                        if len(result) >= 500: truncated = True; return
+                        data = await self.request("GET", "locations", account+"/locations", params={"readMask":"name,title,storefrontAddress", "pageSize":100, **({"pageToken":token} if token else {})})
+                        for item in self._location_rows(account, data):
+                            if len(result) >= 500: truncated = True; return
+                            result[item["location_name"]] = item
+                        token = data.get("nextPageToken")
+                        if not token: return
+                    if token: truncated = True
+            # Own and cancel every child before leaving; no orphan Google reads.
+            tasks = [asyncio.create_task(account_locations(x)) for x in sorted(set(accounts))]
+            try: await asyncio.gather(*tasks)
+            finally:
+                for task in tasks:
+                    if not task.done(): task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+            return {"items":[result[x] for x in sorted(result)], "truncated":truncated}
+        try: return await asyncio.wait_for(read(), timeout=90)
+        except asyncio.TimeoutError: raise ProviderError("provider_unavailable")
 
     async def reviews(self, location, page_token=None):
         if not LOCATION.fullmatch(location): raise ProviderError("invalid_request")

@@ -23,6 +23,7 @@ from models.customers import Customers
 from models.media_operations import MediaOperationTask, MediaOperationEvent
 from models.customer_access_grants import CustomerAccessGrant
 from models.google_business import GoogleBusinessConnection as Connection, GoogleBusinessOAuthState as OAuthState, GoogleBusinessBinding as Binding, GoogleBusinessGrant as Grant, GoogleBusinessAction as Action
+from models import google_business_onboarding as _onboarding_models  # Register additive migrated models; never create schema here.
 from services import media_operations as media
 from services import google_business_provider as provider
 from services.customer_permissions import customer_permissions_for_rows
@@ -305,37 +306,45 @@ async def bind(db, user, *, request_id, customer_id, connection_id, location_nam
     if not provider.LOCATION.fullmatch(location_name): raise HTTPException(422, "请选择已授权的 Google 门店")
     prior = await db.scalar(select(Binding).where(Binding.request_id == request_id))
     if prior:
+        from services import google_business_onboarding as onboarding
+        await onboarding.legacy_replay_guard(db, ctx, request_id, {"customer_id":customer_id,"connection_id":connection_id,"location_name":location_name})
         if (prior.customer_id, prior.connection_id, prior.location_name, prior.created_by_id) != (customer_id, connection_id, location_name, ctx.identity): raise HTTPException(409, "同一请求编号对应了不同绑定")
         if not prior.active: raise HTTPException(409, "这次绑定已被停用，不能重放旧请求")
         binding, _, permissions = await _binding(db, ctx, prior.id)
         return binding_data(binding, permissions)
-    result = await _read_provider(db, user, connection_id, "locations")
-    if not any(x["location_name"] == location_name for x in result["items"]): raise HTTPException(422, "此 Google 门店未在当前授权列表中，请重新读取后选择")
-    async with write(db):
-        ctx = await context(db, user, owner=True)
-        customer, _ = await media._customer(db, ctx, customer_id, write=True)
-        connection = await _connection(db, ctx, connection_id, lock=True)
-        if customer.status != "closed": raise HTTPException(409, "请先确认该客户仍处于合作已成交状态")
-        prior = await db.scalar(select(Binding).where(Binding.request_id == request_id))
-        if prior:
-            if (prior.customer_id, prior.connection_id, prior.location_name, prior.created_by_id) != (customer_id, connection_id, location_name, ctx.identity): raise HTTPException(409, "同一请求编号对应了不同绑定")
-            return binding_data(prior, {"can_read": True, "can_reply": True, "can_publish": True, "can_manage": True})
-        # Discovery was live and exact. Google titles/addresses are never retained as a cache.
-        existing_rows = (await db.execute(select(Binding).where((Binding.customer_id == customer_id) | (Binding.location_id == location_name.rsplit("/", 1)[1])).with_for_update())).scalars().all()
-        if len(existing_rows) > 1: raise HTTPException(409, "客户或 Google 门店已有其他绑定，请先核对归属")
-        existing = existing_rows[0] if existing_rows else None
-        if existing:
-            if existing.active or existing.customer_id != customer_id or existing.location_name != location_name: raise HTTPException(409, "客户或 Google 门店已有绑定，请先核对归属")
-            existing.connection_id = connection_id; existing.active = True; existing.lifecycle = "active"; existing.primary_operator_id = None; existing.primary_operator_name = None; existing.revision += 1; existing.request_id = request_id
-            existing.title = customer.business_name; existing.address = ""; existing.customer_name = customer.business_name
-            row = existing
-        else:
-            row = Binding(customer_id=customer_id, customer_name=customer.business_name, connection_id=connection_id, location_name=location_name, location_id=location_name.rsplit("/", 1)[1],
-                          title=customer.business_name, address="", active=True, revision=1, request_id=request_id, created_by_id=ctx.identity, created_at=now())
-            db.add(row); await db.flush()
-        await _audit(db, ctx, row, "binding_created", {"location_name": location_name, "connection_id": connection_id})
-        output = binding_data(row, {"can_read": True, "can_reply": True, "can_publish": True, "can_manage": True})
-    return output
+    from services import google_business_onboarding as onboarding
+    return await onboarding.legacy_bind(db, user, request_id=request_id, customer_id=customer_id, connection_id=connection_id, location_name=location_name)
+
+
+async def bind_locked(db, ctx, *, request_id, customer_id, connection_id, location_name, allow_restore=True):
+    """Native local transition, under the caller's Google write transaction.
+
+    Caller must have just verified this exact account/location with Google and
+    must atomically commit its durable receipt. Existing binding fields/audits
+    and legacy exact-pair restore behavior remain unchanged.
+    """
+    ctx = await context(db, ctx.user, owner=True)
+    customer, _ = await media._customer(db, ctx, customer_id, write=True)
+    connection = await _connection(db, ctx, connection_id, lock=True)
+    if customer.status != "closed": raise HTTPException(409, "请先确认该客户仍处于合作已成交状态")
+    prior = await db.scalar(select(Binding).where(Binding.request_id == request_id))
+    if prior:
+        if (prior.customer_id, prior.connection_id, prior.location_name, prior.created_by_id) != (customer_id, connection_id, location_name, ctx.identity): raise HTTPException(409, "同一请求编号对应了不同绑定")
+        return binding_data(prior, {"can_read": True, "can_reply": True, "can_publish": True, "can_manage": True})
+    existing_rows = (await db.execute(select(Binding).where((Binding.customer_id == customer_id) | (Binding.location_id == location_name.rsplit("/", 1)[1])).with_for_update())).scalars().all()
+    if len(existing_rows) > 1: raise HTTPException(409, "客户或 Google 门店已有其他绑定，请先核对归属")
+    existing = existing_rows[0] if existing_rows else None
+    if existing:
+        if not allow_restore or existing.active or existing.customer_id != customer_id or existing.location_name != location_name: raise HTTPException(409, "客户或 Google 门店已有绑定，请先核对归属")
+        existing.connection_id = connection_id; existing.active = True; existing.lifecycle = "active"; existing.primary_operator_id = None; existing.primary_operator_name = None; existing.revision += 1; existing.request_id = request_id
+        existing.title = customer.business_name; existing.address = ""; existing.customer_name = customer.business_name
+        row = existing
+    else:
+        row = Binding(customer_id=customer_id, customer_name=customer.business_name, connection_id=connection_id, location_name=location_name, location_id=location_name.rsplit("/", 1)[1],
+                      title=customer.business_name, address="", active=True, revision=1, request_id=request_id, created_by_id=ctx.identity, created_at=now())
+        db.add(row); await db.flush()
+    await _audit(db, ctx, row, "binding_created", {"location_name": location_name, "connection_id": connection_id})
+    return binding_data(row, {"can_read": True, "can_reply": True, "can_publish": True, "can_manage": True})
 
 
 async def grants(db, user, binding_id):
