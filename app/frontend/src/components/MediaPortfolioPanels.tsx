@@ -17,8 +17,8 @@ export function OperationalFilters({ status, operatorId, operators, summary, onS
 }
 export function PortfolioOverview({ data, isOwner, onFilter, onMerchant }: { data: WorkspacePortfolio; isOwner: boolean; onFilter: (status: WorkspaceStatusFilter) => void; onMerchant: (merchant: WorkspaceMerchant) => void }) {
   const cards: WorkspaceStatusFilter[] = ['attention', 'review', 'no_schedule', 'unassigned'];
-  const priorityMerchants = data.exceptions.map(merchant => ({ merchant, high: merchant.issues?.filter(issue => issue.severity === 'high').length || 0, medium: merchant.issues?.filter(issue => issue.severity === 'medium').length || 0 }))
-    .sort((left, right) => right.high - left.high || right.medium - left.medium || left.merchant.id - right.merchant.id)
+  const priorityMerchants = data.exceptions.map(merchant => ({ merchant, high: merchant.issues?.filter(issue => issue.severity === 'high').length || 0, actionableMedium: merchant.issues?.some(issue => issue.severity === 'medium' && ['review', 'overdue'].includes(issue.code)) ? 1 : 0, medium: merchant.issues?.filter(issue => issue.severity === 'medium').length || 0 }))
+    .sort((left, right) => right.high - left.high || right.actionableMedium - left.actionableMedium || right.medium - left.medium || left.merchant.id - right.merchant.id)
     .slice(0, 6).map(item => item.merchant);
   return <section className="mw-portfolio" aria-label={isOwner ? '老板异常总览' : '我的运营待办'}>
     <header className="mw-section-heading"><div><span className="mw-eyebrow">{isOwner ? '老板总览' : '我的工作'}</span><h3>先处理需要关注的商家</h3></div><span>{data.filtered_merchants ?? data.summary.merchants} 家匹配 · 授权共 {data.summary.merchants} 家</span></header>
