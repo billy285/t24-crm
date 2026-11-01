@@ -1,0 +1,37 @@
+{
+  "stage": "DEPLOYED_BROWSER_ACCEPTANCE",
+  "application_source_sha": "196781fbf68c3640f4af1c89e3c81f96d6872da8",
+  "frontend_version": "18d102381fef",
+  "deployed_receipt_sha256": "9e89695bf1c7bc6f102a6675746eaf186d1fc2f6ccb9fc6d99f5724404987907",
+  "desktop": {
+    "width": 1280,
+    "scrollWidth": 1280,
+    "horizontal_overflow": false,
+    "priority_preview_count": 6,
+    "actionable_review_precedes_setup": true,
+    "alerts": []
+  },
+  "mobile_320": {
+    "scrollWidth": 320,
+    "width": 320,
+    "workspaceVisible": true
+  },
+  "mobile_390": {
+    "width": 390,
+    "scrollWidth": 390,
+    "actual_november_review_group": true
+  },
+  "review_month": "Both actual review groups show2026-11 and merchant/month navigation succeeds",
+  "verified": [
+    "Exact merchant search returns one matching record",
+    "Shared scope and platform navigation",
+    "Saved filters tested only in synthetic account",
+    "Real review groups and internal-only gates",
+    "Operational workload entry",
+    "Desktop and phone layout",
+    "Critical/review ahead of unassigned setup"
+  ],
+  "no_publish_or_review_submission": true,
+  "all162_rows_schema_preserved": true,
+  "finance_closing_commission_permissions_private_unchanged": true
+}

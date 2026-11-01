@@ -1,0 +1,15 @@
+{
+  "scope": "Combined month grouping and exception priority release",
+  "application_source": "196781fbf68c3640f4af1c89e3c81f96d6872da8",
+  "release_helper_sha256": "b89cb685ad0bcb751ef962bf239bca87c92e6f72ec2bab4c345c5641d04db059",
+  "independent_review": "No blocking lineage, recovery, or canary issue found",
+  "guard_tests_passed": 111,
+  "reviewed": [
+    "Current 769/816/419 baseline exact",
+    "Only one service overlay and four application-file delta",
+    "Stopped-current and historical-parent recovery avoids exec",
+    "Actual Python 3.10 month-basis canary mandatory",
+    "All162 rows/schema, environment, credentials, private boundary and CSP preserved"
+  ],
+  "live_acceptance": "Root verified deployed browser; see separate production-ui-acceptance.json"
+}
