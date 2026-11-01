@@ -1,0 +1,51 @@
+{
+  "stage": "MONTHLY_FLOW_BACKEND_INDEPENDENT_SECURITY_REVIEW_PASS",
+  "baseline_source": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "candidate_files": {
+    "app/backend/models/media_monthly_workflow.py": "d81dfcb0d9a5682dc8ee0b1dcfbb86be8f3c0cf090950be21c10b31948e0cc7e",
+    "app/backend/schemas/media_monthly_workflow.py": "6af2d989b862753179e771739cb8947ae05c5d608fb88568195705a7776a8bd2",
+    "app/backend/routers/media_monthly_workflow.py": "7a22b2119bb930a4f405eaa3557e94425b10dc71499b5d13b6f46d6cdc468729",
+    "app/backend/services/media_monthly_workflow.py": "bb7671a4017b75a4dec36b0cae6099cb22f1f4386dcc166a31edacf855c1f20f",
+    "app/backend/alembic/versions/e10cb234c570_media_monthly_workflow.py": "cd865b83a44fd7b1d39bee350b2ec74437bad08aee416b2e4896bf7c074fe3be",
+    "app/backend/services/media_operations.py": "d8cca0bbbf78f71967f3dbc0d2c5c7b20223bee5519dc047ee8ea715d8ce290a",
+    "app/backend/services/google_business_management.py": "84b37b911113f593e17a1ee9e2b03fa072cf4fe9445b23cc4586839c801f5364",
+    "app/backend/services/google_business_scheduler.py": "19947e4fc4c598628b33edeec37251e75b0a97ff61534448b9053bfb22a0bf46",
+    "app/backend/services/google_business.py": "12622e71ed6c1b0c28dcb4db9742bc011c79e711c3029981ccff1d33b04064e0",
+    "app/backend/services/media_monthly.py": "c6cfab6a3ad4eaae145a3aa816b8f6263ddbf6383484b4670d67955c5c0f7229",
+    "app/backend/tests/test_media_monthly_workflow.py": "7468a8c84861b1d5368f12d5e3ab0f8d247617bd18de5068983f669bcf77bf13"
+  },
+  "focused_tests": {
+    "passed": 29,
+    "exit_code": 0,
+    "seconds": 12.67
+  },
+  "release_tool_tests": {
+    "passed": 97,
+    "exit_code": 0,
+    "seconds": 1.22
+  },
+  "native_ast_equivalence_file": "native-wrapper-equivalence.json",
+  "checks": {
+    "selected_original_source_and_exact_image_version_only": true,
+    "unselected_fixed_version_does_not_invalidate_packet": true,
+    "exact_owner_binding_operator_copy_menu_image_time_and_consent_rechecked_before_network_and_lease": true,
+    "no_publication_or_schedule_from_prepare_or_review": true,
+    "separate_exact_month_public_confirmation_required": true,
+    "ordinary_unmarked_native_jobs_unchanged": true,
+    "native_default_wrappers_ast_equivalent": true,
+    "stopped_owner_cancel_only_stops_owned_unsent_work": true,
+    "cancel_after_public_submission_retains_frozen_copy_and_store": true,
+    "stale_historical_receipt_fails_closed": true,
+    "alerts_owner_only_and_raw_provider_status_retained": true,
+    "no_automatic_unknown_retry": true,
+    "all153_existing_tables_preserved_by_additive_migration": true
+  },
+  "limitations": [
+    "After first public submission, changed sources stop remaining jobs and require outcome verification; this pilot does not provide a one-click resend or automatic catch-up."
+  ],
+  "provider_requests": false,
+  "server_actions": false,
+  "real_schedule_or_publication_executed": false,
+  "finance_closing_commission_acl_private_logic_changed": false,
+  "new_blockers": []
+}

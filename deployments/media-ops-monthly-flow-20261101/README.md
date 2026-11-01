@@ -1,0 +1,17 @@
+# Northern Pasta monthly review and execution flow release
+
+This release starts from the deployed `6ab1ded2e139e8622596a2a71ca1041015a0b95f` application, frontend `628bd059a499`, schema `df0ba123b469`, runtime `1bb27a7b759a8195968e5891fc124bd6efdffece985db8759954af3054e97027`, image `2377c980b99e56a0637fd0c7c90b9a90f97432c5ee8bd3e30c05a21dbb5edc9d` and canonical deployed receipt `2c4fb51553aa0f3fc8c86032a8e1ffc29ce8fa94dbeee3fe9397e59d16a865a5`.
+
+The current 153 tables include the existing Northern Pasta profile, original generation request, twelve polished draft items, and audit records. The new capture compares two stable fresh full-table aggregate snapshots; it never assumes the three previous monthly tables are empty or compares current business data with their pre-use deployment snapshot. The only capture write is a new root-private aggregate receipt; credential files are checked only by metadata, while environment values are validated and hashed in server memory.
+
+The planned migration adds only `media_monthly_workflows` and `media_monthly_workflow_requests`, with head `e10cb234c570` following `df0ba123b469`. Every existing table, index, row, and business calculation is preserved, except the explicitly reviewed Alembic head. New tables must start empty. Final application/source/static/schema/route hashes stay absent until root freezes tested committed code. No usable prepare or activation command can be emitted before those final pins exist.
+
+Preparation clones the full populated database into a network-isolated, credential-free container using the exact existing image plus the reviewed backend overlay. It runs the exact additive migration transactionally, verifies all 153 old table definitions and rows plus the two empty new tables, and checks startup preserves that state. The actual Python 3.10 runtime verifies old and new route registration, owner-only denial before SQL or network access, and disabled provider/worker canaries.
+
+Deployment preserves the complete existing environment and credentials, private workspace mounts and content boundary, customer permissions, finance and closing calculations, commissions, Nginx/CSP and callback protections. Existing Google scheduling stays enabled with its exact old activation cutoff; Meta execution and scheduling remain off. The empty new workflow tables authorize no new publication, schedule, lease, task approval or AI call during deployment.
+
+Switching requires the independently reviewed canonical `prepared.json` hash, not the transport envelope hash. The candidate identity and stopped-original production snapshot are durably journaled before migration. The original worker stops before migration; only one known candidate becomes live. Recovery settles the specific durable migration and proceeds forward after a committed new head, preserving independent old and new rows. It never restores a database, downgrades, drops production tables or deletes production containers.
+
+The user has required a separate confirmation before real publication or actual timed execution of the Northern Pasta month. The release installs workflow capability only. Owner-facing preparation and preview may be verified after deployment, while the batch remains waiting for the user's exact image, copy, merchant and time confirmation. No release tool approves or publishes that batch.
+
+Only the root agent runs independently reviewed commands against the authenticated target. Child agents author and independently review local tools only.

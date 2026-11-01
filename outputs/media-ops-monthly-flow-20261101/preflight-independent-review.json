@@ -1,0 +1,20 @@
+{
+  "stage": "CURRENT153_POPULATED_PREFLIGHT_INDEPENDENT_PASS",
+  "sha256": "42bc79e1b7041e3b376ca94ab8bef01d6dc6224e151821958cf48225f90faaaf",
+  "table_count": 153,
+  "backend_file_count": 403,
+  "source_sha": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "frontend_version": "628bd059a499",
+  "schema_revision": "df0ba123b469",
+  "current_runtime": {
+    "config": "01e708ba2e4c29d3029dbb4981cd452b086fe2ca301d19b2f8b47e43aedaded0",
+    "id": "1bb27a7b759a8195968e5891fc124bd6efdffece985db8759954af3054e97027",
+    "image": "sha256:2377c980b99e56a0637fd0c7c90b9a90f97432c5ee8bd3e30c05a21dbb5edc9d",
+    "restart": 0,
+    "started": "2026-11-01T03:42:26.485641774Z"
+  },
+  "metadata_only_credential_checks": true,
+  "all153_existing_tables_captured": true,
+  "old_monthly_three_tables_empty_assumption_reused": false,
+  "business_or_provider_actions": false
+}

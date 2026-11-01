@@ -1,0 +1,16 @@
+{
+  "application_delta_count": 25,
+  "application_freeze_sha256": "1e3edce0603d35fe5728fff2f762ed3723aafb2f75d0b7b35a1f75dc3dde8699",
+  "backend_overlay_count": 10,
+  "candidate_tables": 155,
+  "deployment_performed": false,
+  "dist_inventory_sha256": "faa66e61cc423aa4bdad8e3ccdec1181eb2b3b24e2e7af66f54a581f7b7f22d2",
+  "frontend_source_count": 10,
+  "frontend_version": "8113d14d204f",
+  "original_tables": 153,
+  "provider_requests": false,
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "MONTHLY_FLOW_LOCAL_APPLICATION_FROZEN",
+  "static_file_count": 140,
+  "test_count": 5
+}

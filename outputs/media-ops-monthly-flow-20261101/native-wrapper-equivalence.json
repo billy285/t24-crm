@@ -1,0 +1,21 @@
+{
+  "stage": "NATIVE_LOCKED_HELPER_EQUIVALENCE_PASS",
+  "baseline_source": "6ab1ded2e139e8622596a2a71ca1041015a0b95f",
+  "checks": {
+    "edit_task_locked_default_native_path": true,
+    "transition_task_locked_default_native_path": true,
+    "schedule_locked_default_native_path": true,
+    "cancel_schedule_locked_default_native_path": true
+  },
+  "candidate_native_hashes": {
+    "app/backend/services/media_operations.py": "d8cca0bbbf78f71967f3dbc0d2c5c7b20223bee5519dc047ee8ea715d8ce290a",
+    "app/backend/services/google_business_management.py": "84b37b911113f593e17a1ee9e2b03fa072cf4fe9445b23cc4586839c801f5364"
+  },
+  "ordinary_jobs_semantics_preserved": true,
+  "monthly_only_exceptions": [
+    "reserved monthly task cannot use individual scheduler",
+    "owner can cancel owned unsent monthly schedules after cooperation stops"
+  ],
+  "stopped_cancel_does_not_grant_access_or_reactivate_binding": true,
+  "provider_or_server_actions": false
+}

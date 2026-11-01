@@ -1,0 +1,52 @@
+{
+  "application_freeze_sha256": "1e3edce0603d35fe5728fff2f762ed3723aafb2f75d0b7b35a1f75dc3dde8699",
+  "at_utc": "2026-11-01T04:23:10.515149+00:00",
+  "checks": {
+    "bounded_regular_file_and_duplicate_member_checks": true,
+    "combined_monthly_routes_exact_15": true,
+    "committed_source_delta_exact_25": true,
+    "existing_populated153_tables_preserved": true,
+    "forward_only_recovery_no_database_restore": true,
+    "frontend_static_inventory_exact": true,
+    "full_environment_and_credential_metadata_pinned": true,
+    "google_worker_existing_policy_preserved": true,
+    "meta_execution_and_scheduler_remain_off": true,
+    "no_seed_tasks_schedules_or_publications": true,
+    "offline_network_none_and_workers_off": true,
+    "offline_python310_owner_denial_before_sql": true,
+    "only_two_additive_tables": "media_monthly_workflows,media_monthly_workflow_requests",
+    "private_boundary_and_csp_preserved": true,
+    "runtime_overlay_exact_10": true,
+    "static_root_only_nginx_change": true,
+    "tests_passed": 97
+  },
+  "frontend_version": "8113d14d204f",
+  "manifest": {
+    "bytes": 144802,
+    "in_memory_rebuild_byte_identical": true,
+    "sha256": "d0953971efc1715dc0d68596e60e682e6c3748d8ccdbc10b5b393f044fdb0dc4"
+  },
+  "payload": {
+    "bytes": 2275085,
+    "in_memory_rebuild_byte_identical": true,
+    "members": 150,
+    "sha256": "3c57bc3a60082031c563f7f67dfab9d8da8c99989206418829aa4ecea535fd05"
+  },
+  "phase": "immutable_package_review_only_prepare_wrapper_pending",
+  "reviewed_sources": {
+    "build_payload.py": "8a03df7818bc80b4f763dfc862d26e2d35f31e1927618bb200516a0228abac16",
+    "preflight.py": "510e19de4f6d7674e9f790b960dd7ae364d58d7ee5a1207870c9efb69a3a6a9a",
+    "release.py": "d5efcfecb79859e595dec70a0e901abb1c5e86d52ba300a909dd73e44bfd24c7"
+  },
+  "reviewer": "north_month_frontend",
+  "scope": {
+    "artifact_overwrites": 0,
+    "database_writes": 0,
+    "git_writes": 0,
+    "provider_requests": 0,
+    "server_actions": 0,
+    "written_review_evidence_only": true
+  },
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "status": "PASS"
+}

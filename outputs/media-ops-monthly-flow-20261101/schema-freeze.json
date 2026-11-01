@@ -1,0 +1,15 @@
+{
+  "indexes": [
+    "ix_media_monthly_workflows_customer_id"
+  ],
+  "migration_sha256": "cd865b83a44fd7b1d39bee350b2ec74437bad08aee416b2e4896bf7c074fe3be",
+  "new_revision": "e10cb234c570",
+  "old_revision": "df0ba123b469",
+  "provider_or_server_actions": false,
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "stage": "FROZEN_SCHEMA_FROM_IMMUTABLE_APPLICATION",
+  "tables": {
+    "media_monthly_workflow_requests": "f108f2189a8db0ae973572c9bbb6bd39d4556fd319e471e4b1e629499ac8ecd2",
+    "media_monthly_workflows": "565820b4088e32d6a2a039bce93e1db30ce06b648e059e83b8ed8ea95e71675f"
+  }
+}

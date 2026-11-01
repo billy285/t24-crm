@@ -1,0 +1,30 @@
+{
+  "stage": "LOCAL_ACTUAL_REACT_MONTHLY_FLOW_ACCEPTANCE",
+  "source_sha": "d39337fccfd622e506ca3c1a655a126f5218dc42",
+  "frontend_version": "8113d14d204f",
+  "scope": "Synthetic memory-only fixture, no production/provider writes",
+  "passed": [
+    "Private preparation preserves twelve existing drafts",
+    "Internal whole-month review leaves schedules absent",
+    "Image delivery setting requires separate explicit consent",
+    "Public schedule confirmation remains disabled until image policy and private image verification pass",
+    "Explicit public schedule creates twelve synthetic waiting rows",
+    "Unknown public result shows owner alert and no automatic resend",
+    "One actual image preview shared across twelve posts",
+    "Mobile390 and320 document scrollWidth equals viewport width; no oversized controls",
+    "Internal and public confirmation copy clearly separated",
+    "Chicago11:00 and following-day Beijing01:00 shown for all twelve slots"
+  ],
+  "limitations": [
+    "Original-task navigation in local fixture was interrupted by a fixture-only native alert; removed from fixture after application freeze, production callback uses actual navigation",
+    "Live Google publishing intentionally not exercised pending user approval"
+  ],
+  "production_schedule_created": false,
+  "google_writes": 0,
+  "image_delivery_enabled_in_production": false,
+  "frontend_tests_passed": 78,
+  "backend_regression_passed": 517,
+  "additional_meta_workspace_passed": 113,
+  "release_tool_tests_passed": 97,
+  "tsc": "Only pre-existing Finance.tsx:5778 TS2322; no changed-file errors"
+}

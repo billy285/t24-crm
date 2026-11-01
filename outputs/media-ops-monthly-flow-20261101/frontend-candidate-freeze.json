@@ -1,0 +1,91 @@
+{
+  "status": "frontend_source_frozen",
+  "at_utc": "2026-11-01T04:21:24.302727+00:00",
+  "files": {
+    "app/frontend/src/components/MediaMonthlyWorkspace.tsx": {
+      "sha256": "452b6e3b0caac0e2d2575c57ff8650caad9a844cfeba1f2562b8888852ce3c66",
+      "bytes": 36252
+    },
+    "app/frontend/src/components/MediaMonthlyPipeline.tsx": {
+      "sha256": "17d4454e9753ff2bde0e9b718f1f5e953b37c9f471125e4325b33fa07df5cc07",
+      "bytes": 31053
+    },
+    "app/frontend/src/components/media-monthly-workspace.css": {
+      "sha256": "ef3a065f1e9ccd2805e1be8e403a67e5d75782c66b24b38e1fa1f6171bb9ee3a",
+      "bytes": 9104
+    },
+    "app/frontend/src/components/media-monthly-pipeline.css": {
+      "sha256": "fc2c0b35244de19ab2e2b862b81c1cda9b21115566b8b074b790a79a3bac81be",
+      "bytes": 9668
+    },
+    "app/frontend/src/lib/media-monthly-api.ts": {
+      "sha256": "f3ff9b5c0f5c5571479bea1ef3b50f8241113fb962d5210a5ec0adcc0204723f",
+      "bytes": 11869
+    },
+    "app/frontend/src/lib/media-monthly-workflow-api.ts": {
+      "sha256": "10fbe509807d2e12eaaf1bac7b73f952c33ab8b3cd38a9fcace17b3176663eed",
+      "bytes": 14813
+    },
+    "app/frontend/tests/media-monthly-workflow.test.mjs": {
+      "sha256": "a56b9144daad38eef933281b4a0e6d28e51843634650f119f714c4b6347351b9",
+      "bytes": 17922
+    },
+    "app/frontend/tests/media-monthly-pipeline.test.mjs": {
+      "sha256": "0e8964f0e96e496d746986c6b70e80b88810c18bae9268ee0e74120089f92d08",
+      "bytes": 28506
+    }
+  },
+  "checks": {
+    "frontend_tests": {
+      "status": "PASS",
+      "count": 78,
+      "files": [
+        "media-monthly-pipeline.test.mjs",
+        "media-monthly-workflow.test.mjs",
+        "media-monthly-navigation.test.mjs",
+        "media-merchant-workflow.test.mjs",
+        "media-monthly-attention.test.mjs"
+      ]
+    },
+    "scoped_eslint": {
+      "status": "PASS",
+      "warnings": 0
+    },
+    "git_diff_check": "PASS",
+    "typecheck": {
+      "status": "BASELINE_FAILURE_ONLY",
+      "error": "src/pages/Finance.tsx(5778,15) TS2322 existing FinanceClosingChecklistItem callback mismatch",
+      "owned_files_errors": 0
+    }
+  },
+  "scope": {
+    "customer_id": 20,
+    "month": "2026-11",
+    "platform": "google",
+    "expected_items": 12,
+    "real_provider_calls": 0,
+    "git_writes": 0,
+    "deployment_actions": 0,
+    "live_business_writes": 0,
+    "publication_or_schedule_approval_clicked": false
+  },
+  "qa_fixture": {
+    "url": "http://127.0.0.1:8897/work/media-monthly-flow-preview/index.html",
+    "stages": [
+      "draft",
+      "prepared",
+      "reviewed",
+      "scheduled"
+    ],
+    "private_synthetic_only": true,
+    "owned_server_session": 50337,
+    "root_actual_react_qa": "in_progress"
+  },
+  "notes": [
+    "Immutable copies retained through material preparation.",
+    "Separate internal review and actual public schedule confirmation.",
+    "Unique image previews verified once per actor/run/packet read epoch.",
+    "Cancelled dispatch/public/manual-completed history stays frozen.",
+    "No more source edits planned absent actual QA blocker."
+  ]
+}
