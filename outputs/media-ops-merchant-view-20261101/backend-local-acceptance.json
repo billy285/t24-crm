@@ -1,0 +1,30 @@
+{
+  "broad_regression_tests_passed": 437,
+  "deployment_tool_tests_passed": 62,
+  "files": {
+    "app/backend/routers/media_workspace.py": "afb4588c6b58787507e8028837a7deeb153364388d270019c0dc1c89b85c4022",
+    "app/backend/services/media_workspace.py": "afdc6768b775fd62e7910f712d4309eaced6a884452febf700f8be0aa2b7ba06",
+    "app/backend/tests/test_media_workspace.py": "cbbab2b1da724b5ad922d00ecd22a11477f469eb2257166c865175bda299ea1a",
+    "deployments/media-ops-merchant-view-20261101/make_commands.py": "e17cf331008ac4ce901871a3725e7472583504781e9cd070fca8a19fcb5dc233",
+    "deployments/media-ops-merchant-view-20261101/test_commands.py": "3ae3846e7513ce16a42aa8a5b6330299d1e6acce6b06ce811787497474c0a16f"
+  },
+  "financial_calculation_closing_commission_permission_private_files_changed": false,
+  "financial_private_or_permission_fields_added": false,
+  "focused_projection_tests_passed": 25,
+  "limitations": [
+    "No provider auto-refresh or engagement analytics is implied.",
+    "Batch internal review reuses existing native task transition; provider exact approval remains separate.",
+    "Public provider writes remain gated and were not exercised in this work."
+  ],
+  "new_business_mutations": false,
+  "new_get_routes": [
+    "/api/v1/media-workspace/merchants",
+    "/api/v1/media-workspace/workspace"
+  ],
+  "new_tables": false,
+  "observed_at": "2026-11-01T02:21:05.382108+00:00",
+  "provider_calls_by_projection": false,
+  "real_publish_reply_or_schedule_activation": false,
+  "source_coverage": "bounded authorized local rows only; Google full reviews require native sync; Meta cache must retain owner binding credential expiry and target parent validity",
+  "stage": "MERCHANT_WORKSPACE_BACKEND_LOCAL_ACCEPTANCE"
+}

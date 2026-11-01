@@ -1,0 +1,11 @@
+{
+  "business_writes": false,
+  "command_bytes": 6067,
+  "command_sha256": "3f4d2201d8761048d44bf697b1047e25b86725ec4396370b737e97bcf105b5e8",
+  "credential_file_content_read": false,
+  "executed": false,
+  "only_writes": "new protected aggregate proof receipt",
+  "preflight_bytes": 9102,
+  "preflight_sha256": "ef93dc311c7706c8d06ca16673724cd608158f7963ea3e8899764db2fec14ac2",
+  "provider_requests": false
+}

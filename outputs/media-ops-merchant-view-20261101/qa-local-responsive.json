@@ -1,0 +1,74 @@
+[
+  {
+    "view": "工作台",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "商家",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "内容日历",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "审核台",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "互动收件箱",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "交付报表",
+    "height": 844,
+    "overflow": false,
+    "width": 390
+  },
+  {
+    "view": "工作台",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  },
+  {
+    "view": "商家",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  },
+  {
+    "view": "内容日历",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  },
+  {
+    "view": "审核台",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  },
+  {
+    "view": "互动收件箱",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  },
+  {
+    "view": "交付报表",
+    "height": 768,
+    "overflow": false,
+    "width": 1024
+  }
+]

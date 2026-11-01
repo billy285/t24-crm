@@ -1,0 +1,26 @@
+{
+  "application_edits_by_release_agent": false,
+  "application_freeze_sha256": "a57d42847bddadf58947edefab63b654bdcd37bc55227bae38bbe23f1fbcb168",
+  "artifact_sha256": {
+    "deployments/media-ops-merchant-view-20261101/artifacts/manifest.json": "83abbc803879894490afbdc4836d19d82bd90df0580d94109619f0478a71fa8b",
+    "deployments/media-ops-merchant-view-20261101/artifacts/payload.tar.gz": "3bd98d9ea2ab84f81cf4f5e48399d36fba5ceec3e2bf53ffce1e308f0edae6b9"
+  },
+  "artifacts_emitted": true,
+  "file_sha256": {
+    "deployments/media-ops-merchant-view-20261101/build_payload.py": "fe157405d1fc4151e79e5690c69a367410ac6cd0d11ba99bb13ff6b0a37cf99d",
+    "deployments/media-ops-merchant-view-20261101/make_capture.py": "b50171fd5f35075208900375b47d0d42e3162eb67374eff6b3957f2204a9b14f",
+    "deployments/media-ops-merchant-view-20261101/make_commands.py": "e17cf331008ac4ce901871a3725e7472583504781e9cd070fca8a19fcb5dc233",
+    "deployments/media-ops-merchant-view-20261101/preflight.py": "ef93dc311c7706c8d06ca16673724cd608158f7963ea3e8899764db2fec14ac2",
+    "deployments/media-ops-merchant-view-20261101/release.py": "485ac303342b486a589697d514ee7a1b7bb237bf23b61585d4eb32197b8398c4",
+    "deployments/media-ops-merchant-view-20261101/test_commands.py": "3ae3846e7513ce16a42aa8a5b6330299d1e6acce6b06ce811787497474c0a16f",
+    "deployments/media-ops-merchant-view-20261101/test_package.py": "9acd73795b85fd73a05412215e34dcdf86580cbfa7af8a81e4d63369c1ab59a5",
+    "deployments/media-ops-merchant-view-20261101/test_preflight.py": "fa27849255f4fcdf9322e62f5909fe5114b17903b71cd621159e8673f3720e85",
+    "deployments/media-ops-merchant-view-20261101/test_release.py": "006612bbffdcc1cc863db94e7eb86cdeedd00055972000f4b687fca540a3d3ff"
+  },
+  "final_pins_pending": false,
+  "frontend_version": "42de3d4757db",
+  "production_actions": false,
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "stage": "MERCHANT_VIEW_RELEASE_TOOLS_FROZEN_PENDING_CARRIER",
+  "synthetic_tests_passed": 103
+}

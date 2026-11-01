@@ -1,0 +1,61 @@
+{
+  "all150_populated_tables_preserved": true,
+  "baseline_frontend_version": "866ebc073a31",
+  "baseline_source_sha": "1db2a91e6d9ba1ee61b35dc9732f0fee4575aacc",
+  "credentials_included": false,
+  "database_migration": false,
+  "dependencies_changed": false,
+  "dist_file_count": 140,
+  "dist_inventory_sha256": "f9a946e71badc74e911aa5faa5833cdffc4897352bc467e3acfdebb26789992f",
+  "dist_total_bytes": 6136020,
+  "existing_full_environment_preserved": true,
+  "existing_ops_credentials_preserved": true,
+  "files": {
+    "app/backend/routers/media_workspace.py": "afb4588c6b58787507e8028837a7deeb153364388d270019c0dc1c89b85c4022",
+    "app/backend/services/media_workspace.py": "afdc6768b775fd62e7910f712d4309eaced6a884452febf700f8be0aa2b7ba06",
+    "app/backend/tests/test_media_workspace.py": "cbbab2b1da724b5ad922d00ecd22a11477f469eb2257166c865175bda299ea1a",
+    "app/frontend/src/components/GoogleBusinessManagement.tsx": "3d999377d166bb91e3994866cf9e44070d938fb19eaf150559922d48c6c7c1ab",
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "f3da7fa58456999d2d3d8974e0533d281971ed9a253ff19f7eeb73b99d39cb85",
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "ebc4844a8610ad6bc62da29f5c4c4334edd1348342d7d20d7064f81701767793",
+    "app/frontend/src/components/MediaPlanningWorkspace.tsx": "e822605bfb68d5f0c6827beb21ee467ec7c07355c162124857dba73e387e4f97",
+    "app/frontend/src/components/MediaTeamMaterials.tsx": "2cb9dc8baa70f477da8843bae132f5216e42909b4a18b0da36c16b58c9b562b6",
+    "app/frontend/src/components/MediaWorkspaceReview.tsx": "89cf5f8cd76245ea8dc8f8c29adc8dc1ac70625b1848c60d2caccfc61ce91751",
+    "app/frontend/src/components/MetaBusinessWorkspace.tsx": "e0f4d821e3eeed85ee6814b7eb35d43ab2ad0b4c633bc61169c5ddf3538f6969",
+    "app/frontend/src/components/MetaOperationsWorkspace.tsx": "4bd3713a7a29cb1e106e1c540cc0380685686af344c3bf67d7e7ea0272dede88",
+    "app/frontend/src/components/media-merchant-workspace.css": "188bc9a48d19f8b0d499598b383f29193532a3c0254ae83eb08508ceffd100be",
+    "app/frontend/src/lib/media-provider-scope.ts": "9ecdab43adf71897e789feb0df4cf0b79dd6d9a64a8204f6685bdecae3b410c7",
+    "app/frontend/src/lib/media-workspace-api.ts": "2980d505352bf2b68a1ef71b2ad7368bdefc9cc154d0351df23c6e9c1dac0b56",
+    "app/frontend/src/pages/MediaOperations.tsx": "9bed90b44fa0f1a20963975f304e360ae2d7cb8e60f734d596fbeb3c2775684d",
+    "app/frontend/tests/google-pilot-workflow.test.mjs": "8499238b85dd6ad385c070ad65de691318d488d556d57d69e5693d1666d4f771",
+    "app/frontend/tests/media-merchant-workflow.test.mjs": "574b04aba8e0b2ae9baa6b4ffafa3f28aefe6d576ff7f4fbc791cf9349c369fb",
+    "app/frontend/tests/media-provider-scope.test.mjs": "ca09eaf14af874d455963b2d814d8ca13c2a0539f2da762f55ff6798fcd18652",
+    "app/frontend/tests/meta-business-workflow.test.mjs": "a894ae3c46c59bfae378d8de49f6fe9e6bd30e2ac60a0e9ce707e54214a76098",
+    "app/frontend/tests/meta-operations-workflow.test.mjs": "dd44b040c576fd87af0fe1f0608354168db2a2f7d7c066bee8aef01968633a22"
+  },
+  "frontend_changed": true,
+  "frontend_version": "42de3d4757db",
+  "old_schema_revision": "cefa9b12a358",
+  "operations_execution_enabled": false,
+  "operations_scheduler_enabled": false,
+  "production_seed_rows": false,
+  "provider_requests": false,
+  "qa": {
+    "backend_projection_tests_passed": 25,
+    "backend_regression_tests_passed": 437,
+    "deployed": false,
+    "frontend_tests_passed": 113,
+    "public_provider_actions_performed": false,
+    "root_desktop_widths": [
+      1024
+    ],
+    "root_mobile_widths": [
+      320,
+      390
+    ]
+  },
+  "runtime_environment_changed": false,
+  "schema_changed": false,
+  "schema_revision": "cefa9b12a358",
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "stage": "MERCHANT_VIEW_APPLICATION_SOURCE_AND_DIST_FROZEN"
+}

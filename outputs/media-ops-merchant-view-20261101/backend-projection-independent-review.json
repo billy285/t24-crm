@@ -1,0 +1,26 @@
+{
+  "application_edits_by_reviewer": false,
+  "checks": [
+    "only_two_GET_projection_routes",
+    "existing_delivery_invitation_and_task_assignment_scope",
+    "active_employee_and_role_fence",
+    "google_binding_and_current_explicit_grant_intersection",
+    "meta_owner_only_independent_binding_credential_and_scope_expiry",
+    "expired_or_foreign_cached_parent_chain_rejected",
+    "opaque_actor_scope_dataset_signed_cursor",
+    "bounded_partial_source_results",
+    "no_provider_fanout_or_business_write",
+    "no_finance_private_or_token_fields",
+    "independent_meta_authority_survives_legacy_read_expiry"
+  ],
+  "file_sha256": {
+    "app/backend/routers/media_workspace.py": "afb4588c6b58787507e8028837a7deeb153364388d270019c0dc1c89b85c4022",
+    "app/backend/services/media_workspace.py": "afdc6768b775fd62e7910f712d4309eaced6a884452febf700f8be0aa2b7ba06",
+    "app/backend/tests/test_media_workspace.py": "cbbab2b1da724b5ad922d00ecd22a11477f469eb2257166c865175bda299ea1a"
+  },
+  "focused_tests": 25,
+  "production_actions": false,
+  "provider_requests": false,
+  "result": "PASS",
+  "stage": "MERCHANT_PROJECTION_INDEPENDENT_REVIEW"
+}

@@ -1,0 +1,19 @@
+{
+  "stage": "FRONTEND_IMPLEMENTED_PENDING_ROOT_QA",
+  "files": {
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "ebc4844a8610ad6bc62da29f5c4c4334edd1348342d7d20d7064f81701767793",
+    "app/frontend/src/components/MediaWorkspaceReview.tsx": "89cf5f8cd76245ea8dc8f8c29adc8dc1ac70625b1848c60d2caccfc61ce91751",
+    "app/frontend/src/components/media-merchant-workspace.css": "188bc9a48d19f8b0d499598b383f29193532a3c0254ae83eb08508ceffd100be",
+    "app/frontend/src/lib/media-workspace-api.ts": "2980d505352bf2b68a1ef71b2ad7368bdefc9cc154d0351df23c6e9c1dac0b56",
+    "app/frontend/src/pages/MediaOperations.tsx": "9bed90b44fa0f1a20963975f304e360ae2d7cb8e60f734d596fbeb3c2775684d",
+    "app/frontend/src/components/MediaTeamMaterials.tsx": "2cb9dc8baa70f477da8843bae132f5216e42909b4a18b0da36c16b58c9b562b6",
+    "app/frontend/tests/media-merchant-workflow.test.mjs": "574b04aba8e0b2ae9baa6b4ffafa3f28aefe6d576ff7f4fbc791cf9349c369fb"
+  },
+  "focused_workflow_tests": 20,
+  "related_frontend_tests": 113,
+  "new_runtime_eslint_errors": 0,
+  "tsc_unrelated_baseline": "Finance.tsx:5778 TS2322 unchanged",
+  "public_provider_actions_performed": false,
+  "deployed": false,
+  "qa_fixture": "http://127.0.0.1:8896/work/media-merchant-preview/index.html"
+}

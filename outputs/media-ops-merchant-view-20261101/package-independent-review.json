@@ -1,0 +1,17 @@
+{
+  "stage": "INDEPENDENT_MERCHANT_VIEW_PACKAGE_REPRODUCTION_PASS",
+  "source_sha": "5a904dd925f03296c07018f83e97277f5f90dd08",
+  "frontend_version": "42de3d4757db",
+  "application_freeze_sha256": "a57d42847bddadf58947edefab63b654bdcd37bc55227bae38bbe23f1fbcb168",
+  "builder_sha256": "fe157405d1fc4151e79e5690c69a367410ac6cd0d11ba99bb13ff6b0a37cf99d",
+  "payload_sha256": "3bd98d9ea2ab84f81cf4f5e48399d36fba5ceec3e2bf53ffce1e308f0edae6b9",
+  "manifest_sha256": "83abbc803879894490afbdc4836d19d82bd90df0580d94109619f0478a71fa8b",
+  "dist_inventory_sha256": "f9a946e71badc74e911aa5faa5833cdffc4897352bc467e3acfdebb26789992f",
+  "runtime_member_count": 142,
+  "application_delta_count": 20,
+  "reproduced_payload_exact": true,
+  "reproduced_manifest_exact": true,
+  "server_actions": false,
+  "provider_actions": false,
+  "artifact_overwrite": false
+}
