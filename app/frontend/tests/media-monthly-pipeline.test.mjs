@@ -16,18 +16,19 @@ function compile(body, imports = {}) {
   return module.exports;
 }
 const images = compile(source('../src/lib/media-publication-images.ts'));
-const constants = { MONTHLY_PILOT_CUSTOMER_ID: 20, MONTHLY_PILOT_MONTH: '2026-11' };
+const constants = compile(source('../src/lib/media-monthly-api.ts'), { './media-publication-images': images });
+const rules = { timezone: 'America/Chicago', weekdays: [2,4,6], local_time: '11:00', posts_per_week: 3, language: 'en', forbidden_claims: [], include_prices: false, generic_mode: true };
 const api = compile(apiSource, { './media-publication-images': images, './media-monthly-api': constants });
 const image = (extra = {}) => ({ id: imageId, customer_id: 20, material_id: 3, source_sha256: hash, image_sha256: hash, width: 289, height: 312, byte_size: 201000, rights_basis: 'client_provided', created_at: stamp, revoked_at: null, status: 'ready', preview_path: `/api/v1/media-publication-images/${imageId}/preview`, can_revoke: true, ...extra });
 const material = (extra = {}) => ({ id: 3, title: 'LOCAL TEST store photo', linked_item_id: null, approval_status: 'pending', copyright_status: 'unknown', image_versions: [image()], fingerprint: hash, width: 289, height: 312, quality_warning: 'LOCAL TEST original metadata pending', needs_quality_confirmation: true, ...extra });
 const items = () => [3, 5, 7, 10, 12, 14, 17, 19, 21, 24, 26, 28].map((day, index) => ({ item_id: index + 1, slot_id: `202611${String(day).padStart(2, '0')}`, title: `LOCAL TEST title ${index + 1}`, content: `LOCAL TEST public copy ${index + 1}`, owner_summary: `仅内部中文核对 ${index + 1}`, proposed_publish_at: `2026-11-${String(day).padStart(2, '0')}T17:00:00Z`, timezone: 'America/Chicago', revision: 2, copy_hash: hash, material_id: 3, image_version_id: imageId, image_sha256: hash, publication_image: image(), quality_warnings: [], task_id: null, schedule: null }));
 const packet = (extra = {}) => ({ id: 7, revision: 1, status: 'prepared', preview_hash: previewHash, source_hash: hash, reviewed_at: null, created_at: stamp, updated_at: stamp, expires_at: '2026-11-02T03:42:00Z', ...extra });
-const workflow = (extra = {}) => ({ run_id: 1, customer_id: 20, month: '2026-11', run_revision: 13, source_stale: false, workflow: null, items: items(), materials: [material()], binding: { id: 4, revision: 3, customer_id: 20, customer_name: 'LOCAL TEST Northern', title: 'LOCAL TEST Google Northern', primary_operator_id: 1, primary_operator_name: 'LOCAL TEST owner' }, delivery: { enabled: false, can_manage: true, notice: 'LOCAL TEST private delivery remains off', activated_at: null }, scheduler: { enabled: true, activation_from: '2026-10-30T19:42:04Z' }, checks: [], alerts: [], counts: { total: 12, scheduled: 0, succeeded: 0, blocked: 0, unknown: 0, missed: 0, cancelled: 0 }, capabilities: { is_owner: true, can_prepare: true, can_review: false, can_schedule: false, can_cancel: false }, ...extra });
+const workflow = (extra = {}) => ({ run_id: 1, customer_id: 20, month: '2026-11', rules, run_revision: 13, source_stale: false, workflow: null, items: items(), materials: [material()], binding: { id: 4, revision: 3, customer_id: 20, customer_name: 'LOCAL TEST Northern', title: 'LOCAL TEST Google Northern', primary_operator_id: 1, primary_operator_name: 'LOCAL TEST owner' }, delivery: { enabled: false, can_manage: true, notice: 'LOCAL TEST private delivery remains off', activated_at: null }, scheduler: { enabled: true, activation_from: '2026-10-30T19:42:04Z' }, checks: [], alerts: [], counts: { total: 12, scheduled: 0, succeeded: 0, blocked: 0, unknown: 0, missed: 0, cancelled: 0 }, capabilities: { is_owner: true, can_prepare: true, can_review: false, can_schedule: false, can_cancel: false }, ...extra });
 const prepared = (extra = {}) => workflow({ workflow: packet(), capabilities: { is_owner: true, can_prepare: false, can_review: true, can_schedule: false, can_cancel: true }, ...extra });
 const reviewed = (extra = {}) => prepared({ workflow: packet({ status: 'reviewed', revision: 2, reviewed_at: stamp }), items: items().map(item => ({ ...item, task_id: item.item_id + 100 })), delivery: { enabled: true, can_manage: true, notice: 'LOCAL TEST delivery on', activated_at: stamp }, capabilities: { is_owner: true, can_prepare: false, can_review: false, can_schedule: true, can_cancel: true }, ...extra });
 const scheduled = (extra = {}) => reviewed({ workflow: packet({ status: 'scheduled', revision: 3, reviewed_at: stamp }), items: reviewed().items.map(item => ({ ...item, schedule: { id: item.item_id + 200, revision: 1, binding_id: 4, task_id: item.task_id, timezone: item.timezone, status: 'scheduled', message: 'LOCAL TEST waits until due', action_id: null, planned_at: item.proposed_publish_at } })), counts: { ...workflow().counts, scheduled: 12 }, capabilities: { is_owner: true, can_prepare: false, can_review: false, can_schedule: false, can_cancel: true }, ...extra });
 const receipt = (data, kind) => ({ ...data, request_receipt: { request_id: requestId, kind, workflow_revision: data.workflow.revision, result_hash: hash } });
-const run = (extra = {}) => ({ id: 1, customer_id: 20, revision: 13, status: 'generated', ...extra });
+const run = (extra = {}) => ({ id: 1, customer_id: 20, month: '2026-11', profile_snapshot: { public_facts: { public_name: 'LOCAL TEST Northern', location: 'LOCAL TEST location', highlights: ['LOCAL TEST verified'] }, rules }, items: items(), revision: 13, status: 'generated', ...extra });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const label = value => value == null || typeof value === 'boolean' ? '' : typeof value !== 'object' ? String(value) : Array.isArray(value) ? value.map(label).join('') : label(value.props?.children);
 const nodes = value => value == null || typeof value !== 'object' ? [] : Array.isArray(value) ? value.flatMap(nodes) : [value, ...nodes(value.props?.children)];
@@ -71,8 +72,8 @@ test('fixed images must match the item hash, merchant, material and one immutabl
 test('formal schedule rows cannot attach another binding, task, timezone or proposed date', () => {
   for (const patch of [{ binding_id: 9 }, { task_id: 999 }, { timezone: 'Asia/Shanghai' }, { planned_at: '2026-11-03T16:00:00Z' }]) assert.throws(() => api.verifiedMonthlyWorkflow(scheduled({ items: scheduled().items.map((item, index) => index === 0 ? { ...item, schedule: { ...item.schedule, ...patch } } : item) }), 1));
 });
-test('staff, another merchant and non-generated legacy runs issue zero pipeline requests', () => {
-  for (const props of [{ isOwner: false }, { run: run({ customer_id: 21 }) }, { run: run({ status: 'adopted' }) }]) { const h = harness(props); assert.equal(h.render(), null); h.effects(); assert.equal(h.requests.length, 0); }
+test('staff, invalid merchant and non-generated legacy runs issue zero pipeline requests', () => {
+  for (const props of [{ isOwner: false }, { run: run({ customer_id: 0 }) }, { run: run({ status: 'adopted' }) }]) { const h = harness(props); assert.equal(h.render(), null); h.effects(); assert.equal(h.requests.length, 0); }
 });
 test('opening the pipeline makes one local workflow read with cancellation and no provider, AI or write', async () => {
   const h = harness(); await ready(h);
@@ -107,7 +108,7 @@ test('low-resolution or unavailable versions are excluded from preparation even 
 });
 test('internal monthly review never activates schedules and needs new photo verification on every read', async () => {
   const h = harness(); await ready(h, prepared()); const original = find(h.render(), item => item.type === 'PublicationImagePreview'); photosReady(h);
-  button(check(h, '我已核对北方面食 Google 商家的这12篇'), '整月审核通过，暂不排期').props.onClick();
+  button(check(h, 'Google 商家的这12篇'), '整月审核通过，暂不排期').props.onClick();
   assert.equal(h.requests[1].options.url, '/api/v1/media-monthly/runs/1/review');
   assert.equal(h.requests[1].options.data.preview_hash, previewHash); assert.equal(h.requests[1].options.data.confirmed, true);
   await finishMutation(h, reviewed(), 'review'); assert.equal(h.requests.filter(request => request.options.method === 'POST').length, 1);
@@ -166,7 +167,7 @@ test('late historical recovery conflict reads current cancelled state and cannot
   assert.equal(h.requests.filter(request => request.options.method === 'POST').length, 1);
 });
 test('failed current-state read after a receipt keeps later actions blocked', async () => {
-  const h = harness(); await ready(h, prepared()); photosReady(h); button(check(h, '我已核对北方面食 Google 商家的这12篇'), '整月审核通过，暂不排期').props.onClick();
+  const h = harness(); await ready(h, prepared()); photosReady(h); button(check(h, 'Google 商家的这12篇'), '整月审核通过，暂不排期').props.onClick();
   h.requests[1].resolve({ data: receipt(reviewed(), 'review') }); await tick(); h.requests[2].reject(new Error('current read unavailable')); await tick();
   assert.equal(button(h.render(), '整月审核通过，暂不排期').props.disabled, true); assert.equal(nodes(h.render()).some(item => ['Button', 'button'].includes(item.type) && label(item) === '确认整月排期并启用到期发布'), false); assert.match(label(h.render()), /当前清单尚未重新读取成功/);
 });
@@ -210,7 +211,20 @@ test('alerts remain visible with no automatic retry or dismissal action', async 
 });
 test('unmount aborts the pending read and ignores every late response and image event', async () => {
   const h = harness(); h.render(); h.effects(); h.unmount(); assert.equal(h.requests[0].options.options.signal.aborted, true); h.requests[0].resolve({ data: prepared() }); await tick(); assert.equal(h.active.length, 0); assert.equal(h.requests.length, 1);
-  const other = harness(); await ready(other, prepared()); const old = find(other.render(), item => item.type === 'PublicationImagePreview'); other.unmount(); old.props.onStateChange('ready'); assert.equal(button(check(other, '我已核对北方面食 Google 商家的这12篇'), '整月审核通过，暂不排期').props.disabled, true);
+  const other = harness(); await ready(other, prepared()); const old = find(other.render(), item => item.type === 'PublicationImagePreview'); other.unmount(); old.props.onStateChange('ready'); assert.equal(button(check(other, 'Google 商家的这12篇'), '整月审核通过，暂不排期').props.disabled, true);
 });
 
 test('a cancelled packet with frozen completion history stays read-only even without a schedule row',async()=>{const h=harness();await ready(h,reviewed({workflow:packet({status:'cancelled',revision:4}),history_frozen:true,capabilities:{is_owner:true,can_prepare:false,can_review:false,can_schedule:false,can_cancel:false}}));assert.equal(h.active.at(-1),true);assert.match(label(h.render()),/本月完整审核清单/);assert.equal(nodes(h.render()).some(item=>['Button','button'].includes(item.type)&&label(item)==='准备本月审核清单，保留文案'),false);});
+
+test('a generic merchant workflow requires exact customer, editorial month, rules and all its frozen slots',()=>{
+  const monthRules={...rules,timezone:'America/Los_Angeles',weekdays:[1],posts_per_week:1};
+  const genericItems=[7,14,21,28].map((day,index)=>({...items()[0],item_id:index+1,slot_id:`202612${day}`,proposed_publish_at:`2026-12-${day}T19:00:00Z`.replace('-7T','-07T'),timezone:monthRules.timezone,material_id:null,image_version_id:null,image_sha256:null,publication_image:null}));
+  genericItems[0].slot_id='20261207';
+  const selectedRun=run({customer_id:31,month:'2026-12',profile_snapshot:{public_facts:{public_name:'LOCAL TEST 31'},rules:monthRules},items:genericItems});
+  const response=workflow({customer_id:31,month:'2026-12',rules:monthRules,items:genericItems,materials:[],binding:null,counts:{...workflow().counts,total:4}});
+  assert.equal(api.verifiedMonthlyWorkflow(response,1,selectedRun).counts.total,4);
+  assert.throws(()=>api.verifiedMonthlyWorkflow(response,1));
+  assert.throws(()=>api.verifiedMonthlyWorkflow({...response,customer_id:32},1,selectedRun));
+  assert.throws(()=>api.verifiedMonthlyWorkflow({...response,rules:{...monthRules,local_time:'12:00'}},1,selectedRun));
+  assert.throws(()=>api.verifiedMonthlyWorkflow({...response,items:genericItems.slice(0,3)},1,selectedRun));
+});

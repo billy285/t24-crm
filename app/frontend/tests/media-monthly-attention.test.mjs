@@ -21,7 +21,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(extra = {}) {
   let si = 0, ri = 0, ei = 0;
   const states = [], refs = [], effects = [], queue = [], requests = [], timers = new Map(), listeners = new Map(), opened = [];
-  const props = { scope: 'owner:1', isOwner: true, customerId: null, visible: true, refreshToken: 0, onOpen: id => opened.push(id), ...extra };
+  const props = { scope: 'owner:1', isOwner: true, customerId: 20, visible: true, refreshToken: 0, onOpen: id => opened.push(id), ...extra };
   const hooks = {
     useState(value) { const i = si++; if (!(i in states)) states[i] = typeof value === 'function' ? value() : value; return [states[i], next => states[i] = typeof next === 'function' ? next(states[i]) : next]; },
     useRef(value) { const i = ri++; if (!(i in refs)) refs[i] = { current: value }; return refs[i]; },
@@ -46,8 +46,8 @@ test('monthly attention rejects cross-customer, incomplete counts, invalid batch
   for (const value of [result({ customer_id: 21 }), result({ run_id: null }), result({ counts: { total: 0 } }), result({ items: [alert(), alert()] }), result({ items: [alert({ version: 'unverified' })] })]) assert.throws(() => api.verifiedMonthlyAttention(value));
   assert.equal(api.verifiedMonthlyAttention(result()).counts.pending_confirmation, 1);
 });
-test('staff, other merchant and hidden provider pane perform zero attention requests', () => {
-  for (const props of [{ isOwner: false }, { customerId: 21 }, { visible: false }]) { const h = harness(props); assert.equal(h.render(), null); h.effects(); assert.equal(h.requests.length, 0); }
+test('staff, all-merchant scope and hidden provider pane perform zero attention requests', () => {
+  for (const props of [{ isOwner: false }, { customerId: null }, { customerId: 0 }, { visible: false }]) { const h = harness(props); assert.equal(h.render(), null); h.effects(); assert.equal(h.requests.length, 0); }
 });
 test('owner reminder separates pending confirmation from actual publishing failure and opens exact run', async () => {
   const h = harness(); h.render(); h.effects(); assert.equal(h.requests[0].method, 'GET');
@@ -66,4 +66,14 @@ test('visibility refresh and timer read only local alerts; unmount aborts late r
   h.unmount(); assert.equal(h.requests[1].signal.aborted, true); assert.equal(h.timers.size, 0); assert.equal(h.listeners.size, 0);
   h.requests[1].resolve(result({ items: [alert()], counts: { ...result().counts, attention: 1, total: 1, unknown: 1 } })); await tick();
   assert.doesNotMatch(label(h.render()), /1 项发布异常待处理/); assert.equal(h.requests.every(row => row.method === 'GET' && row.path === '/customers/20/workflow-alerts'), true);
+});
+
+
+test('another selected merchant reads only its exact month and does not show a stale month result', async () => {
+  const h = harness({ customerId:31, customerName:'LOCAL TEST 31', month:'2027-03' });h.render();h.effects();
+  assert.equal(h.requests[0].path,'/customers/31/workflow-alerts?month=2027-03');
+  h.requests[0].resolve(result({customer_id:31,month:'2027-04'}));await tick();
+  assert.match(label(h.render()),/当前无法确认是否有待办/);
+  assert.throws(()=>api.verifiedMonthlyAttention(result({customer_id:32,month:'2027-03'}),31,'2027-03'));
+  assert.equal(api.verifiedMonthlyAttention(result({customer_id:31,month:'2027-03'}),31,'2027-03').customer_id,31);
 });
