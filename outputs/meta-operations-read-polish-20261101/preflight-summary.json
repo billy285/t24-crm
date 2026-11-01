@@ -1,0 +1,43 @@
+{
+  "activated_receipt_sha256": "00309f7c36fb6111ca41eff91009bfa47570eec14650c0de9aab085a6cc10933",
+  "active_nginx_sha256": "4de33c021daff0edc8708d0abaa849b775e4b520dc9e4e3aa57ad7f2604b150e",
+  "all150_populated_tables_preserved": true,
+  "backend_changed_before": {
+    "services/meta_operations_provider.py": "45832c54a2d63f3d333f74a01422b90475b50190c8a9f682739605553e9a49b3"
+  },
+  "backend_file_count": 396,
+  "backend_inventory_sha256": "bb603e81e50ae8c02a6cec1edd6cd69964635efb33223fdea7752830013db6c1",
+  "business_writes": false,
+  "bytes": 39501,
+  "content_security_policy_sha256": "2b194e47b6ce14dbf475afea0192b06f0e93d000811af1a29c8e5f78646250fa",
+  "credential_file_content_read": false,
+  "crm": {
+    "config": "e6e375f809b35b4d3e60445f0e2e945489a15bdb31cadad3c20c6ff0b15f7d95",
+    "id": "b9f7e2f4ee0c86fe6d40018b76eaa96ca8e63774250137575a9484cdd3cc1961",
+    "image": "sha256:4797556daa7b98dbeeae6c31364d4f3411645c324902e0f8b922cf1180a7af53",
+    "restart": 0,
+    "started": "2026-11-01T00:59:30.956352607Z"
+  },
+  "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+  "frontend_version": "d2dbd67fa15d",
+  "host": "iZj6c4cj7edgnhdimts4l7Z",
+  "nginx_sha256": "50fc4eb965f80fddc5dec87e37994f42ea6ec7e31d87c98136a7ddef7810bc45",
+  "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+  "ops_execution_enabled": false,
+  "ops_scheduler_enabled": false,
+  "path": "/opt/t24-crm/releases/meta-operations-read-polish-preflight-4792c2350a25.json",
+  "private_content_read": false,
+  "provider_requests": false,
+  "public_inventory_sha256": "2dbd25a03c011fc9c8d8f44fe60ec030566fccaedad628f3b6d519d0e41a44e1",
+  "public_root": "/var/www/t24-crm-public/meta-operations-95588aa2e630-20261101",
+  "rows_sha256": "8d9147461f9e96949daf40a7583fe0c143ae1b5988d340eee2b506eaa2348db4",
+  "runtime_changed": false,
+  "schema_revision": "cefa9b12a358",
+  "schema_sha256": "c2d85803b06961e2cbbadde9f789121dd093ecb9ec7e007737a9acad375814f3",
+  "sha256": "4792c2350a251e545ec2da15fb95d24dc2261fab002f2a63f5f5b76e974f8088",
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_READ_POLISH_PREFLIGHT_CAPTURED",
+  "table_count": 150,
+  "task_id": "t-hk071r3r2o9twqo",
+  "execution_exit_code": 0
+}

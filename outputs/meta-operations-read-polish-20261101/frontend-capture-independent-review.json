@@ -1,0 +1,46 @@
+{
+  "blocking_findings": [],
+  "callback_query_alone_cannot_claim_grant": true,
+  "capture_all_150_populated_tables_preserved": true,
+  "capture_credentials_metadata_only": true,
+  "capture_no_provider_requests": true,
+  "capture_ops_eleven_env_preserved": true,
+  "capture_tests_passed": 11,
+  "execution_and_scheduler_remain_off": true,
+  "files": {
+    "app/frontend/src/components/MetaOperationsWorkspace.tsx": {
+      "bytes": 63056,
+      "sha256": "d632964d51996ab2448f9b4102a038d4c402c85b25a5a893787c55156563b123"
+    },
+    "app/frontend/tests/meta-operations-workflow.test.mjs": {
+      "bytes": 38608,
+      "sha256": "f3d9e53c10ee9aed591ede08b1a69bfc759f47e64a611430a99150cc3d31305e"
+    },
+    "deployments/meta-operations-read-polish-20261101/capture-command.sh": {
+      "bytes": 6187,
+      "sha256": "3d75eed0caab673aa0a52e1c4fb2f3bd01d8aa5b14ec66d2bd21507829e7e1a1"
+    },
+    "deployments/meta-operations-read-polish-20261101/make_capture.py": {
+      "bytes": 2255,
+      "sha256": "feac8120c5f5aff3f97042c52f77766dea5ced90451ec00b66ec870c6b9b5451"
+    },
+    "deployments/meta-operations-read-polish-20261101/preflight.py": {
+      "bytes": 9189,
+      "sha256": "6e12f110a6cf02172e41cdb91305fb2dc2c5b80fb4e64b545ccf7829556d0814"
+    },
+    "deployments/meta-operations-read-polish-20261101/test_preflight.py": {
+      "bytes": 6334,
+      "sha256": "201f0cfc20659ee8d53041220027c6fc6c727343e5231f4cfb872367315cba03"
+    }
+  },
+  "followup_release_tool_review_pending": true,
+  "frontend_changes_only_labels_and_connected_notice": true,
+  "frontend_workflow_tests_passed": 49,
+  "paused_state_distinct": true,
+  "public_action_guards_unchanged": true,
+  "result": "PASS",
+  "reviewer_edits": false,
+  "reviewer_provider_actions": false,
+  "reviewer_server_actions": false,
+  "stage": "META_OPERATIONS_READ_POLISH_FRONTEND_AND_CAPTURE_INDEPENDENT_REVIEW"
+}
