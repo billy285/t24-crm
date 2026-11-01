@@ -1,5 +1,9 @@
 """Real adapter exercised only with synthetic credentials and injected HTTP."""
 import logging
+import inspect
+from pathlib import Path
+import subprocess
+import sys
 import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs
@@ -227,6 +231,65 @@ async def test_post_listing_never_follows_untrusted_next_url(configured, monkeyp
     transport(monkeypatch, lambda request: httpx.Response(200, json={"data": [{"id": "111_800", "message": "Post", "created_time": "2026-11-01T00:00:00Z", "permalink_url": "https://www.facebook.com/111/posts/800"}], "paging": {"next": "https://evil.example/?access_token=SECRET", "cursors": {"after": "OPAQUE-CURSOR"}}}))
     value = await provider.read_posts(None, None, binding())
     assert value["next_cursor"] == "OPAQUE-CURSOR" and "evil" not in str(value) and "SECRET" not in str(value)
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("2026-11-01T08:15:30+0000", "2026-11-01T08:15:30+00:00"),
+    ("2026-11-01T08:15:30-0700", "2026-11-01T15:15:30+00:00"),
+    ("2026-11-01T08:15:30+0530", "2026-11-01T02:45:30+00:00"),
+    ("2026-11-01T08:15:30Z", "2026-11-01T08:15:30+00:00"),
+    ("2026-11-01T08:15:30+08:00", "2026-11-01T00:15:30+00:00"),
+    ("2026-11-01T08:15:30.123456+08:00", "2026-11-01T00:15:30.123456+00:00"),
+])
+def test_graph_timestamps_normalize_compact_and_aware_iso_to_utc(value, expected):
+    assert provider._timestamp(value) == expected
+
+
+@pytest.mark.parametrize("value", [None, 1793492130, "", "x"*101, "invalid", "2026-11-01", "2026-11-01T08:15:30",
+    "2026-11-31T08:15:30+0000", "2026-11-01T08:15:60+0000", "2026-11-01T08:15:30+2400",
+    "2026-11-01T08:15:30-2400", "2026-11-01T08:15:30+0060", "2026-11-01T08:15:30+1261",
+    "0001-01-01T00:00:00+0001", "9999-12-31T23:59:59-0001"])
+def test_graph_timestamp_invalid_or_naive_values_remain_unverified(value):
+    assert provider._timestamp(value) is None
+
+
+def test_graph_timestamp_compact_offset_runs_on_pre311_iso_parser():
+    # Execute the actual helper with a real older stdlib when available. This
+    # catches the production 3.10/local 3.12 difference without importing any
+    # HTTP/auth dependency or contacting a provider in that interpreter.
+    code = ("import json,re,sys\nfrom datetime import datetime,timezone\n"
+        "if sys.version_info[:2]>(3,10):raise SystemExit(77)\n" + inspect.getsource(provider._timestamp) +
+        "\nassert _timestamp('2026-11-01T08:15:30+0000')=='2026-11-01T08:15:30+00:00'\n"
+        "assert _timestamp('2026-11-01T08:15:30-0700')=='2026-11-01T15:15:30+00:00'\n"
+        "assert _timestamp('2026-11-01T08:15:30Z')=='2026-11-01T08:15:30+00:00'\n"
+        "assert _timestamp('2026-11-01T08:15:30') is None\nprint('PRE311_GRAPH_TIMESTAMP_COMPATIBLE')\n")
+    for executable in dict.fromkeys((sys.executable, "/usr/bin/python3")):
+        if not Path(executable).is_file(): continue
+        result = subprocess.run([executable, "-I", "-S", "-c", code], capture_output=True, text=True, timeout=10)
+        if result.returncode == 77: continue
+        assert result.returncode == 0 and result.stdout.strip() == "PRE311_GRAPH_TIMESTAMP_COMPATIBLE", result.stderr
+        return
+    pytest.skip("A pre3.11 stdlib is not installed; deployment must also run this probe with its Python3.10 interpreter")
+
+
+@pytest.mark.asyncio
+async def test_facebook_post_listing_preserves_real_compact_created_time(configured, monkeypatch):
+    authorize(monkeypatch); seen = []
+    def reply(request):
+        seen.append(request)
+        return httpx.Response(200, json={"data":[{"id":"111_800", "message":"Synthetic store update",
+            "created_time":"2026-11-01T08:15:30+0000", "permalink_url":"https://www.facebook.com/111/posts/800"}]})
+    transport(monkeypatch, reply)
+    result = await provider.read_posts(None, None, binding())
+    assert result["items"][0]["created_at"] == "2026-11-01T08:15:30+00:00"
+    assert len(seen) == 1 and seen[0].method == "GET" and "created_time" in seen[0].url.params["fields"]
+
+
+def test_facebook_comment_snapshot_uses_same_normalized_timestamp():
+    row = provider._comment_data({"id":"111_900", "message":"Synthetic customer question", "from":{"name":"Customer"},
+        "created_time":"2026-11-01T08:15:30+0000"}, binding(), "111_800")
+    assert row["created_at"] == "2026-11-01T08:15:30+00:00"
+    assert row["post_external_id"] == "111_800" and len(provider.comment_version(row)) == 64
 
 
 @pytest.mark.parametrize("scopes", [[{}], ["pages_show_list"], sorted(provider.SCOPES) + ["ads_management"]])

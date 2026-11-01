@@ -147,10 +147,17 @@ def _content(value, maximum):
 
 def _timestamp(value):
     if not isinstance(value, str) or not 1 <= len(value) <= 100: return None
+    # Graph returns compact UTC offsets (for example +0000). Python 3.10's
+    # fromisoformat requires the colon that newer local Python versions accept
+    # implicitly; normalize only a valid explicit HHMM offset before parsing.
+    offset = re.search(r"([+-])([0-9]{2})([0-9]{2})$", value)
+    if offset:
+        if int(offset[2]) > 23 or int(offset[3]) > 59: return None
+        value = value[:offset.start()] + offset[1] + offset[2] + ":" + offset[3]
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(timezone.utc).isoformat() if parsed.tzinfo else None
-    except ValueError: return None
+    except (ValueError, OverflowError): return None
 
 
 def _permalink(value):

@@ -62,7 +62,7 @@ const button = (tree, text) => find(tree, node => node.type === 'Button' && labe
 const privateImage = tree => find(tree, node => typeof node.type === 'function' && node.type.name === 'MetaPrivateImage');
 const confirmation = tree => find(tree, node => node.type === 'input' && node.props.type === 'checkbox');
 const consent = h => { find(h.render(), node => node.type === 'input' && node.props.type === 'checkbox').props.onChange({ target: { checked: true } }); return h.render(); };
-function harness() {
+function harness({ search = '' } = {}) {
   const states = [], refs = [], effects = [], callbacks = [], queue = [], requests = [], navigation = []; let si = 0, ri = 0, ei = 0, ci = 0, ids = 0, held = false;
   const equal = (a, b) => a && b && a.length === b.length && a.every((v, i) => v === b[i]);
   const hooks = { useState(initial) { const i = si++; if (!(i in states)) states[i] = typeof initial === 'function' ? initial() : initial; return [states[i], value => states[i] = typeof value === 'function' ? value(states[i]) : value]; }, useRef(initial) { const i = ri++; if (!(i in refs)) refs[i] = { current: initial }; return refs[i]; }, useCallback(fn, deps) { const i = ci++; if (!callbacks[i] || !equal(callbacks[i].deps, deps)) callbacks[i] = { fn, deps }; return callbacks[i].fn; }, useEffect(run, deps) { const i = ei++, old = effects[i]; if (!old || !equal(old.deps, deps)) queue.push(() => { old?.cleanup?.(); effects[i] = { deps, cleanup: run() }; }); } };
@@ -70,7 +70,7 @@ function harness() {
   const lib = compile(apiSource, { './tokenStore': { invokeWithAuth }, './media-publication-images': images }), meta = compile(source('../src/lib/meta-business-api.ts'));
   const fallback = new Proxy({}, { get: (_, name) => name === '__esModule' ? true : String(name) });
   const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }, '@/lib/meta-operations-api': lib, '@/lib/meta-business-api': meta, '@/lib/media-publication-images': images, '@/lib/tokenStore': { invokeWithAuth }, '@/lib/media-operations-api': { mediaError: (e, m) => e?.message || m, mediaErrorStatus: e => e?.status, mediaRequestId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`, mediaTimezones: [{ value: 'America/Denver', label: '美国山地时间' }, { value: 'America/New_York', label: '美东时间' }], mediaLocalToUtc: (v, zone) => new Date(v + (zone === 'America/New_York' ? ':00-05:00' : zone === 'America/Denver' ? ':00-07:00' : ':00+08:00')).toISOString(), mediaUtcToLocal: v => v }, '@/lib/use-unsaved-changes': { useUnsavedChanges: () => ({ markSaved() {}, confirmDiscard: () => true }), useHardNavigationBlock: () => ({ lock() { held = true; }, release() { held = false; } }) } }, { get: (value, name) => value[name] || fallback });
-  const components = compile(componentSource, imports, { window: { location: { assign: url => navigation.push(url) } } });
+  const components = compile(componentSource, imports, { window: { location: { search, assign: url => navigation.push(url) } } });
   const resetHooks = () => { si = 0; ri = 0; ei = 0; ci = 0; };
   return { requests, navigation, get held() { return held; }, render(scope = 'owner:1', isOwner = true) { resetHooks(); return components.default({ scope, isOwner }); }, renderImage(props) { resetHooks(); return components.MetaPrivateImage(props); }, effects() { while (queue.length) queue.shift()(); } };
 }
@@ -200,4 +200,36 @@ test('the actual private-image effect rechecks the same bytes on a new verificat
   before.props.onLoad(); assert.deepEqual(changes, [false, true, false]); assert.equal(h.requests.length, 2);
   h.requests[1].resolve({ data: new Blob([bytes]) }); for (let i = 0; i < 5; i++) await tick();
   find(h.renderImage(next), node => node.type === 'img').props.onLoad(); assert.deepEqual(changes, [false, true, false, true]);
+});
+
+
+test('a saved operations grant is shown as connected while public execution remains disabled', async () => {
+  const h = harness({ search: '?meta_ops=connected' }), item = approved();
+  const granted = binding({ capabilities: caps({ can_read_posts: true, can_read_comments: true, blocked_reasons: ['真实发布和回复尚未启用，可先准备并核对内容'] }) });
+  await ready(h, status({ write_configured: true, bindings: [granted] }), workspace({ binding: granted, drafts: [item] }));
+  let tree = h.render(); assert.match(label(tree), /独立运营授权已建立。公开提交仍取决于下方执行状态/);
+  const strip = label(control(tree, '当前 Meta 操作能力'));
+  assert.match(strip, /帖文：暂不可执行，原因见下方/); assert.match(strip, /评论：暂不可执行，原因见下方/); assert.match(strip, /排期：仅保存计划，执行未启用/);
+  assert.equal(/待开通发布权限|待开通回复权限|请核对账号授权/.test(label(tree)), false);
+  assert.match(label(tree), /真实发布和回复尚未启用/);
+  find(tree, node => typeof node.type === 'function' && node.type.name === 'DraftRows').props.onPreview(item);
+  h.requests[2].resolve({ data: preview(item) }); await tick();
+  const publish = button(consent(h), '确认公开发布'); assert.equal(publish.props.disabled, true); publish.props.onClick();
+  assert.equal(h.requests.some(row => /publish$|continue$|activate$/.test(row.options.url)), false);
+});
+
+test('callback query success alone does not claim an operations grant or enable public actions', async () => {
+  const h = harness({ search: '?meta_ops=connected' }), ungranted = binding({ operations_active: false, can_pause: false });
+  await ready(h, status({ write_configured: true, bindings: [ungranted] }), workspace({ binding: ungranted }));
+  const tree = h.render(), strip = label(control(tree, '当前 Meta 操作能力'));
+  assert.match(label(tree), /尚未确认有效的独立运营授权/); assert.match(strip, /帖文：待运营授权/); assert.match(strip, /评论：待运营授权/);
+  assert.equal(label(tree).includes('独立运营授权已建立。'), false); assert.equal(h.requests.some(row => /publish$|continue$|activate$/.test(row.options.url)), false);
+});
+
+test('paused operations is labelled separately from a grant waiting for execution', async () => {
+  const h = harness(), paused = binding({ operations_active: false, can_pause: false, paused: true });
+  await ready(h, status({ write_configured: true, bindings: [paused] }), workspace({ binding: paused }));
+  const strip = label(control(h.render(), '当前 Meta 操作能力'));
+  assert.match(strip, /运营已暂停/); assert.match(strip, /帖文：操作已暂停/); assert.match(strip, /评论：操作已暂停/);
+  assert.equal(button(h.render(), '新建帖文').props.disabled, true); assert.equal(h.requests.some(row => /publish$|continue$|activate$/.test(row.options.url)), false);
 });
