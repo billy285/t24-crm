@@ -50,8 +50,8 @@ export async function googleOnboardingApi<T>(path: string, method: 'GET' | 'POST
   return response.data as T;
 }
 
-export function verifiedOnboardingCustomer(value: OnboardingCustomer): OnboardingCustomer {
-  need(value && positive(value.id) && text(value.name) && value.name.trim() && ['status', 'address', 'city', 'state', 'country'].every(key => optionalText(value[key as keyof OnboardingCustomer])));
+export function verifiedOnboardingCustomer(value: OnboardingCustomer, requireName = false): OnboardingCustomer {
+  need(value && positive(value.id) && text(value.name) && (!requireName || value.name.trim()) && ['status', 'address', 'city', 'state', 'country'].every(key => optionalText(value[key as keyof OnboardingCustomer])));
   return value;
 }
 export function verifiedGoogleIdentity(value: GoogleIdentity): GoogleIdentity {
@@ -82,6 +82,7 @@ export function verifiedOnboardingContext(value: OnboardingContext, scope: numbe
 export function verifiedCatalogResponse(value: CatalogResponse, scope: number | null, id?: string): CatalogResponse {
   need(value && value.is_owner === true && scoped(value.customer_id, scope) && Array.isArray(value.locations) && value.locations.length <= 500 && Array.isArray(value.comparisons));
   verifiedCatalogSummary(value.catalog, scope); need(value.catalog.customer_id === value.customer_id && (!id || value.catalog.id === id));
+  need(value.catalog.status === 'ready' ? value.catalog.total_locations === value.locations.length : value.locations.length === 0, '本次门店目录数量或读取状态不一致，请重新读取实际清单。');
   value.locations.forEach(verifiedGoogleIdentity); need(unique(value.locations, row => row.location_name) && unique(value.comparisons, row => row.customer.id));
   const locations = new Map(value.locations.map(row => [row.location_name, row]));
   value.comparisons.forEach(row => { verifiedOnboardingCustomer(row.customer); need(itemInScope(row.customer.id, value.customer_id) && Object.prototype.hasOwnProperty.call(comparisonLabels, row.match_state) && strings(row.reasons) && Array.isArray(row.candidates)); row.candidates.forEach(candidate => { verifiedGoogleIdentity(candidate); const found = locations.get(candidate.location_name); need(found && ['location_name', 'title', 'address', 'observed_at'].every(key => found[key as keyof GoogleIdentity] === candidate[key as keyof GoogleIdentity])); }); if (row.existing_binding) { verifiedBinding(row.existing_binding, value.customer_id); need(row.existing_binding.customer_id === row.customer.id); } else need(row.existing_binding === null); });
@@ -91,7 +92,7 @@ export function verifiedCatalogResponse(value: CatalogResponse, scope: number | 
 export function verifiedBatchResponse(value: BatchResponse, scope: number | null, id?: string): BatchResponse {
   need(value && value.is_owner === true && scoped(value.customer_id, scope) && Array.isArray(value.items)); verifiedBatchSummary(value.batch, scope);
   need(value.batch.customer_id === value.customer_id && (!id || value.batch.id === id) && value.items.length === value.batch.counts.total && unique(value.items, row => row.id) && unique(value.items, row => row.customer.id) && unique(value.items, row => onboardingLocationKey(row.google.location_name)));
-  value.items.forEach(row => { verifiedOnboardingCustomer(row.customer); verifiedGoogleIdentity(row.google); need(hex(row.id) && integer(row.position) && itemInScope(row.customer.id, value.customer_id) && Object.prototype.hasOwnProperty.call(batchItemLabels, row.status) && strings(row.warnings) && (row.binding_id === null || positive(row.binding_id)) && text(row.message) && optionalText(row.error_code) && uuid(row.request_id) && (row.status !== 'bound' || positive(row.binding_id))); });
+  value.items.forEach(row => { verifiedOnboardingCustomer(row.customer, true); verifiedGoogleIdentity(row.google); need(hex(row.id) && integer(row.position) && itemInScope(row.customer.id, value.customer_id) && Object.prototype.hasOwnProperty.call(batchItemLabels, row.status) && strings(row.warnings) && (row.binding_id === null || positive(row.binding_id)) && text(row.message) && optionalText(row.error_code) && uuid(row.request_id) && (row.status !== 'bound' || positive(row.binding_id))); });
   if (value.batch.status === 'preview') need(value.items.every(row => row.status === 'preview') && Object.entries(value.batch.counts).every(([key, count]) => key === 'total' || count === 0));
   else for (const key of ['queued', 'processing', 'bound', 'conflict', 'failed', 'cancelled', 'unknown'] as const) need(value.batch.counts[key] === value.items.filter(row => row.status === key).length);
   if (value.request_receipt) { verifiedReceipt(value.request_receipt); need(value.request_receipt.resource_id === value.batch.id); }

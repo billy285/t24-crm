@@ -55,6 +55,17 @@ test('strict DTOs reject wrong scope including null, forged identities and physi
   const malformed = catalog(); malformed.comparisons[0].candidates[0].title = 'SUBSTITUTED'; assert.throws(() => api.verifiedCatalogResponse(malformed, null));
   const duplicated = batch(); duplicated.items[1].google.location_name = 'accounts/2/locations/100'; assert.throws(() => api.verifiedBatchResponse(duplicated, null));
   assert.equal(api.onboardingLocationKey('accounts/2/locations/100'), '100');
+  assert.throws(() => api.verifiedCatalogResponse(catalog({ catalog: catalogSummary({ total_locations: 4 }) }), null));
+  assert.throws(() => api.verifiedCatalogResponse(catalog({ catalog: catalogSummary({ status: 'processing' }) }), null));
+});
+test('nameless CRM read-only rows do not break the catalog and cannot join a batch', async () => {
+  const missing = customer(10, { name: '' }), ctx = context({ customers: context().customers.map(row => row.id === 10 ? missing : row) }), directory = catalog();
+  directory.comparisons[0] = { ...directory.comparisons[0], customer: missing, match_state: 'review_needed', reasons: ['CRM名称缺失，请先补充；本行不可批量接入'] };
+  assert.equal(api.verifiedOnboardingContext(ctx, null).customers[0].name, ''); assert.equal(api.verifiedCatalogResponse(directory, null).comparisons.length, 5);
+  const invalidBatch = batch(); invalidBatch.items[0].customer = missing; assert.throws(() => api.verifiedBatchResponse(invalidBatch, null));
+  const h = harness(); await discoverReady(h, directory); assert.match(label(h.render()), /LOCAL TEST merchant 11/); button(h.render(), '需要进一步确认3').props.onClick(); const tree = h.render();
+  assert.match(label(tree), /名称待补充 · 客户 10/); assert.match(label(tree), /不能加入接入批次/); assert.ok(!nodes(tree).some(row => row.props?.['aria-label'] === '为  选择 Google 门店'));
+  assert.ok(!nodes(tree).some(row => row.props?.['aria-label'] === '确认  的名称地址并加入本批'));
 });
 test('receipt recovery uses original UUID, kind, resource, preview version and exact selected pairs', () => {
   const expected = { request_id: uuid(1), kind: 'confirm', customer_id: null, resource_id: batchId, preview_hash: hash, pairs: batch().items.map(row => ({ customer_id: row.customer.id, location_name: row.google.location_name })) };
@@ -77,7 +88,7 @@ test('discovery is explicitly requested, async and never preselects proposed map
   assert.equal(h.requests.find(row => row.options.method === 'POST').options.url, '/api/v1/google-business/onboarding/catalogs');
 });
 test('queued discovery polls GET only and incomplete results never claim definite no-match', async () => {
-  const h = harness(); await discoverReady(h, catalog({ catalog: catalogSummary({ status: 'processing', revision: 1, observed_at: null, expires_at: null }), locations: [], comparisons: [] })); h.effects(); await h.timer();
+  const h = harness(); await discoverReady(h, catalog({ catalog: catalogSummary({ status: 'processing', revision: 1, observed_at: null, expires_at: null, total_locations: 0 }), locations: [], comparisons: [] })); h.effects(); await h.timer();
   const request = h.requests.at(-1); assert.equal(request.options.method, 'GET'); assert.match(request.options.url, /\/catalogs\//);
   request.resolve({ data: catalog({ catalog: catalogSummary({ truncated: true }), comparisons: [] }) }); await tick(); const tree = h.render();
   assert.match(label(tree), /本次门店清单未完整返回/); assert.match(label(tree), /不能据此判断不存在或未授权/); h.unmount();
