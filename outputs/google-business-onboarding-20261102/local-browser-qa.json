@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "environment": "synthetic localhost only; real production React components and CSS",
+  "url": "http://127.0.0.1:8896/work/google-onboarding-preview/index.html",
+  "viewports": [
+    {
+      "width": 1280,
+      "height": 720
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "horizontal_overflow": false
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "horizontal_overflow": false
+    }
+  ],
+  "checks": [
+    "owner connection selected explicitly",
+    "discovery accepted and original request restored after reload",
+    "no automatic pair selection",
+    "paired CRM and Google identity displays",
+    "preview freezes selected pair without binding",
+    "explicit final batch confirmation",
+    "reload retrieves persisted row result without repost",
+    "unknown404 blocks new action until explicitly parked; UUID retained in recent history",
+    "stop remaining requires reason and explicit acknowledgement; completed row preserved",
+    "customer-scoped heading and scope lock",
+    "staff has no onboarding workspace",
+    "console error list empty",
+    "nameless read-only comparison renders alongside remaining merchants; problem row has zero select/checkbox controls"
+  ],
+  "production_bindings_created": 0,
+  "provider_requests": false,
+  "native_dialogs": false,
+  "viewport_reset": true,
+  "frontend_candidate": "b0e161d74fe5",
+  "screenshots_private_not_committed": true
+}

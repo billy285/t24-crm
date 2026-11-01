@@ -1,0 +1,12 @@
+{
+  "command_bytes": 9043,
+  "command_sha256": "6aad51ef37bfff562ef8d3e67cdaf1d8092aa820dc219e200474498a0524d2f3",
+  "local_tests_passed": 13,
+  "preflight_bytes": 14663,
+  "preflight_sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3",
+  "review": "Exact current f595/3b/f21/158 tables+414 source and c3dd deployment chain; two current158 samples preserve all current rows including nonempty jobs/profiles/private packet and15activebindings, full Env/private/Google cutoff/MetaOFF/CSP. Only system font glyph and ffmpeg-version metadata in isolated Python exec; no provider, install, worker or current state mutations. Only new protected aggregate proof write. Maker.generate reproduced exact bytes and canonical pins in memory.",
+  "reviewer": "north_month_frontend",
+  "server_actions": false,
+  "source_or_artifact_edits": false,
+  "status": "PASS"
+}

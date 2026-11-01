@@ -1,0 +1,145 @@
+{
+  "additional_final_package_independent_reviews_pending": true,
+  "application_source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "files": {
+    "deployments/google-business-onboarding-20261102/artifacts/manifest.json": {
+      "bytes": 147923,
+      "sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0"
+    },
+    "deployments/google-business-onboarding-20261102/artifacts/payload.tar.gz": {
+      "bytes": 2283505,
+      "sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1"
+    },
+    "deployments/google-business-onboarding-20261102/build_payload.py": {
+      "bytes": 23919,
+      "sha256": "a99e044ed73df4f71dd1ee02ded773d1711b9c4ab9aa03d2501e9e99575d606f"
+    },
+    "deployments/google-business-onboarding-20261102/capture-command.sh": {
+      "bytes": 9043,
+      "sha256": "6aad51ef37bfff562ef8d3e67cdaf1d8092aa820dc219e200474498a0524d2f3"
+    },
+    "deployments/google-business-onboarding-20261102/capture-freeze.json": {
+      "bytes": 524,
+      "sha256": "9814f2b7c71226a6d10872de0bbe22a8609876fee1bfad500583fade99101039"
+    },
+    "deployments/google-business-onboarding-20261102/make_capture.py": {
+      "bytes": 2584,
+      "sha256": "5f9e485d40985840c4626a6a33c9aad05b85e954606ba1d388d44e30a779278e"
+    },
+    "deployments/google-business-onboarding-20261102/make_commands.py": {
+      "bytes": 10053,
+      "sha256": "fd32fe47f9e52b974e8beadbdc4b6c39477c50dfef91e02716e641359737ddc6"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.json": {
+      "bytes": 3780,
+      "sha256": "44c26158af97adbb6a21823017a330340c4dee211f88811ef290f8bde9d18d59"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.py": {
+      "bytes": 14663,
+      "sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3"
+    },
+    "deployments/google-business-onboarding-20261102/release.py": {
+      "bytes": 58002,
+      "sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a"
+    },
+    "deployments/google-business-onboarding-20261102/test_actual_idle_probe.py": {
+      "bytes": 2009,
+      "sha256": "873c102f53c4e664bce2c0b92e0dccb7be210399e746eab05b86d2f7ede982ac"
+    },
+    "deployments/google-business-onboarding-20261102/test_capture.py": {
+      "bytes": 7814,
+      "sha256": "90aa3118fdc7bbe31a6c27ca7c8da6707b218981ad56ca9494bf81d6d26137dc"
+    },
+    "deployments/google-business-onboarding-20261102/test_commands.py": {
+      "bytes": 8988,
+      "sha256": "bb266a508025a3784139d3250bc8823482b3b160015a539e82a74ad3b28e62e6"
+    },
+    "deployments/google-business-onboarding-20261102/test_package.py": {
+      "bytes": 14168,
+      "sha256": "f05a1b82a8fb193b37cf6096351fe6dabb0b209fcb2f80483da4f7a8902c4fe3"
+    },
+    "deployments/google-business-onboarding-20261102/test_release.py": {
+      "bytes": 12625,
+      "sha256": "f14f3e523d6982e1c9ae0711190f5382a6fe2d648a82f3fac423b74bc27e8131"
+    },
+    "deployments/google-business-onboarding-20261102/test_schema_migration.py": {
+      "bytes": 6547,
+      "sha256": "4fd89d4f8d0f043d665543b4c15354a3f8f54181a5162cc9a3eeb944e779d76a"
+    },
+    "outputs/google-business-onboarding-20261102/application-file-freeze.json": {
+      "bytes": 3428,
+      "sha256": "e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd"
+    },
+    "outputs/google-business-onboarding-20261102/capture-frontend-independent-review.json": {
+      "bytes": 879,
+      "sha256": "ab1ad7e15321fe813a965c1e1b36c64d0fd378a8b367e51544d584f0bf7c1aa0"
+    },
+    "outputs/google-business-onboarding-20261102/frontend-backend-independent-review.json": {
+      "bytes": 5012,
+      "sha256": "1d8bed4e26ba59cb1edb827e1dd816d219230dfa65a710045f98ec3025eecd2c"
+    },
+    "outputs/google-business-onboarding-20261102/frontend-candidate-freeze-v2.json": {
+      "bytes": 2482,
+      "sha256": "50369e2da954dd09424f6a9056351cf700588ac4b81e8cb8979a6aa6de34802f"
+    },
+    "outputs/google-business-onboarding-20261102/local-browser-qa.json": {
+      "bytes": 1436,
+      "sha256": "c75653dd91ae1e4ef8418fc0923dabba0e4ba6117965646e5bb619ccba23fce6"
+    },
+    "outputs/google-business-onboarding-20261102/package-freeze.json": {
+      "bytes": 2328,
+      "sha256": "49970a9a371d42f85030952491ed85bd9b39f4163bda78b60229b63c7ee10b94"
+    },
+    "outputs/google-business-onboarding-20261102/preflight-independent-review.json": {
+      "bytes": 1202,
+      "sha256": "7fda19c8f45aacb970ba1df230c8e53e434247b6e8d0113d9cb8db9381adb84d"
+    },
+    "outputs/google-business-onboarding-20261102/release-framework-frontend-independent-review.json": {
+      "bytes": 3816,
+      "sha256": "ac02c849c68388823dd9c60f425bd5d0a4d975782128614d77127eeff050bca7"
+    },
+    "outputs/google-business-onboarding-20261102/schema-freeze.json": {
+      "bytes": 992,
+      "sha256": "06a57118fefe64475e301d07582a8d21a4835d7329e2a90130a0f60f33ce877e"
+    }
+  },
+  "git_staging_performed": false,
+  "not_included": [
+    "raw customer match/address/Google catalog documents",
+    "production merchant screenshots",
+    "superseded e61 candidate freeze",
+    "superseded frontend freeze",
+    "native baseline source duplicate",
+    "Python caches",
+    "full protected production database proof",
+    "server credential or private content"
+  ],
+  "paths": [
+    "deployments/google-business-onboarding-20261102/build_payload.py",
+    "deployments/google-business-onboarding-20261102/capture-command.sh",
+    "deployments/google-business-onboarding-20261102/capture-freeze.json",
+    "deployments/google-business-onboarding-20261102/make_capture.py",
+    "deployments/google-business-onboarding-20261102/make_commands.py",
+    "deployments/google-business-onboarding-20261102/preflight.json",
+    "deployments/google-business-onboarding-20261102/preflight.py",
+    "deployments/google-business-onboarding-20261102/release.py",
+    "deployments/google-business-onboarding-20261102/test_actual_idle_probe.py",
+    "deployments/google-business-onboarding-20261102/test_capture.py",
+    "deployments/google-business-onboarding-20261102/test_commands.py",
+    "deployments/google-business-onboarding-20261102/test_package.py",
+    "deployments/google-business-onboarding-20261102/test_release.py",
+    "deployments/google-business-onboarding-20261102/test_schema_migration.py",
+    "deployments/google-business-onboarding-20261102/artifacts/manifest.json",
+    "deployments/google-business-onboarding-20261102/artifacts/payload.tar.gz",
+    "outputs/google-business-onboarding-20261102/application-file-freeze.json",
+    "outputs/google-business-onboarding-20261102/capture-frontend-independent-review.json",
+    "outputs/google-business-onboarding-20261102/frontend-candidate-freeze-v2.json",
+    "outputs/google-business-onboarding-20261102/frontend-backend-independent-review.json",
+    "outputs/google-business-onboarding-20261102/local-browser-qa.json",
+    "outputs/google-business-onboarding-20261102/package-freeze.json",
+    "outputs/google-business-onboarding-20261102/preflight-independent-review.json",
+    "outputs/google-business-onboarding-20261102/schema-freeze.json",
+    "outputs/google-business-onboarding-20261102/release-framework-frontend-independent-review.json"
+  ],
+  "status": "CARRIER_FILE_RECOMMENDATION_ONLY"
+}

@@ -1,0 +1,22 @@
+{
+  "down_revision": "f21dc345d681",
+  "empty_new_tables": true,
+  "existing_rows_preserved": true,
+  "migration_sha256": "b5bb0fc0c362463d7d1d851008c9bbce205f6c412300735fdf3ee682d7f4c16f",
+  "network_requests": false,
+  "new_indexes": [
+    "ix_google_business_onboarding_items_batch_id"
+  ],
+  "new_table_count": 162,
+  "original15_google_bindings_preserved": true,
+  "original_private_prepared_packet_preserved": true,
+  "original_table_count": 158,
+  "production_database_used": false,
+  "schema_revision": "g32ed456e792",
+  "table_shapes": {
+    "google_business_onboarding_batches": "c5246ddef53fc5df40e657cb2594aa16abe5a8354cbbec2599df8b2bc5a73ca7",
+    "google_business_onboarding_catalogs": "39777a9816b580f60f0559e351f19a35ce7f22c9e708f70ce4b2827dc1aabc0d",
+    "google_business_onboarding_items": "18e0961127830325713fc6da81319cde6b9ca8bdc86ea1db95164c418dd5a45d",
+    "google_business_onboarding_requests": "805ddae78a7be8f78427315c679b1b6418494b97300a2e2c5d4d89fbf7845337"
+  }
+}

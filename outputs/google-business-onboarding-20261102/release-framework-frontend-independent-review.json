@@ -1,0 +1,42 @@
+{
+  "application_edits_during_review": false,
+  "blockers_found": [],
+  "files": {
+    "build_payload.py": {
+      "bytes": 22960,
+      "sha256": "3a448fcd1bb119909bf8d4270c69c703a9a9ee5fe07993cb573f406f3f9c8538"
+    },
+    "make_commands.py": {
+      "bytes": 10053,
+      "sha256": "fd32fe47f9e52b974e8beadbdc4b6c39477c50dfef91e02716e641359737ddc6"
+    },
+    "preflight.py": {
+      "bytes": 14663,
+      "sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3"
+    },
+    "release.py": {
+      "bytes": 55530,
+      "sha256": "b2ff4937048a85721c3609dc0672ece5711d122e33b9bc06ad250d61a56d26e1"
+    }
+  },
+  "pending_before_release": [
+    "Final immutable source/frontend/application freeze pins replace current None placeholders.",
+    "Reproduce exact final payload/manifest bytes and carrier wrappers after immutable carrier commit.",
+    "Actual server prepare must pass all offline canaries and provide reviewed canonical prepared SHA before activation."
+  ],
+  "reviewed_boundaries": [
+    "Fresh capture2b1a preserves actual158 tables/414 backend files,15 active bindings, nonempty asset profiles/jobs/requests/materials6+7 and private monthly packet. No stale empty-table assumption. Two samples plus protected Env/private/CSP/Google cutoff+MetaOFF identity.",
+    "Runtime candidate derives only from exact locally verified3b image. Source-only9-file backend overlay; Docker legacy builder client0 with networknone/pullfalse, clean environment, bounded public build logs. No package install, redownload or dependency change.",
+    "Local package builder requires immutable app commit and same HEAD app tree, exact16-file source delta, same local committed file hashes, full frontend source set, existing Vite sourceVersion and frozen dist inventory. Payload members are only9 allowlisted backend sources and canonical static assets. Fixtures, credentials, DBs and output screenshots are excluded.",
+    "Fresh protected staging has explicit root/mode/hash/inode checks and exact file members. Archive extraction rejects links/special files/path traversal, verifies every file hash and bounded totals. Static image retention and old hashed assets follow the previously verified staging helper.",
+    "Offline proof copies only the business DB to a fresh location, verifies all158 original rows/objects and metadata, runs the exact g32 additive migration and requires only4 new empty tables plus one index and162 total. Actual synthetic migration and injected DDL rollback tests pass.",
+    "Offline runtime has networknone, absent operation credentials and explicit asset/onboarding worker false. Role checks deny before SQL; onboarding empty queue runs against read-only DB with forbidden writer/provider hooks. Existing routes and Google/Meta disabled canaries plus retained actual PNG/H264/resource renderer canary remain mandatory.",
+    "Production activation requires the actual canonical prepared receipt, fresh source/static/runtime/row/schema/Env/private checks, stops original before migration, never runs two business workers together, creates4 empty tables without changing prior rows, clones exact environment/mounts and changes only static root. Existing six CSP policies remain byte-identical.",
+    "Public acceptance retains security/unauthenticated sentinels and cutoff settings. Recovery is durable and forward-only after schema settlement; no DB restore, table drop or restarting old schema code after committed migration. No binding/customer/employee seed rows, staff grants, real posts, replies or schedules are executed by release."
+  ],
+  "reviewer": "north_month_frontend",
+  "server_provider_git_or_release_source_actions_by_reviewer": false,
+  "status": "PASS_DRAFT_FRAMEWORK_PENDING_FINAL_PINS_AND_PACKAGE",
+  "test_seconds": 0.71,
+  "tests_passed": 102
+}

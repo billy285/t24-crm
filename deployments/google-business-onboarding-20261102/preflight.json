@@ -1,0 +1,92 @@
+{
+  "active_nginx_sha256": "a05969b837d69088054e51b7dd8687e567f928df99ef309a8ad7d1c92fa2926a",
+  "all158_current_tables_preserved": true,
+  "backend_file_count": 414,
+  "backend_inventory_sha256": "50077c4e293fae21c7dbb8849443dca46c10c495bf4c5a80a37d6954a0992ed3",
+  "business_markers": {
+    "asset_job_status_counts": {
+      "adopted": 2
+    },
+    "google_active_binding_count": 15,
+    "google_binding_count": 15,
+    "monthly_workflow_status_counts": {
+      "prepared": 1
+    }
+  },
+  "business_writes": false,
+  "bytes": 88908,
+  "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+  "credential_file_content_read": false,
+  "crm": {
+    "config": "8f1a8d57d968282bcbb1659613c386d123d97235407ab72ebbd9c4484ce33107",
+    "id": "8671f4b6bf4d43ee2db2d86ec9f9632edab01725c822cadac9c860b8a647e2b4",
+    "image": "sha256:3b203190c499b7e3f886f15156358403f7d10bd548df8a2ccc627f518f730b3a",
+    "restart": 0,
+    "started": "2026-11-01T06:17:46.343971823Z"
+  },
+  "csp_environment_override_present": false,
+  "deployed_receipt_sha256": "c3dd937984cdf48429e124448b790cd8cb1a5ca47f4bb988c7e38e0d906ecac2",
+  "environment_sha256": "3d414fb4b9b5b1ae9bb5ecc1ce503be3c788f8bee27d0806de9d72fd3df0e223",
+  "existing_asset_worker_enabled": true,
+  "frontend_version": "c1d87dd771d8",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "host": "iZj6c4cj7edgnhdimts4l7Z",
+  "installation_performed": false,
+  "local_engine_metadata": {
+    "actual_cjk_latin_glyphs": true,
+    "business_data_or_credentials_read": false,
+    "ffmpeg": {
+      "bytes": 366984,
+      "sha256": "e8a8d46f5225f3062cec7c07fb145d58ae73c603cb740dcd5bad34bfb54e455a"
+    },
+    "ffmpeg_version": "ffmpeg version 7.1.5-0+deb13u1 Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": {
+      "bytes": 206504,
+      "sha256": "cefc5f81c0b18429cdbf8fa5a89e1e9c759235e10f93f9b329ff1b2fdff26f46"
+    },
+    "files_written": false,
+    "font_name": [
+      "Noto Sans CJK SC",
+      "Regular"
+    ],
+    "freetype2": true,
+    "latin": {
+      "bytes": 759720,
+      "sha256": "57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e"
+    },
+    "noto": {
+      "bytes": 19484784,
+      "sha256": "b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a"
+    },
+    "pillow": "12.3.0",
+    "provider_requests": false,
+    "python": "3.10.22",
+    "worker_started": false
+  },
+  "new_onboarding_worker_env_present": false,
+  "nginx_sha256": "52d69791057e811332e31b66c66156a288837ed7d636fed8a2526c0e2d5bfa3a",
+  "observed_asset_job_count": 2,
+  "observed_asset_profile_count": 1,
+  "observed_asset_request_count": 5,
+  "observed_private_monthly_packet_count": 1,
+  "ops_environment_sha256": "f334ac086b4f8eef3d92cc4b6444558f500590a2bd4020ce07d9d13f1947dfb2",
+  "ops_execution_enabled": false,
+  "ops_scheduler_enabled": false,
+  "path": "/opt/t24-crm/releases/google-business-onboarding-preflight-2b1a9dde5020.json",
+  "permissions_changed": false,
+  "private_content_read": false,
+  "provider_requests": false,
+  "public_inventory_sha256": "5398ed2d6ce6a794bef9b061bea61dbe970d1c64ae116b5b36ce77fe68558644",
+  "public_root": "/var/www/t24-crm-public/media-asset-studio-f595f3acfb5b-20261101",
+  "rows_sha256": "c868ff984b82f0b72b5b315268e1786772b527468dfd0a4ab02a75c4b92ed17e",
+  "runtime_changed": false,
+  "schema_changed": false,
+  "schema_revision": "f21dc345d681",
+  "schema_sha256": "61d80be409b79b85d1a1e85ccb879daa00943dd6c24cb25d7ba96e555efda780",
+  "sha256": "2b1a9dde5020023ef33136b45bc54384745aeed30ab5f2c2e3312a59a8ebd485",
+  "source_sha": "f595f3acfb5bfc4a28dadd3ec181b65f7c540fdd",
+  "stage": "GOOGLE_ONBOARDING_PREFLIGHT_CAPTURED",
+  "table_count": 158,
+  "worker_started": false
+}

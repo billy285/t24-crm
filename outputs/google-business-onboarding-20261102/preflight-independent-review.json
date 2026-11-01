@@ -1,0 +1,22 @@
+{
+  "active_google_bindings": 15,
+  "capture_command_sha256": "6aad51ef37bfff562ef8d3e67cdaf1d8092aa820dc219e200474498a0524d2f3",
+  "fresh_backend_sources": 414,
+  "fresh_original_tables": 158,
+  "local_pillow_ffmpeg_fonts_preserved_without_installation": true,
+  "local_summary_sha256": "44c26158af97adbb6a21823017a330340c4dee211f88811ef290f8bde9d18d59",
+  "observed_adopted_asset_jobs": 2,
+  "observed_asset_profiles": 1,
+  "observed_asset_requests": 5,
+  "observed_prepared_private_monthly_packets": 1,
+  "preflight_code_sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3",
+  "provider_or_business_writes": false,
+  "raw_rows_or_private_content_exported": false,
+  "runtime_environment_credentials_csp_nginx_and_private_boundaries_checked": true,
+  "same_google_cutoff_meta_disabled_asset_worker_enabled": true,
+  "server_full_proof_bytes": 88908,
+  "server_full_proof_path": "/opt/t24-crm/releases/google-business-onboarding-preflight-2b1a9dde5020.json",
+  "server_full_proof_sha256": "2b1a9dde5020023ef33136b45bc54384745aeed30ab5f2c2e3312a59a8ebd485",
+  "stage": "ACTUAL_GOOGLE_ONBOARDING_PREFLIGHT_INDEPENDENTLY_REVIEWED",
+  "summary_is_projection_not_full_proof": true
+}

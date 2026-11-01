@@ -1,0 +1,76 @@
+{
+  "activation_requires_actual_pinned_canonical_prepared_receipt": true,
+  "actual_main_openapi_and_iter_route_contexts_and_owner_denial_canaries_required": true,
+  "all_source_and_static_members_match_immutable_commit_and_qa_build": true,
+  "application_delta_files": 17,
+  "application_freeze_sha256": "e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd",
+  "artifact_archive_members": 148,
+  "artifacts_rewritten": false,
+  "base_image_and_local_renderer_dependencies_unchanged": true,
+  "deterministic_regular_members_only_and_private_files_absent": true,
+  "exact_in_memory_builder_and_manifest_bytes_reproduced": true,
+  "existing158_populated_tables_preserved_four_additive_tables_only": true,
+  "frontend_version": "b0e161d74fe5",
+  "full_environment_credentials_private_boundary_and_csp_preserved_by_guards": true,
+  "generic_crud_attack_canary_required": true,
+  "independent_release_tests": {
+    "exit_code": 0,
+    "passed": 103,
+    "seconds": 4.17
+  },
+  "limits": [
+    "Local package and release-code review only; actual candidate prepare and deployed UI acceptance remain separate.",
+    "No server, provider, Git, application source, deployment tooling or emitted artifact mutations were performed."
+  ],
+  "manifest_sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0",
+  "offline_workers_off_and_no_sql_idle_queue_probe_required": true,
+  "old_google_router_unchanged_and_protected": true,
+  "payload_bytes": 2283505,
+  "payload_sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1",
+  "production_actions": false,
+  "provider_requests": false,
+  "recovery_forward_only_after_schema_commit_no_database_restore_or_old_code_restart": true,
+  "reviewed_pins": {
+    "deployments/google-business-onboarding-20261102/artifacts/manifest.json": {
+      "bytes": 147923,
+      "sha256": "3c714aba0a597b1c46d66d8979bf43ec6464d0d5ff9c219dd0e47dd0ba816ad0"
+    },
+    "deployments/google-business-onboarding-20261102/artifacts/payload.tar.gz": {
+      "bytes": 2283505,
+      "sha256": "61cdb231e54302f44a13c59c42ee488f97e892c45bfbee50c2cfcced72db4bb1"
+    },
+    "deployments/google-business-onboarding-20261102/build_payload.py": {
+      "bytes": 23919,
+      "sha256": "a99e044ed73df4f71dd1ee02ded773d1711b9c4ab9aa03d2501e9e99575d606f"
+    },
+    "deployments/google-business-onboarding-20261102/make_commands.py": {
+      "bytes": 10053,
+      "sha256": "fd32fe47f9e52b974e8beadbdc4b6c39477c50dfef91e02716e641359737ddc6"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.json": {
+      "bytes": 3780,
+      "sha256": "44c26158af97adbb6a21823017a330340c4dee211f88811ef290f8bde9d18d59"
+    },
+    "deployments/google-business-onboarding-20261102/preflight.py": {
+      "bytes": 14663,
+      "sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3"
+    },
+    "deployments/google-business-onboarding-20261102/release.py": {
+      "bytes": 58002,
+      "sha256": "c07e2041379e5064d50b58d10a93717f6bda376737c4691ac3f7ce1cad6bc01a"
+    },
+    "outputs/google-business-onboarding-20261102/application-file-freeze.json": {
+      "bytes": 3428,
+      "sha256": "e63f0128f58c287a6cc4b123fc620cfe8080914d8b6c59ab4519649a6d1829bd"
+    },
+    "outputs/google-business-onboarding-20261102/schema-freeze.json": {
+      "bytes": 992,
+      "sha256": "06a57118fefe64475e301d07582a8d21a4835d7329e2a90130a0f60f33ce877e"
+    }
+  },
+  "runtime_source_files": 8,
+  "source_sha": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "stage": "GOOGLE_ONBOARDING_PACKAGE_FRONTEND_INDEPENDENT_REVIEW",
+  "static_files": 140,
+  "status": "PASS"
+}

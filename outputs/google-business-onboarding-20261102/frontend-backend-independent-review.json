@@ -1,0 +1,85 @@
+{
+  "actual_nameless_desktop_mobile_acceptance_reported_by_root": true,
+  "application_commit_reported_by_root": "8b429dad8a2f144ea27527717d4811fb7ddc9b3c",
+  "checks": [
+    "Strict owner/customer scope, including exact null versus number; staff/invalid-customer wrapper returns before mount or API calls.",
+    "Runtime catalog and batch validators bind resource IDs, original request UUID and kind, owner scope, selected connection, preview hash and exact selected customer/location pairs. Physical location aliases cannot share one batch.",
+    "Candidate Google identities must match the authoritative catalog title/address/resource/observed time; ready catalog row count must match locations and nonready catalogs expose no locations.",
+    "Read-only context/catalog allow empty CRM names as problem rows; cards show missing-name placeholder+ID and cannot select. Frozen batch validation still requires nonempty names.",
+    "Identity-keyed component remount, alive/identity/sequence guards, AbortController cleanup and monotonic revisions prevent prior actor/customer/connection results from populating a new scope.",
+    "Changing connections clears old catalog, preview, choices and consent, invalidates callbacks, and is disabled for active or unknown work.",
+    "Mutations synchronously hold busyRef against duplicate clicks; uncertain results retain the original opaque UUID. Polling and reload recovery only use GET. Same-body replay requires original body still in memory, explicit 404 query and explicit owner checkbox.",
+    "Session storage holds only owner+scope-keyed opaque UUID/kind/resource pointers, not names, addresses or frozen pairs. Explicit local exit parks the UUID without canceling, retrying or claiming the server failed.",
+    "Cancel uses the latest current revision of the same frozen batch. Progress preserves stop intent; resource or preview-hash changes reset consent. Late responses cannot restore an older revision.",
+    "New onboarding UI calls only discovery/preview/confirm/cancel and reads; no grants, customer edits, public posting, scheduling or private-space entry is introduced.",
+    "Model metadata registration does not generate generic CRUD routes. main.py discovers only explicit APIRouters; unknown api paths fail 404/405. No generic entities table-name wildcard or new model alias is registered."
+  ],
+  "deployment_or_real_binding_claimed": false,
+  "existing_suites_rerun_by_this_review": false,
+  "files": {
+    "app/frontend/src/components/GoogleBusinessWorkspace.tsx": "5435b4127ed9f9f0738a89b017aa072467df310f5ffd55590cf61fae674bde5f",
+    "app/frontend/src/components/GoogleOnboardingWorkspace.tsx": "f5b5e25aee99f51d5d5d68402df0b5170aa5fec17420da8587d6e45170455b49",
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "d79ddef4114fbe841c6152079b9a5a13d9ee667e609403333903d6d400774424",
+    "app/frontend/src/lib/google-onboarding-api.ts": "c917d52389b08651e8df80d764cd64ae2c287345525320ed5db3b0f2c3f2b2dc",
+    "app/frontend/src/pages/google-onboarding.css": "0a2978ce9be10c15ef5d5ac205fd34473fa57e356c6948cd69e88f99efd66916",
+    "app/frontend/tests/google-onboarding.test.mjs": "81af400b08d03d2797ab5ec653e55d870406c55f861ffdba4d3a0940f11da703"
+  },
+  "frontend_freeze_sha256": "50369e2da954dd09424f6a9056351cf700588ac4b81e8cb8979a6aa6de34802f",
+  "frontend_tests_reported_by_author": {
+    "build_passed": true,
+    "combined": 88,
+    "eslint_errors": 0,
+    "focused": 19
+  },
+  "frontend_version": "b0e161d74fe5",
+  "limitations": [
+    "Read review and isolated ASGI generic-route probe only; production deployment and authenticated acceptance remain root responsibilities."
+  ],
+  "new_generic_crud_probe_executed_locally": {
+    "methods": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE"
+    ],
+    "path_suffixes": [
+      "",
+      "/all",
+      "/1",
+      "/batch"
+    ],
+    "provider_or_network_calls": 0,
+    "registered_generic_routes": 0,
+    "requests": 512,
+    "roles": [
+      "ops",
+      "admin",
+      "finance",
+      "sales"
+    ],
+    "sql_calls": 0,
+    "statuses": {
+      "404": 128,
+      "405": 384
+    },
+    "table_and_model_aliases": 8
+  },
+  "production_source_edits_by_this_review": false,
+  "resolved_findings": [
+    {
+      "issue": "Empty CRM names initially rejected the entire read-only context/catalog instead of being isolated problem rows.",
+      "resolution": "Fixed in V2: tolerate missing read-only names, label them and exclude selection; require names for batch rows.",
+      "source_verified": true
+    },
+    {
+      "issue": "Ready catalog count could disagree with actual location rows.",
+      "resolution": "V2 validates exact ready count and empty nonready result rows.",
+      "source_verified": true
+    }
+  ],
+  "reviewed_at": "2026-11-01T18:43:24.191853+00:00",
+  "server_browser_git_or_provider_actions_by_this_review": false,
+  "source_review_only": true,
+  "stage": "GOOGLE_ONBOARDING_FRONTEND_BACKEND_INDEPENDENT_REVIEW_PASS",
+  "unresolved_blockers": []
+}

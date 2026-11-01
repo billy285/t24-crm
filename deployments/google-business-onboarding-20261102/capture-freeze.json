@@ -1,0 +1,14 @@
+{
+  "business_writes": false,
+  "command_bytes": 9043,
+  "command_sha256": "6aad51ef37bfff562ef8d3e67cdaf1d8092aa820dc219e200474498a0524d2f3",
+  "credential_file_content_read": false,
+  "executed": false,
+  "installation_performed": false,
+  "only_writes": "new root-private aggregate current158 baseline receipt",
+  "preflight_bytes": 14663,
+  "preflight_sha256": "9e21360af95953adf9f705c9add9a968c381149e0a57038ac976f9b8fa34dee3",
+  "private_content_read": false,
+  "provider_requests": false,
+  "worker_started": false
+}
