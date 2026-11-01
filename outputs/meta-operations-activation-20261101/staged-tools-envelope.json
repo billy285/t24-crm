@@ -1,0 +1,30 @@
+{
+  "baseline_sha256": "1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522",
+  "business_writes": false,
+  "carrier": "1208fdb5f2959e731c074f52e2504e1b2698d2cf",
+  "config_id": "2328579691236435",
+  "configuration_freeze_sha256": "570dcfb3c372233f1fd115e59dd085247697d530a3b6248ecfb8c3d3fb48c3d4",
+  "members": {
+    "activation.py": {
+      "bytes": 19448,
+      "sha256": "3b517674a0a1bb232dbfc50461e476f53be448c76591d6c495298b28024704a1"
+    },
+    "baseline.py": {
+      "bytes": 8347,
+      "sha256": "82f015a1c49798c8659f72c12a639518e358c150c0a6234133dd8c7d918a1941"
+    },
+    "core.py": {
+      "bytes": 10339,
+      "sha256": "72e5e12b6bf6b1415ffc35d5f8c43676972964338f889c3b4fcfe102ad95539e"
+    },
+    "transport.py": {
+      "bytes": 8310,
+      "sha256": "9597403c7a2c828be9761038f647c6ed3624b782e41344476838642da50bbf25"
+    }
+  },
+  "provider_requests": false,
+  "receipt_sha256": "a97e74955eb13a6f9e9ff048c6c9acc258784a7abd8b705c3fe457e7425b9f90",
+  "runtime_changed": false,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_ACTIVATION_TOOLS_STAGED"
+}

@@ -1,0 +1,23 @@
+{
+  "activate_command_sha256": "992d57f05dca6625cb13232fecaff075c902f2d9c590dc57cb48d529428cd7e4",
+  "all150_and_independent_recovery_rows_preserved": true,
+  "app_id": "3037236509957803",
+  "baseline_sha256": "1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522",
+  "candidate_identity_fsync_before_stop": true,
+  "carrier": "1208fdb5f2959e731c074f52e2504e1b2698d2cf",
+  "config_id": "2328579691236435",
+  "edits": false,
+  "env_sha256": "29244a8656a6228947e88500671f37b48dfebf4f01237135a6ea60ab0123b342",
+  "exact_eleven_keys_append_only": true,
+  "execution_enabled": false,
+  "live_executed": false,
+  "no_remote_oauth_or_publish_reply": true,
+  "old_read_google_private_fences_retained": true,
+  "original_id": "8df71750e65a06114286eb146aef3374ce368681a689655c16a85058fc6b82f2",
+  "prepared_sha256": "e2c7846fa5b497320860494751cb3907d1a54fbedf8d0b6b60681c4f8837ac05",
+  "recover_command_sha256": "e4e020086768da4961d5fe761d9380fca28088fe6b5392be4dc7cb35e5afec3d",
+  "review_only": true,
+  "same_image": "sha256:4797556daa7b98dbeeae6c31364d4f3411645c324902e0f8b922cf1180a7af53",
+  "scheduler_enabled": false,
+  "verdict": "PASS_NO_BLOCKING_FINDINGS"
+}

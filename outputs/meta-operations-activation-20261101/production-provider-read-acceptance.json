@@ -1,0 +1,33 @@
+{
+  "observed_at_utc": "2026-11-01T01:06:33Z",
+  "environment": "https://t24-crm.com/media-ops",
+  "app_id": "3037236509957803",
+  "configuration_id": "2328579691236435",
+  "customer_id": 38,
+  "customer_name": "Pokeco",
+  "oauth_callback_result": "meta_ops=connected",
+  "selected_assets_only": {
+    "facebook_page": "108123513970587",
+    "instagram_account": "17841408574718954",
+    "instagram_username": "pokeco8"
+  },
+  "consent_scopes_reviewed": [
+    "instagram_basic", "instagram_content_publish", "instagram_manage_comments",
+    "pages_manage_engagement", "pages_manage_posts", "pages_read_engagement",
+    "pages_read_user_content", "pages_show_list"
+  ],
+  "ui_authority": "independent operations authorization established",
+  "facebook_posts_returned": 50,
+  "instagram_posts_returned": 50,
+  "facebook_selected_post_comments": "successful read; zero comments returned",
+  "instagram_selected_post_comments": "successful read; zero comments returned",
+  "execution_enabled": false,
+  "scheduler_enabled": false,
+  "real_post_or_reply_sent": false,
+  "real_instagram_publish_container_created": false,
+  "observed_issues_pending_followup": [
+    "Provider timestamp compact offsets are incompatible with server Python 3.10 parser",
+    "Callback and capability labels conflate disabled execution with missing authorization"
+  ],
+  "evidence_method": "owner browser session; real CRM selectors and successful comment reads; no tokens exported"
+}

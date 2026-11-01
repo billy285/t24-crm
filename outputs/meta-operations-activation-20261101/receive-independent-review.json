@@ -1,0 +1,41 @@
+{
+  "app_id": "3037236509957803",
+  "baseline_sha256": "1bb4774655a7fd87664c591ef7463979cccdc26e362fa2c562c8ff668cc09522",
+  "ciphertext_bytes": 384,
+  "ciphertext_sha256": "31c937d1add16375cc3368e2c82c1b996f156b6431f408f7b6dfb3861612ebdc",
+  "command_bytes": 3880,
+  "config_id": "2328579691236435",
+  "configuration_freeze_sha256": "570dcfb3c372233f1fd115e59dd085247697d530a3b6248ecfb8c3d3fb48c3d4",
+  "edits": false,
+  "expires_at": 1793495347,
+  "independent_key_generated_server_side": true,
+  "live_executed": false,
+  "no_overwrite": true,
+  "one_use_claim_before_decryption": true,
+  "only_install_target": "/opt/t24-crm/secrets/meta-operations/runtime.env",
+  "plaintext_credentials_read": false,
+  "private_transfer_key_unlinked_only_after_credential_receipt": true,
+  "public_context_verified": true,
+  "receive_command_sha256": "4829ff3cf1301e768d2279e9077d1bd04103493a3f89c48bfe22b86508034ee3",
+  "review_only": true,
+  "server_member_pins": {
+    "activation.py": {
+      "bytes": 19448,
+      "sha256": "3b517674a0a1bb232dbfc50461e476f53be448c76591d6c495298b28024704a1"
+    },
+    "baseline.py": {
+      "bytes": 8347,
+      "sha256": "82f015a1c49798c8659f72c12a639518e358c150c0a6234133dd8c7d918a1941"
+    },
+    "core.py": {
+      "bytes": 10339,
+      "sha256": "72e5e12b6bf6b1415ffc35d5f8c43676972964338f889c3b4fcfe102ad95539e"
+    },
+    "transport.py": {
+      "bytes": 8310,
+      "sha256": "9597403c7a2c828be9761038f647c6ed3624b782e41344476838642da50bbf25"
+    }
+  },
+  "transfer_id": "5af8fa70c49f0485bf0161a5938df041",
+  "verdict": "PASS_NO_BLOCKING_FINDINGS"
+}
