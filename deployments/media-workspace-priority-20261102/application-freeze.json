@@ -1,0 +1,28 @@
+{
+  "backend_changes": false,
+  "baseline_frontend_version": "6a8a9ac27c6c",
+  "baseline_source_sha": "7697e1adc61f72cf6b13896a3a41389d8a31b09d",
+  "container_restarts": false,
+  "content_security_policy_changes": false,
+  "credentials_included": false,
+  "database_migration": false,
+  "database_writes": false,
+  "dependencies_changes": false,
+  "dist_inventory_sha256": "bf999dd0e94db0e95f10c8cc393ddd232e3e5a5a9a0b8c783f6d6416dfe47c2f",
+  "environment_changes": false,
+  "exact_exception_priority_only": true,
+  "existing_hashed_assets_preserved": true,
+  "files": {
+    "app/frontend/src/components/MediaPortfolioPanels.tsx": "5ffc5155b2ec6e6923349694ab3d76b3b429922707eaeb794e77d9bc7b75cb7e",
+    "app/frontend/tests/media-workspace-scale.test.mjs": "4c52fc523cf3a3508a22c59f10615f4ba2a129ea0a4549303943e8b855bdd893"
+  },
+  "frontend_version": "18d102381fef",
+  "original162_database_preservation_required": true,
+  "permissions_changes": false,
+  "preflight_sha256": "cd201ac67a0b070a5190c171de277dd21933da1a9df7ebb1f7b9187c54df1b7a",
+  "publications_or_provider_writes": false,
+  "runtime_environment_and_private_boundaries_preservation_required": true,
+  "source_sha": "da940a8edf73ed57f901cd9b805a7a24d653c15a",
+  "stage": "MEDIA_WORKSPACE_PRIORITY_APPLICATION_FREEZE",
+  "static_only": true
+}
