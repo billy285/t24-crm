@@ -13,16 +13,22 @@ const monthlyItem = extra => monthlyRun({ id: 'monthly_item:31', kind: 'monthly_
 const projection = (items = [monthlyRun()], extra = {}, expected = query) => ({ items, total: items.length, next_cursor: null, partial: false, sources: ['tasks', 'google', 'meta', 'monthly'].map(key => ({ key, state: 'ready', message: 'LOCAL TEST local projection' })), observed_at: '2026-11-01T01:00:00Z', scope: { customer_id: expected.customerId, platform: expected.platform, view: expected.view }, range: { start: expected.start, end: expected.end }, summary: { tasks: 0, drafts: 0, in_review: 0, ready: 0, scheduled: 0, blocked: 0, unknown: 0, inbox: 0, review_candidates: 0 }, capabilities: { is_owner: true, meta_owner_only: true }, ...extra });
 const reject = row => assert.throws(() => verifiedWorkspaceProjection(projection([row]), query));
 
-test('owner monthly run retains explicit pilot/run navigation in all-merchant and exact-merchant scope', () => {
+test('owner monthly run retains explicit merchant/run navigation in all-merchant and exact-merchant scope', () => {
   assert.equal(verifiedWorkspaceProjection(projection(), query).items[0].navigation.run_id, 7);
   const scoped = { ...query, customerId: 20, platform: 'google_business' };
   assert.equal(verifiedWorkspaceProjection(projection([monthlyRun()], {}, scoped), scoped).items[0].customer_id, 20);
 });
-test('monthly projection rejects staff even when a response claims a valid month and pilot', () => {
+test('monthly projection rejects staff even when a response claims a valid month and merchant', () => {
   for (const row of [monthlyRun(), monthlyItem()]) assert.throws(() => verifiedWorkspaceProjection(projection([row], { capabilities: { is_owner: false, meta_owner_only: true } }), query));
 });
-test('monthly records cannot cross pilot customer or platform even from all-merchants scope', () => {
-  for (const extra of [{ customer_id: 21 }, { customer_id: 0 }, { platform: 'facebook' }, { platform: 'instagram' }]) { reject(monthlyRun(extra)); reject(monthlyItem(extra)); }
+test('monthly records accept each owner authorized positive merchant but reject wrong selected merchant and non-Google platform', () => {
+  for (const customer_id of [21, 31]) {
+    assert.equal(verifiedWorkspaceProjection(projection([monthlyRun({customer_id})]),query).items[0].customer_id,customer_id);
+    const selected={...query,customerId:customer_id,platform:'google_business'};
+    assert.equal(verifiedWorkspaceProjection(projection([monthlyRun({customer_id})],{},selected),selected).items[0].customer_id,customer_id);
+    assert.throws(()=>verifiedWorkspaceProjection(projection([monthlyRun({customer_id:customer_id+1})],{},selected),selected));
+  }
+  for (const extra of [{ customer_id: 0 }, { customer_id: -1 }, { customer_id: '31' }, { platform: 'facebook' }, { platform: 'instagram' }]) { reject(monthlyRun(extra)); reject(monthlyItem(extra)); }
 });
 test('monthly records require monthly navigation with a positive numeric run ID', () => {
   for (const navigation of [{ workspace: 'monthly' }, { workspace: 'monthly', run_id: 0 }, { workspace: 'monthly', run_id: -1 }, { workspace: 'monthly', run_id: '7' }, { workspace: 'tasks', task_id: 7 }, { workspace: 'google', binding_id: 7 }, { workspace: 'meta', binding_id: 7 }]) { reject(monthlyRun({ navigation })); reject(monthlyItem({ navigation })); }
