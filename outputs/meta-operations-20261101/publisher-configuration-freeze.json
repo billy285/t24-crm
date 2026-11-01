@@ -1,0 +1,40 @@
+{
+  "app_id": "3037236509957803",
+  "app_name": "T24 CRM Publisher",
+  "app_type": "Business",
+  "business_id": "1772407487098568",
+  "business_name": "T24 Media",
+  "callback_persisted_after_navigation": true,
+  "config_id": "2328579691236435",
+  "config_name": "T24 CRM PokeCo Operations",
+  "credential_values_exported": false,
+  "https_enforced": true,
+  "login_variation": "General",
+  "mode": "Development",
+  "oauth_grant_completed": false,
+  "old_app_ids_preserved": [
+    "1139445441758834",
+    "1625116099132983"
+  ],
+  "owner_creation_and_terms_confirmed": true,
+  "owner_credential_storage_confirmed": true,
+  "pilot_customer_id": 38,
+  "public_post_or_reply_performed": false,
+  "redirect_uris": [
+    "https://t24-crm.com/api/v1/meta-operations/oauth/callback"
+  ],
+  "requested_scopes": [
+    "instagram_basic",
+    "instagram_content_publish",
+    "instagram_manage_comments",
+    "pages_manage_engagement",
+    "pages_manage_posts",
+    "pages_read_engagement",
+    "pages_read_user_content",
+    "pages_show_list"
+  ],
+  "saved_configuration_expanded_reviewed": true,
+  "scheduler_enabled": false,
+  "strict_redirect_mode": true,
+  "token_type": "USER"
+}

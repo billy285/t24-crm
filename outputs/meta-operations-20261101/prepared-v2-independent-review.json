@@ -1,0 +1,24 @@
+{
+  "candidate_id_journal_before_original_stop": true,
+  "candidate_image": "sha256:4797556daa7b98dbeeae6c31364d4f3411645c324902e0f8b922cf1180a7af53",
+  "carrier": "91791e23f22cad67a61e29732ee021e387f3b6c6",
+  "command_sha256": {
+    "activate-command.sh": "e08fec63d518db1ce1bc0648e335e6ebdf1f577fd633a4d8c8478e79a9f3113c",
+    "recover-command.sh": "84a5c6e3d55720771530381486b5c217948d6b3b1b3146d4e105dbd001a92f53"
+  },
+  "credentials_provider_execution_scheduler_off": true,
+  "edits": false,
+  "frontend_version": "d2dbd67fa15d",
+  "google_and_original_meta_environment_preserved": true,
+  "live_execution": false,
+  "manifest_sha256": "93ab51c44c77fe4d85df3733a87e3b15b0e4d9453fc7e5f0190f3daa2d3ee842",
+  "payload_sha256": "3283bf5f1c1d25faa04e7a0eda205e3326009345762712a657c949a4d6f4dacb",
+  "preflight_sha256": "9f8a8877a9934496cfbe100e03f62ff6189b53a5c99056e6c7060e1f114b7b18",
+  "prepared_sha256": "ed93447b4f10742f88fe52185c8e330b932c1a7bb31026bf46d938bbd6afe3b4",
+  "private_source_schema_fences_retained": true,
+  "recovery_is_forward_only_after_migration_and_preserves_independent_rows": true,
+  "review_only": true,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "strict_all141_rows_and_new9_empty": true,
+  "verdict": "PASS_NO_BLOCKING_FINDINGS"
+}

@@ -1,0 +1,28 @@
+{
+  "git_mutations": false,
+  "operational_note": "If credential installation persisted runtime.env but failed to write its receipt, keep the file and perform the documented manual recovery; never rotate or overwrite it.",
+  "pins_mutated": false,
+  "production_mutations": false,
+  "review_only": true,
+  "reviewed_files": {
+    "deployments/meta-operations-activation-20261101/README.md": "494a2658eb90bfbda3bb5b1a040c6494927e1f13b5253eaf932f0ec22e868865",
+    "deployments/meta-operations-activation-20261101/activation.py": "3b517674a0a1bb232dbfc50461e476f53be448c76591d6c495298b28024704a1",
+    "deployments/meta-operations-activation-20261101/baseline.py": "4a957b3e5e2f7b698abfc70c492f698b6b23c3e3d0c345187d2f0d14c074e825",
+    "deployments/meta-operations-activation-20261101/core.py": "e5ba464029e1d9b5bd56f6ee9848889a6e7fd05e75986381fc2b2d6c7ba39add",
+    "deployments/meta-operations-activation-20261101/encrypt-in-browser.js": "e3075ac1124c1917c191513faefddcca438a53e861f7015a0287afce4a5640b9",
+    "deployments/meta-operations-activation-20261101/make_commands.py": "70002a03c47770c0ad593ac56659cce9634b58920e65d9a249a24dffcf45231f",
+    "deployments/meta-operations-activation-20261101/transport.py": "9597403c7a2c828be9761038f647c6ed3624b782e41344476838642da50bbf25"
+  },
+  "tests_passed": 118,
+  "verdict": "PASS_NO_BLOCKING_FINDINGS",
+  "verified": [
+    "exact_same_image_plus_eleven_ops_keys",
+    "read_app_secret_config_key_isolation",
+    "all_150_tables_preserved_including_nonempty_ops",
+    "one_use_domain_bound_rsa_oaep_browser_transport",
+    "candidate_identity_fsync_before_stop",
+    "recovery_preserves_independent_rows_and_credential_key_file",
+    "exact_callback_and_jpeg_privacy_facade",
+    "unknown_identity_pins_fail_closed"
+  ]
+}

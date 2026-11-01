@@ -1,0 +1,68 @@
+{
+  "all_150_existing_tables_preserved": true,
+  "application_files_changed_by_activation_tool_task": false,
+  "files": {
+    "deployments/meta-operations-activation-20261101/README.md": {
+      "bytes": 4419,
+      "sha256": "494a2658eb90bfbda3bb5b1a040c6494927e1f13b5253eaf932f0ec22e868865"
+    },
+    "deployments/meta-operations-activation-20261101/activation.py": {
+      "bytes": 19448,
+      "sha256": "3b517674a0a1bb232dbfc50461e476f53be448c76591d6c495298b28024704a1"
+    },
+    "deployments/meta-operations-activation-20261101/baseline.py": {
+      "bytes": 8285,
+      "sha256": "4a957b3e5e2f7b698abfc70c492f698b6b23c3e3d0c345187d2f0d14c074e825"
+    },
+    "deployments/meta-operations-activation-20261101/core.py": {
+      "bytes": 9946,
+      "sha256": "e5ba464029e1d9b5bd56f6ee9848889a6e7fd05e75986381fc2b2d6c7ba39add"
+    },
+    "deployments/meta-operations-activation-20261101/encrypt-in-browser.js": {
+      "bytes": 4394,
+      "sha256": "e3075ac1124c1917c191513faefddcca438a53e861f7015a0287afce4a5640b9"
+    },
+    "deployments/meta-operations-activation-20261101/make_commands.py": {
+      "bytes": 17052,
+      "sha256": "70002a03c47770c0ad593ac56659cce9634b58920e65d9a249a24dffcf45231f"
+    },
+    "deployments/meta-operations-activation-20261101/test_activation.py": {
+      "bytes": 23162,
+      "sha256": "34e9209bd532eef7c251f5ed1bde808b8df4141f5891f74dc14906cb0a763096"
+    },
+    "deployments/meta-operations-activation-20261101/test_baseline.py": {
+      "bytes": 4893,
+      "sha256": "a5300afb23861dc8565b90ab7f3c9d428fcac41005bb9a0024ae6acbd9cc90c0"
+    },
+    "deployments/meta-operations-activation-20261101/test_commands.py": {
+      "bytes": 8536,
+      "sha256": "48e83c05b6d070418198450c809be3bb2592af7e972fa4dd75ae4b49e86e0772"
+    },
+    "deployments/meta-operations-activation-20261101/test_core.py": {
+      "bytes": 7198,
+      "sha256": "1190b28c96bf074abf7f02309638b23131775ffd40f415140b9ce64f19dbcfda"
+    },
+    "deployments/meta-operations-activation-20261101/test_transport.py": {
+      "bytes": 10006,
+      "sha256": "bd1016963e7410dc1e064b74a5d881b0be6e18140e7fa0f2653279302378622b"
+    },
+    "deployments/meta-operations-activation-20261101/transport.py": {
+      "bytes": 8310,
+      "sha256": "9597403c7a2c828be9761038f647c6ed3624b782e41344476838642da50bbf25"
+    }
+  },
+  "independent_review_sha256": "00626f550678754986a013979955b828fd5d4f490a1e125aad00bbebdae3780b",
+  "initial_execution_enabled": false,
+  "initial_ops_enabled": true,
+  "initial_scheduler_enabled": false,
+  "legacy_read_key_rotation_or_cleanup": false,
+  "new_environment_count": 11,
+  "plaintext_credentials_included": false,
+  "publisher_config_pins_pending": true,
+  "result": "PASS",
+  "runtime_identity_pins_pending": true,
+  "server_commands_generated": false,
+  "server_or_provider_actions": false,
+  "stage": "META_OPERATIONS_ACTIVATION_TOOLS_LOCAL_QA_PASSED_IDENTITY_PINS_PENDING",
+  "tests_passed": 118
+}

@@ -1,0 +1,29 @@
+{
+  "archive_path": "/opt/t24-crm/releases/meta-operations-95588aa2e630-20261101-baseline-stale-1",
+  "business_writes": false,
+  "changed_table_count": 1,
+  "changed_tables": [
+    {
+      "after_count": 1,
+      "before_count": 1,
+      "table": "google_business_connections"
+    }
+  ],
+  "comparison_preflight_sha256": "9f8a8877a9934496cfbe100e03f62ff6189b53a5c99056e6c7060e1f114b7b18",
+  "credential_values_read": false,
+  "database_migrated": false,
+  "diagnostic_from_frozen_aggregate_proofs": true,
+  "docker_changed": false,
+  "files_preserved": 4,
+  "frontend_version": "58d2c585210f",
+  "new_baseline_still_requires_separate_capture_and_review": true,
+  "nginx_changed": false,
+  "old_preflight_sha256": "3ee6ceadf311ed15fdb63be14461fc0460e2b560a6be422af05a5cd2ec2a4262",
+  "original_runtime_unchanged": true,
+  "original_source_sha": "a03766539ef3430f350f467652511a43ee3c4abf",
+  "preflight_captured_or_approved": false,
+  "raw_business_rows_read": false,
+  "schema_revision": "bde8da01f247",
+  "stage": "META_OPERATIONS_STALE_BASELINE_STAGING_QUARANTINED",
+  "table_count": 141
+}

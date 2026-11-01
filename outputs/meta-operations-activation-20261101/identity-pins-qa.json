@@ -1,0 +1,80 @@
+{
+  "all_150_existing_tables_preserved": true,
+  "app_id": "3037236509957803",
+  "application_files_changed_by_activation_tool_task": false,
+  "business_id": "1772407487098568",
+  "config_id": "2328579691236435",
+  "configuration_freeze_sha256": "570dcfb3c372233f1fd115e59dd085247697d530a3b6248ecfb8c3d3fb48c3d4",
+  "deployed_receipt_sha256": "023f31cc430a80a47d29099cfe1c2470696073516556d9c763069f60cc735ebc",
+  "files": {
+    "deployments/meta-operations-activation-20261101/README.md": {
+      "bytes": 4640,
+      "sha256": "51d6146b4414763535a32a53b16a7feaaf6690a9604eced9a10f38fe03a10095"
+    },
+    "deployments/meta-operations-activation-20261101/activation.py": {
+      "bytes": 19448,
+      "sha256": "3b517674a0a1bb232dbfc50461e476f53be448c76591d6c495298b28024704a1"
+    },
+    "deployments/meta-operations-activation-20261101/baseline.py": {
+      "bytes": 8285,
+      "sha256": "4a957b3e5e2f7b698abfc70c492f698b6b23c3e3d0c345187d2f0d14c074e825"
+    },
+    "deployments/meta-operations-activation-20261101/core.py": {
+      "bytes": 10339,
+      "sha256": "72e5e12b6bf6b1415ffc35d5f8c43676972964338f889c3b4fcfe102ad95539e"
+    },
+    "deployments/meta-operations-activation-20261101/encrypt-in-browser.js": {
+      "bytes": 4522,
+      "sha256": "b032fd2d25c949623cff84725642bb10ef050f6a48b5bc87a2843fc80e34c61a"
+    },
+    "deployments/meta-operations-activation-20261101/make_commands.py": {
+      "bytes": 17052,
+      "sha256": "70002a03c47770c0ad593ac56659cce9634b58920e65d9a249a24dffcf45231f"
+    },
+    "deployments/meta-operations-activation-20261101/test_activation.py": {
+      "bytes": 23162,
+      "sha256": "34e9209bd532eef7c251f5ed1bde808b8df4141f5891f74dc14906cb0a763096"
+    },
+    "deployments/meta-operations-activation-20261101/test_baseline.py": {
+      "bytes": 4893,
+      "sha256": "a5300afb23861dc8565b90ab7f3c9d428fcac41005bb9a0024ae6acbd9cc90c0"
+    },
+    "deployments/meta-operations-activation-20261101/test_commands.py": {
+      "bytes": 8549,
+      "sha256": "83478558a5aeb14e41a82c9990692c4f6115e8e18ff3b5af239ab4f3f08da4c4"
+    },
+    "deployments/meta-operations-activation-20261101/test_core.py": {
+      "bytes": 7198,
+      "sha256": "1190b28c96bf074abf7f02309638b23131775ffd40f415140b9ce64f19dbcfda"
+    },
+    "deployments/meta-operations-activation-20261101/test_pins.py": {
+      "bytes": 2987,
+      "sha256": "8056557ca368aa3aa9245acf3f048b26448dff64dd344a1e5c86dc2d49245f9e"
+    },
+    "deployments/meta-operations-activation-20261101/test_transport.py": {
+      "bytes": 10076,
+      "sha256": "984455b073c8b74c3332854febe1f1f4c3b41580113a399b7fd5c299cd479e56"
+    },
+    "deployments/meta-operations-activation-20261101/transport.py": {
+      "bytes": 8310,
+      "sha256": "9597403c7a2c828be9761038f647c6ed3624b782e41344476838642da50bbf25"
+    }
+  },
+  "fresh_all150_baseline_pending": true,
+  "frontend_version": "d2dbd67fa15d",
+  "initial_execution_enabled": false,
+  "initial_ops_enabled": true,
+  "initial_scheduler_enabled": false,
+  "legacy_read_key_rotation_or_cleanup": false,
+  "new_environment_count": 11,
+  "plaintext_credentials_included": false,
+  "prior_independent_review_sha256": "00626f550678754986a013979955b828fd5d4f490a1e125aad00bbebdae3780b",
+  "publisher_config_pins_pending": false,
+  "result": "PASS",
+  "runtime_identity_pins_pending": false,
+  "server_commands_generated": false,
+  "server_or_provider_actions": false,
+  "source_sha": "95588aa2e630784a419704bb4ce3da89965586e6",
+  "stage": "META_OPERATIONS_ACTIVATION_ACTUAL_IDENTITIES_PINNED_BASELINE_PENDING",
+  "tests_passed": 122
+}

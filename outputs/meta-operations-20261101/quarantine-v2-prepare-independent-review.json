@@ -1,0 +1,15 @@
+{
+  "carrier": "91791e23f22cad67a61e29732ee021e387f3b6c6",
+  "files": {
+    "quarantine-stale-prepare-command.sh": "6dd323405200eceb9de50cbe43056b0511a6d8c9ca0ef1ca0f927d2947be61c5",
+    "quarantine_stale_prepare.py": "83c476e963b9c60a8b35fcb486817484c5107da1e97be04910d249e2241cb40d"
+  },
+  "git_mutated": false,
+  "live_executed": false,
+  "only_authorized_quarantine_mutation": "atomic no-replace rename of exact four-file unextracted staging; all file bytes preserved",
+  "quarantine_tests_passed": 29,
+  "raw_business_rows_or_credentials_read": false,
+  "review_only": true,
+  "v2_prepare_command_sha256": "4184c1b4353cf0860cead36b9d047532ab43be491a895a900f19bc21c9a264d2",
+  "verdict": "PASS_NO_BLOCKING_FINDINGS"
+}
