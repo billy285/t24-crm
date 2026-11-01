@@ -269,16 +269,29 @@ async def _optional(db, key, factory):
         return [], {}, _source(key, "locked", "当前账号或连接状态未开放此平台记录"), True
 
 
-async def _gather(db, ctx, customers, permissions, start, end, platform):
+async def _monthly(db, ctx, customers, start, end, platform, view):
+    if not ctx.owner:
+        return [], {}, _source("monthly", "locked", "月度草稿当前仅由老板核对，不开放额外员工权限"), False
+    if 20 not in customers or platform not in {None, "google_business"} or view == "inbox":
+        return [], {}, _source("monthly", message="当前范围不包含北方面食月度草稿"), False
+    from services import media_monthly as monthly
+    if not await tables_available(db, monthly.TABLES):
+        return [], {}, _source("monthly", "missing", "月度草稿准备尚未启用"), False
+    rows = await monthly.workspace_rows(db, ctx.user, customer_ids=list(customers), start=start, end=end, view=view)
+    return rows, {}, _source("monthly", message="月度日期为建议发布时间；采用为任务和内部审核均不会自动公开发布"), False
+
+
+async def _gather(db, ctx, customers, permissions, start, end, platform, view="overview"):
     tasks, truncated = await _tasks(db, ctx, customers, permissions, start, end, platform)
     google, gb, gs, cut = await _optional(db, "google", lambda: _google(db, ctx, customers, start, end, platform)); truncated |= cut
     meta, mb, ms, cut = await _optional(db, "meta", lambda: _meta(db, ctx, customers, start, end, platform)); truncated |= cut
+    monthly, _, monthly_source, cut = await _optional(db, "monthly", lambda: _monthly(db, ctx, customers, start, end, platform, view)); truncated |= cut
     by_customer = {b.customer_id: b for b in gb.values()}
     for row in tasks:
         if row["platform"] == "google_business" and row["customer_id"] in by_customer:
             b = by_customer[row["customer_id"]]
             row.update(binding_id=b.id, binding_revision=b.revision, account_label=b.title)
-    return tasks + google + meta, gb, mb, [_source("tasks", message="仅本人任务或老板可查看的任务；日期为内部完成期限"), gs, ms], truncated
+    return tasks + google + meta + monthly, gb, mb, [_source("tasks", message="仅本人任务或老板可查看的任务；日期为内部完成期限"), gs, ms, monthly_source], truncated
 
 
 def _paginate(items, *, ctx, scope, sources, cursor, limit):
@@ -354,7 +367,7 @@ async def workspace(db, user, *, start, end, customer_id=None, platform=None, vi
     ctx = await context(db, user); start, end = planning.window(start, end, maximum=366); platform = _platform(platform)
     if view not in VIEWS: raise HTTPException(422, "请选择有效工作视图")
     customers, permissions, truncated = await _customers(db, ctx, customer_id)
-    rows, _, _, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform); truncated |= cut
+    rows, _, _, sources, cut = await _gather(db, ctx, customers, permissions, start, end, platform, view); truncated |= cut
     rows.sort(key=lambda r: (r["at"] or "", r["id"]), reverse=True)
     summary = {"tasks": sum(r["kind"] == "task" for r in rows),
         "drafts": sum(r["kind"] in {"meta_draft", "google_reply_draft"} and r["status"] == "draft" or r["kind"] == "task" and r["status"] == "draft" for r in rows),
@@ -365,11 +378,11 @@ async def workspace(db, user, *, start, end, customer_id=None, platform=None, vi
         "unknown": sum(r["status"] in {"unknown", "pending", "accepted"} for r in rows),
         "inbox": sum(r["kind"] in {"meta_comment", "google_reply_draft"} for r in rows),
         "review_candidates": sum(r["review_eligible"] for r in rows)}
-    if view == "review": rows = [r for r in rows if r["review_eligible"] or r["kind"] in {"meta_draft", "google_reply_draft"}]
+    if view == "review": rows = [r for r in rows if r["review_eligible"] or r["kind"] in {"meta_draft", "google_reply_draft", "monthly_run"}]
     elif view == "inbox": rows = [r for r in rows if r["kind"] in {"meta_comment", "google_reply_draft"}]
     # Calendar includes internal deadlines with an explicit task_due basis so
     # the UI can place them in a separate preparation list.
-    elif view == "calendar": rows = [r for r in rows if r["kind"] in {"task", "google_schedule", "meta_schedule", "meta_post"}]
+    elif view == "calendar": rows = [r for r in rows if r["kind"] in {"task", "google_schedule", "meta_schedule", "meta_post", "monthly_item"}]
     scope = {"customer_id": customer_id, "platform": platform, "view": view}
     period = {"start": iso(start), "end": iso(end)}
     page, following = _paginate(rows, ctx=ctx, scope={**scope, **period}, sources=sources, cursor=cursor, limit=limit)
