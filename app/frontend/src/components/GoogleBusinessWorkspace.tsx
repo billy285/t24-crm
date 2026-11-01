@@ -1,3 +1,4 @@
+import { mediaProviderScope, mediaScopedBindings } from '@/lib/media-provider-scope';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, ChevronDown, ExternalLink, FileText, Globe2, Link2, Loader2, MessageSquare, RefreshCw, Send, Settings2, ShieldCheck, Star, Unplug, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import { googleReviewNeedsOwner, type GbpAiDraft } from '@/lib/google-business-a
 import '@/pages/google-business.css';
 import '@/pages/google-management.css';
 
-type Props = { scope: string; isOwner: boolean; onOpenTask: (id: number, nextAction?: 'return') => void; entry?: GbpWorkspaceEntry };
+type Props = { scope: string; isOwner: boolean; onOpenTask: (id: number, nextAction?: 'return') => void; entry?: GbpWorkspaceEntry; customerId?: number; platformFilter?: string };
 type Modal = { kind: 'connect'; connection?: GbpConnection } | { kind: 'bind' } | { kind: 'grants'; binding: GbpBinding } | { kind: 'reply'; binding: GbpBinding; review: GbpReview } | { kind: 'publish'; binding: GbpBinding; task: GbpReadyTask } | { kind: 'action'; action: GbpAction } | { kind: 'disconnect_connection'; connection: GbpConnection } | { kind: 'disconnect_binding'; binding: GbpBinding };
 type PendingWrite = { requestId: string; path: string; data: Record<string, unknown>; bindingId: number };
 type ReplySource = { scope: string; dialog: number; bindingId: number; name: string; version: string };
@@ -39,8 +40,10 @@ const providerStateLabels: Record<string, string> = { LIVE: '公开展示中', P
 const providerStateLabel = (value: string) => providerStateLabels[value] || 'Google 状态待进一步确认';
 const isUncertain = (error: unknown) => !mediaErrorStatus(error) || [408, 429].includes(mediaErrorStatus(error) || 0) || (mediaErrorStatus(error) || 0) >= 500;
 
-export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, entry }: Props) {
+export default function GoogleBusinessWorkspace({ scope: identityScope, isOwner, onOpenTask, entry, customerId, platformFilter }: Props) {
+  const scope = mediaProviderScope(identityScope, customerId, platformFilter);
   const scopeRef = useRef(scope); scopeRef.current = scope;
+  const [resolvedScope, setResolvedScope] = useState(scope);
   const entryApplied = useRef<number | null>(null);
   const [state, setState] = useState<GbpStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,7 +114,8 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
     const seq = ++statusSeq.current, identity = scope;
     setLoading(true); setError('');
     try {
-      const value = verifiedGbpStatus(await googleBusinessApi<GbpStatus>('/status'));
+      const raw = verifiedGbpStatus(await googleBusinessApi<GbpStatus>('/status'));
+      const value = { ...raw, bindings: mediaScopedBindings(raw.bindings, customerId, platformFilter) };
       if (seq !== statusSeq.current || scopeRef.current !== identity) return null;
       setState(value);
       setSelectedId(current => value.bindings.some(row => row.id === current && row.permissions.can_read) ? current : value.bindings.find(row => row.active && row.permissions.can_read)?.id || value.bindings.find(row => row.permissions.can_read)?.id || null);
@@ -165,7 +169,7 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
 
   useEffect(() => {
     statusSeq.current++; reviewsSeq.current++; tasksSeq.current++; actionsSeq.current++; modalSeq.current++; locationSeq.current++; replyDetailSeq.current++;
-    setState(null); setSelectedId(null); setReviews(null); setTasks([]); setTasksBindingId(null); setEntryTask(null); setReadinessTaskId(null); setPublishReadiness(null); entryApplied.current = null; setActions([]); setModal(null); setOptions(emptyOptions); setGrants(null); setLocations({ items: [], truncated: false });
+    setResolvedScope(scope); setState(null); setSelectedId(null); setReviews(null); setTasks([]); setTasksBindingId(null); setEntryTask(null); setReadinessTaskId(null); setPublishReadiness(null); entryApplied.current = null; setActions([]); setModal(null); setOptions(emptyOptions); setGrants(null); setLocations({ items: [], truncated: false });
     replySourceRef.current = null; setReplySource(null); setReplyDetailLoading(false); setReplyDetailError('');
     setUnknown(false); setControlNeedsRefresh(false); setBusy(false); busyRef.current = false; durableHold.current = false; pending.current = null; setNotice(''); draftGuard.markSaved(); navigationHold.release();
     void loadStatus();
@@ -181,7 +185,7 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   }, [selectedId, selected?.revision, selected?.active, canUse, section, loadReviews, loadTasks, loadActions]);
 
   useEffect(() => {
-    if (!entry || entryApplied.current === entry.key || !state || loading || busyRef.current || durableHold.current || unknown || controlNeedsRefresh) return;
+    if (!entry || customerId !== undefined && entry.customerId !== customerId || entryApplied.current === entry.key || !state || loading || busyRef.current || durableHold.current || unknown || controlNeedsRefresh) return;
     const binding = entry.bindingId ? state.bindings.find(row => row.id === entry.bindingId) : state.bindings.find(row => row.active && row.customer_id === entry.customerId && row.permissions.can_read);
     entryApplied.current = entry.key;
     if (binding) setSelectedId(binding.id);
@@ -218,7 +222,7 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
       void googleBusinessApi<GbpOptions>('/options').then(value => {
         if (seq !== modalSeq.current || scopeRef.current !== identity) return;
         if (!value || !Array.isArray(value.customers) || !Array.isArray(value.assignees)) throw new Error('授权客户返回不完整。');
-        setOptions(value);
+        setOptions({ ...value, customers: value.customers.filter(row => customerId === undefined || row.id === customerId) });
         if (entry?.customerId && value.customers.some(row => row.id === entry.customerId)) setCustomerChoice(String(entry.customerId));
       }).catch(cause => { if (seq === modalSeq.current && scopeRef.current === identity) setModalError(mediaError(cause)); });
     }
@@ -406,6 +410,7 @@ export default function GoogleBusinessWorkspace({ scope, isOwner, onOpenTask, en
   const saveDisabled = (modal?.kind === 'publish' && (!googleTaskReadyToPublish(modal.task, modal.binding, publishReadiness) || Boolean(modal.task.image_version_id) && !publishImageReady)) || busy || aiBusy || needsOwnerApproval || unknown || controlNeedsRefresh || !confirmed || modal?.kind === 'grants' && (!currentGrant || !grantDirty || (!currentGrant.eligible && (grantReply || grantPublish))) || modal?.kind === 'bind' && (!customerChoice || !locationChoice || locationsLoading) || modal?.kind === 'reply' && (!replyIsCurrent || replyDetailLoading || !!replyDetailError || !reply.trim() || googleReplyBytes(reply.trim()) > 4096);
   const pickedLocation = locations.items.find(row => row.location_name === locationChoice);
 
+  if (resolvedScope !== scope) return <section className="gbp-workspace" aria-label="Google 商家"><div className="gbp-empty" role="status">正在核对所选商家的 Google 范围…</div></section>;
   return <section className="gbp-workspace" aria-label="Google 商家运营">
     <div className="gbp-intro"><div className="gbp-heading-icon"><Globe2 aria-hidden="true"/></div><div><h2>Google 商家运营</h2><p>查看评论、公开回复，将已审核的内容直接发布到对应门店。</p></div><Button variant="outline" onClick={() => void loadStatus()} disabled={loading || busy || unknown || controlNeedsRefresh} aria-label="刷新 Google 连接"><RefreshCw className={loading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button></div>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>

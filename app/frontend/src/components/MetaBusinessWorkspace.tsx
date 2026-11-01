@@ -1,3 +1,4 @@
+import { mediaProviderScope, mediaScopedBindings } from '@/lib/media-provider-scope';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Link2, Loader2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { metaAuthorizationUrl, metaBusinessApi, metaPlatformLabel, metaRequestSc
 import MetaOperationsWorkspace from './MetaOperationsWorkspace';
 import './meta-business.css';
 
-type Props = { scope: string; isOwner: boolean; onChanged?: () => void };
+type Props = { scope: string; isOwner: boolean; onChanged?: () => void; customerId?: number; platformFilter?: string };
 type Modal = { kind: 'connect'; connection?: MetaConnection } | { kind: 'bind' } | { kind: 'disconnect_binding'; binding: MetaBinding } | { kind: 'disconnect_connection'; connection: MetaConnection };
 type OAuthWrite = { kind: 'oauth'; requestId: string; data: { request_id: string; confirmed: true; reconnect_connection_id?: number }; authorization: MetaAuthorization };
 type BindWrite = { kind: 'bind'; requestId: string; data: { request_id: string; customer_id: number; connection_id: number; asset_ref: string; confirmed: true }; platform: MetaAsset['platform'] };
@@ -20,7 +21,8 @@ const emptyAssets: MetaAssets = { items: [], truncated: false };
 const uncertainError = (cause: unknown) => !mediaErrorStatus(cause) || [408, 429].includes(mediaErrorStatus(cause) || 0) || (mediaErrorStatus(cause) || 0) >= 500;
 const formatTime = (value: string | null) => value && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(value)) : '时间待核对';
 
-export default function MetaBusinessWorkspace({ scope, isOwner, onChanged }: Props) {
+export default function MetaBusinessWorkspace({ scope: identityScope, isOwner, onChanged, customerId, platformFilter }: Props) {
+  const scope = mediaProviderScope(identityScope, customerId, platformFilter);
   const identity = `${scope}:${isOwner ? 'owner' : 'staff'}`, fence = useRef(metaRequestScope(identity)); fence.current.update(identity);
   const [resolvedIdentity, setResolvedIdentity] = useState(identity);
   const [status, setStatus] = useState<MetaStatus | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -45,7 +47,8 @@ export default function MetaBusinessWorkspace({ scope, isOwner, onChanged }: Pro
     const current = fence.current.capture(), seq = ++statusSeq.current;
     setLoading(true); setError('');
     try {
-      const value = verifiedMetaStatus(await metaBusinessApi<MetaStatus>('/status'));
+      const raw = verifiedMetaStatus(await metaBusinessApi<MetaStatus>('/status'));
+      const value = { ...raw, bindings: mediaScopedBindings(raw.bindings, customerId, platformFilter) };
       if (!current() || seq !== statusSeq.current) return null;
       setStatus(value); return value;
     } catch (cause) { if (current() && seq === statusSeq.current) { setStatus(null); setError(mediaError(cause, cause instanceof Error ? cause.message : 'Meta 连接状态暂时无法读取。')); } return null; }
@@ -80,7 +83,7 @@ export default function MetaBusinessWorkspace({ scope, isOwner, onChanged }: Pro
     setModal(next); setModalError(''); setConfirmed(false); setNotFound(false); setExpired(false); setOptions(emptyOptions); setAssets(emptyAssets); setOptionsLoading(false); setAssetsLoading(false); setAssetsError(''); setCustomer(''); setConnection(''); setAsset(''); customerRef.current = ''; connectionRef.current = '';
     if (next.kind === 'bind') {
       const current = fence.current.capture(); setOptionsLoading(true);
-      void metaBusinessApi<MetaOptions>('/options').then(verifiedMetaOptions).then(value => { if (current() && modalSeq.current === generation) setOptions(value); })
+      void metaBusinessApi<MetaOptions>('/options').then(verifiedMetaOptions).then(value => { if (current() && modalSeq.current === generation) setOptions({ ...value, customers: value.customers.filter(row => customerId === undefined || row.id === customerId) }); })
         .catch(cause => { if (current() && modalSeq.current === generation) setModalError(mediaError(cause, '可绑定客户暂时无法读取。')); })
         .finally(() => { if (current() && modalSeq.current === generation) setOptionsLoading(false); });
     }
@@ -92,7 +95,7 @@ export default function MetaBusinessWorkspace({ scope, isOwner, onChanged }: Pro
     setAssetsLoading(true);
     try {
       const value = verifiedMetaAssets(await metaBusinessApi<MetaAssets>(`/connections/${Number(connectionId)}/assets`));
-      if (current() && generation === modalSeq.current && seq === assetsSeq.current && connectionRef.current === connectionId && customerRef.current === selectedCustomer) setAssets(value);
+      if (current() && generation === modalSeq.current && seq === assetsSeq.current && connectionRef.current === connectionId && customerRef.current === selectedCustomer) setAssets({ ...value, items: value.items.filter(row => !platformFilter || platformFilter === 'all' || row.platform === platformFilter) });
     } catch (cause) { if (current() && generation === modalSeq.current && seq === assetsSeq.current) setAssetsError(mediaError(cause, cause instanceof Error ? cause.message : 'Meta 可选账号暂时无法读取。')); }
     finally { if (current() && generation === modalSeq.current && seq === assetsSeq.current) setAssetsLoading(false); }
   }
@@ -181,12 +184,12 @@ export default function MetaBusinessWorkspace({ scope, isOwner, onChanged }: Pro
   }
 
   if (!isOwner) return <section className="meta-workspace meta-empty" aria-label="Facebook 与 Instagram 连接"><ShieldCheck/><h2>连接阶段仅向老板开放</h2><p>当前不会向员工展示老板的 Meta 连接、账号资产或新增操作权限。现有 Facebook／Instagram 人工任务照常使用。</p></section>;
-  if (resolvedIdentity !== identity || loading && !status) return <section className="meta-workspace" aria-label="Facebook 与 Instagram 连接"><MetaOperationsWorkspace scope={scope} isOwner={isOwner}/><div className="meta-empty" role="status"><Loader2 className="animate-spin"/><h2>正在读取 Meta 只读连接范围</h2><p>只读连接完整返回后再显示对应账号；独立运营授权由上方试点工作区管理。</p></div></section>;
+  if (resolvedIdentity !== identity || loading && !status) return <section className="meta-workspace" aria-label="Facebook 与 Instagram 连接"><MetaOperationsWorkspace scope={scope} isOwner={isOwner} customerId={customerId} platformFilter={platformFilter}/><div className="meta-empty" role="status"><Loader2 className="animate-spin"/><h2>正在读取 Meta 只读连接范围</h2><p>只读连接完整返回后再显示对应账号；独立运营授权由上方试点工作区管理。</p></div></section>;
   const title = modal?.kind === 'connect' ? modal.connection ? '重新授权 Meta' : '连接 Facebook／Instagram' : modal?.kind === 'bind' ? '绑定客户与 Meta 账号' : modal?.kind === 'disconnect_binding' ? '断开客户账号绑定' : '断开 Meta 连接';
   const bindReady = modal?.kind === 'bind' && !!pickedCustomer && !!pickedConnection && !!pickedAsset && !assetsLoading && !optionsLoading && !assetsError && !existingBinding;
   const saveDisabled = busy || unknown || !confirmed || modal?.kind === 'connect' && !canConnect || modal?.kind === 'bind' && !bindReady;
   return <section className="meta-workspace" aria-label="Facebook 与 Instagram 连接">
-    <MetaOperationsWorkspace scope={scope} isOwner={isOwner}/>
+    <MetaOperationsWorkspace scope={scope} isOwner={isOwner} customerId={customerId} platformFilter={platformFilter}/>
     <header className="meta-heading"><div><p className="meta-eyebrow">Facebook / Instagram · 只读连接</p><h2>只读连接与客户归属</h2><p>由老板核对平台账号和客户归属。发布、评论及排期按试点工作区的实际能力分别确认。</p></div><Button variant="outline" aria-label="刷新 Meta 连接状态" disabled={loading || busy || unknown} onClick={() => void loadStatus()}><RefreshCw className={loading ? 'animate-spin' : ''}/><span>刷新</span></Button></header>
     <div className="meta-phase"><ShieldCheck/><div><strong>账号连接与客户归属</strong><p>绑定不自动开放发布、评论、排期或员工权限；请分别核对试点工作区的权限与执行状态。</p></div></div>
     {notice && <div className="meta-notice" role="status"><CheckCircle2/>{notice}</div>}

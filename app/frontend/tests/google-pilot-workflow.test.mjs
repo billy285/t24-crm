@@ -9,7 +9,7 @@ const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
 function compile(source, imports = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, require: name => imports[name] || {}, Date, URL, URLSearchParams, Set, Map, console });
+    { module, exports: module.exports, require: name => name === '@/lib/media-provider-scope' ? compile(read('../src/lib/media-provider-scope.ts')) : imports[name] || {}, Date, URL, URLSearchParams, Set, Map, console });
   return module.exports;
 }
 const gbp = compile(read('../src/lib/google-business-api.ts'));
@@ -134,6 +134,7 @@ function workspaceHarness() {
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     module, exports: module.exports, URL, Date, Set, Map, console,
     require(name) {
+      if (name === '@/lib/media-provider-scope') return compile(read('../src/lib/media-provider-scope.ts'));
       if (name === 'react') return hooks;
       if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
       if (name === '@/lib/google-business-api') return { ...gbp, googleBusinessApi: (path, method, body) => { requests.push({ path, method, body }); return new Promise(() => {}); } };

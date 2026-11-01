@@ -1,3 +1,4 @@
+import { mediaProviderScope } from '@/lib/media-provider-scope';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Archive, ArrowRight, BarChart3, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ExternalLink, Link2, Loader2, MessageSquare, Pause, Play, RefreshCw, Search, ShieldCheck, Store, Users } from 'lucide-react';
 import GoogleBusinessWorkspace from './GoogleBusinessWorkspace';
@@ -12,12 +13,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Dialog, DialogDescription, DialogTitle, CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader } from '@/components/ui/dialog';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
-import { gbpActionLabels, googleBusinessApi, googlePreviewImageUrl, googlePublicUrl, type GbpActionStatus, type GbpBinding, type GbpReadyTask } from '@/lib/google-business-api';
+import { gbpActionLabels, verifiedGbpStatus, googleBusinessApi, googlePreviewImageUrl, googlePublicUrl, type GbpActionStatus, type GbpStatus, type GbpBinding, type GbpReadyTask } from '@/lib/google-business-api';
 import { mediaError, mediaErrorStatus, mediaLocalToUtc, mediaOperationsApi, mediaRequestId, mediaStatusLabels, mediaTimezones, mediaUtcToLocal, verifiedMediaTask, type MediaTask } from '@/lib/media-operations-api';
 import { calendarDates, calendarTaskDate, customerPermissionUrl, gpmLifecycleLabels, gpmScheduleLabels, managementDateRange, managementToday, readCalendar, readPortfolio, readStatistics, shiftDate, verifiedAssignmentPreview, type GpmAssignmentPreview, type GpmAssignmentResult, type GpmCalendar, type GpmCalendarTask, type GpmLifecycle, type GpmMerchant, type GpmPortfolio, type GpmStatistics } from '@/lib/google-management-api';
 import '@/pages/google-management.css';
 
-type Props = { scope: string; isOwner: boolean; onOpenTask: (id: number, nextAction?: 'return') => void; onCreateTask: () => void; publicationEntry?: GbpPublicationEntry };
+type Props = { scope: string; isOwner: boolean; onOpenTask: (id: number, nextAction?: 'return') => void; onCreateTask: () => void; publicationEntry?: GbpPublicationEntry; customerId?: number; platformFilter?: string };
 type Section = 'merchants' | 'reviews' | 'calendar' | 'statistics';
 type ManagementWrite = { path: string; data: Record<string, unknown>; kind: 'assignment' | 'lifecycle' | 'schedule' | 'cancel'; requestId?: string };
 type Modal = { kind: 'assignment'; rows: GpmMerchant[] } | { kind: 'lifecycle'; row: GpmMerchant; action: 'pause' | 'stop' | 'resume' } | { kind: 'schedule'; task: GpmCalendarTask } | { kind: 'cancel'; task: GpmCalendarTask };
@@ -28,9 +29,10 @@ const readableTime = (value: string, timezone = 'Asia/Shanghai') => mediaUtcToLo
 const taskState = (row: GpmCalendarTask) => row.schedule ? gpmScheduleLabels[row.schedule.status] : mediaStatusLabels[row.status as keyof typeof mediaStatusLabels] || '状态待确认';
 const changeLabels = { pause: '暂停代运营', stop: '停止代运营', resume: '恢复代运营' };
 
-export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, onCreateTask, publicationEntry }: Props) {
+export default function GoogleBusinessManagement({ scope: identityScope, isOwner, onOpenTask, onCreateTask, publicationEntry, customerId, platformFilter }: Props) {
+  const scope = mediaProviderScope(identityScope, customerId, platformFilter);
   const [resolvedScope, setResolvedScope] = useState(scope);
-  const [section, setSection] = useState<Section>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('google') === 'connected' ? 'reviews' : isOwner ? 'merchants' : 'reviews');
+  const [section, setSection] = useState<Section>(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('google') === 'connected' ? 'reviews' : customerId === undefined && isOwner ? 'merchants' : 'reviews');
   const [entry, setEntry] = useState<GbpWorkspaceEntry | undefined>();
   const publicationEntryApplied = useRef<number | null>(null);
   const [portfolio, setPortfolio] = useState<GpmPortfolio | null>(null);
@@ -87,7 +89,7 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
   const dayMap = useMemo(() => { const map = new Map<string, GpmCalendarTask[]>(); for (const row of calendar?.items || []) { const key = calendarTaskDate(row); map.set(key, [...(map.get(key) || []), row]); } return map; }, [calendar?.items]);
 
   const loadPortfolio = useCallback(async () => {
-    if (!isOwner) return;
+    if (!isOwner || customerId !== undefined) return;
     const seq = ++portfolioSeq.current, identity = scope;
     setPortfolioLoading(true); setPortfolioError('');
     try {
@@ -102,9 +104,15 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
     setCalendarLoading(true); setCalendarError('');
     try {
       const range = managementDateRange(days[0], days[days.length - 1]), params = new URLSearchParams(range);
-      if (calendarBinding !== 'all') params.set('binding_id', calendarBinding);
+      if (customerId !== undefined) {
+        const status = verifiedGbpStatus(await googleBusinessApi<GbpStatus>('/status'));
+        if (seq !== calendarSeq.current || scopeRef.current !== identity) return;
+        const binding = status.bindings.find(row => row.customer_id === customerId && row.active && row.permissions.can_read);
+        if (!binding) throw new Error('当前商家尚无可用的 Google 门店绑定，请先在此商家的账号中核对连接。');
+        params.set('binding_id', String(binding.id));
+      } else if (calendarBinding !== 'all') params.set('binding_id', calendarBinding);
       const data = await readCalendar(params);
-      if (seq === calendarSeq.current && scopeRef.current === identity) setCalendar(data);
+      if (seq === calendarSeq.current && scopeRef.current === identity) setCalendar(customerId === undefined ? data : { ...data, items: data.items.filter(row => row.customer_id === customerId) });
     } catch (cause) { if (seq === calendarSeq.current && scopeRef.current === identity) { setCalendar(null); setCalendarError(mediaError(cause)); } }
     finally { if (seq === calendarSeq.current && scopeRef.current === identity) setCalendarLoading(false); }
   }, [calendarBinding, days, scope]);
@@ -125,14 +133,14 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
     setPortfolio(null); setSelectedIds([]); setCalendar(null); setStatistics(null); setModal(null); setPreview(null); setAssignmentResult(null); setEntry(undefined); publicationEntryApplied.current = null;
     setScheduleDetail(null); setScheduleImage(null); setScheduleImageVerified(false); setScheduleDetailLoading(false); setScheduleDetailError('');
     setNotice(''); setUncertain(false); setNotFound(false); pendingWrite.current = null; durableRef.current = false; setResolvedScope(scope); busyRef.current = false; setBusy(false); writeId.current = ''; guard.markSaved(); hold.release();
-    setSection(isOwner && !new URLSearchParams(window.location.search).has('google') ? 'merchants' : 'reviews');
+    setSection(customerId === undefined && isOwner && !new URLSearchParams(window.location.search).has('google') ? 'merchants' : 'reviews');
     return () => { portfolioSeq.current++; calendarSeq.current++; statisticsSeq.current++; scheduleDetailSeq.current++; };
   }, [scope, isOwner]);
   useEffect(() => { if (isOwner && section !== 'reviews') void loadPortfolio(); }, [isOwner, section, loadPortfolio]);
   useEffect(() => { if (section === 'calendar') void loadCalendar(); }, [section, loadCalendar]);
   useEffect(() => { if (section === 'statistics') void loadStatistics(); }, [section, loadStatistics]);
   useEffect(() => {
-    if (!publicationEntry || publicationEntryApplied.current === publicationEntry.key || busyRef.current || uncertain) return;
+    if (!publicationEntry || customerId !== undefined && publicationEntry.customerId !== customerId || publicationEntryApplied.current === publicationEntry.key || busyRef.current || uncertain) return;
     publicationEntryApplied.current = publicationEntry.key;
     setEntry({ key: ++entryId.current, customerId: publicationEntry.customerId, taskId: publicationEntry.taskId, preview: publicationEntry.preview });
     setSection('reviews');
@@ -244,7 +252,9 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
         if (scopeRef.current === identity) await acceptResult(receipt.result, request);
       } else {
         const range = managementDateRange(days[0], days[days.length - 1]);
-        const latest = await readCalendar(new URLSearchParams(range));
+        const params = new URLSearchParams(range);
+        if (customerId !== undefined && modal?.kind === 'cancel' && modal.task.binding_id) params.set('binding_id', String(modal.task.binding_id));
+        const latest = await readCalendar(params);
         const target = modal?.kind === 'cancel' ? latest.items.find(row => row.schedule?.id === modal.task.schedule?.id)?.schedule : null;
         if (!target || target.status !== 'cancelled') { setNotFound(true); setModalError('尚未读到已取消结果，可继续查询，或明确重试原取消请求。'); return; }
         if (scopeRef.current === identity) await acceptResult(target, request);
@@ -265,7 +275,7 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
     if (calendarView === 'week') { const next = shiftDate(anchor, direction * 7); setAnchor(next); setSelectedDay(next); }
     else { const date = new Date(`${anchor.slice(0, 7)}-01T12:00:00Z`); date.setUTCMonth(date.getUTCMonth() + direction); const next = date.toISOString().slice(0, 10); setAnchor(next); setSelectedDay(next); }
   }
-  const sections = isOwner ? (['merchants', 'reviews', 'calendar', 'statistics'] as Section[]) : (['reviews', 'calendar'] as Section[]);
+  const sections = customerId !== undefined ? (['reviews', 'calendar'] as Section[]) : isOwner ? (['merchants', 'reviews', 'calendar', 'statistics'] as Section[]) : (['reviews', 'calendar'] as Section[]);
   const modalTitle = modal?.kind === 'assignment' ? assignmentResult ? '分配结果' : preview ? '核对权限变更' : '批量分配运营' : modal?.kind === 'lifecycle' ? changeLabels[modal.action] : modal?.kind === 'schedule' ? '安排发布' : '取消排期';
   const checkboxLabel = modal?.kind === 'assignment' ? '我已核对本次商家、运营及操作权限，确认仅应用以上可分配项目。' : modal?.kind === 'schedule' ? '我已核对商家、已审核正文、帖子设置和两个时区的发布时间，确认保存本次排期。' : modal?.kind === 'cancel' ? '我确认取消这项尚未提交到 Google 的排期。' : modal?.kind === 'lifecycle' && modal.action === 'resume' ? '我已核对合作状态与门店归属，确认恢复后再重新分配运营权限。' : '我确认撤销此商家的 Google 员工权限，并停止尚未发布的排期。';
   const scheduleBeijing = useMemo(() => { if (!localTime) return ''; try { return readableTime(mediaLocalToUtc(localTime, timezone)); } catch (cause) { return cause instanceof Error ? cause.message : ''; } }, [localTime, timezone]);
@@ -277,7 +287,7 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
     <nav className="gpm-nav" aria-label="代运营管理功能">{sections.map(key => { const Icon = sectionIcons[key]; return <button key={key} className={section === key ? 'active' : ''} aria-current={section === key ? 'page' : undefined} onClick={() => chooseSection(key)}><Icon aria-hidden="true"/>{sectionLabels[key]}</button>; })}</nav>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>
     {notice && <div className="gpm-notice"><CheckCircle2 aria-hidden="true"/>{notice}</div>}
-    {section === 'reviews' ? <GoogleBusinessWorkspace scope={scope} isOwner={isOwner} onOpenTask={onOpenTask} entry={entry}/> : <>
+    {section === 'reviews' ? <GoogleBusinessWorkspace scope={scope} isOwner={isOwner} onOpenTask={onOpenTask} entry={entry} customerId={customerId} platformFilter={platformFilter}/> : <>
       <header className="gpm-header"><div><h2>{sectionLabels[section]}</h2><p>{section === 'merchants' ? '核对合作商家，安排一位主要运营，按门店开放操作。' : section === 'calendar' ? '按北京时间编排工作，同时核对门店当地发布时间。' : '按确认结果查看工作量，草稿和公开完成分别统计。'}</p></div><div className="gpm-header-tools"><Button variant="outline" aria-label={`刷新${sectionLabels[section]}`} onClick={() => { if (section === 'merchants') void loadPortfolio(); else if (section === 'calendar') void loadCalendar(); else void loadStatistics(); }} disabled={busy || uncertain || section === 'merchants' && portfolioLoading || section === 'calendar' && calendarLoading || section === 'statistics' && statisticsLoading}><RefreshCw aria-hidden="true"/><span className="gpm-refresh-text">刷新</span></Button>{section === 'merchants' ? <Button onClick={() => openGoogle(undefined, 'bind')}><Link2 aria-hidden="true"/>绑定商家</Button> : section === 'calendar' ? <Button onClick={onCreateTask}><CalendarDays aria-hidden="true"/>准备内容</Button> : null}</div></header>
       {section === 'merchants' && <>
         <div className="gpm-overview" aria-label="合作商家概况">{(['unbound', 'active', 'paused', 'stopped'] as GpmLifecycle[]).map(key => <button key={key} className={`gpm-metric ${lifecycle === key ? 'selected' : ''}`} onClick={() => { setLifecycle(value => value === key ? 'all' : key); setPage(1); setSelectedIds([]); }}><span>{gpmLifecycleLabels[key]}</span><strong>{portfolioLoading ? '—' : portfolio?.summary[key] ?? '—'}</strong><small>{key === 'unbound' ? '核对 Google 门店' : key === 'active' ? '可分配运营' : key === 'paused' ? '恢复后重新授权' : '保留历史记录'}</small></button>)}</div>
@@ -295,7 +305,7 @@ export default function GoogleBusinessManagement({ scope, isOwner, onOpenTask, o
         <p className="gpm-context">任务截止是内容准备目标；只有明确保存的 Google 排期才会按时提交。日历中两类时间分别标注。</p>
         {calendar && !calendar.scheduler.enabled && <div className="gpm-alert"><Clock3 aria-hidden="true"/><div><strong>自动发布尚未启用</strong><p>现在可保存排期；自动发布启用后只处理届时有效的新排期，历史逾期内容不会自动补发。</p></div></div>}
         <div className="gpm-panel"><div className="gpm-calendar-top"><div className="gpm-calendar-controls"><Button variant="ghost" aria-label="上一段日历" onClick={() => stepCalendar(-1)}><ChevronLeft aria-hidden="true"/></Button><strong>{calendarView === 'month' ? `${anchor.slice(0, 4)} 年 ${Number(anchor.slice(5, 7))} 月` : `${days[0].slice(5)} — ${days[6].slice(5)}`}</strong><Button variant="ghost" aria-label="下一段日历" onClick={() => stepCalendar(1)}><ChevronRight aria-hidden="true"/></Button><Button variant="ghost" onClick={() => { setAnchor(managementToday()); setSelectedDay(managementToday()); }}>今天</Button></div><div className="gpm-view-toggle" role="group" aria-label="日历显示方式"><button className={calendarView === 'week' ? 'active' : ''} aria-pressed={calendarView === 'week'} onClick={() => setCalendarView('week')}>周</button><button className={calendarView === 'month' ? 'active' : ''} aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>月</button></div></div>
-          <div className="gpm-toolbar"><span className="gpm-context" style={{ margin: 0 }}>日历日期以北京时间显示 · 点日期查看内容</span>{isOwner && <NativeSelect aria-label="筛选日历商家" className="gpm-filter" value={calendarBinding} onChange={setCalendarBinding} options={[{ value: 'all', label: '全部授权商家' }, ...(portfolio?.items.filter(row => row.binding_id).map(row => ({ value: String(row.binding_id), label: row.customer_name })) || [])]}/>}</div>
+          <div className="gpm-toolbar"><span className="gpm-context" style={{ margin: 0 }}>日历日期以北京时间显示 · 点日期查看内容</span>{isOwner && customerId === undefined && <NativeSelect aria-label="筛选日历商家" className="gpm-filter" value={calendarBinding} onChange={setCalendarBinding} options={[{ value: 'all', label: '全部授权商家' }, ...(portfolio?.items.filter(row => row.binding_id).map(row => ({ value: String(row.binding_id), label: row.customer_name })) || [])]}/>}</div>
           {calendarError ? <ErrorPanel message={calendarError} onRetry={() => void loadCalendar()}/> : calendarLoading ? <Loading label="正在读取已授权的内容计划…"/> : <><div className="gpm-calendar-grid" aria-label="内容计划日历">{['一', '二', '三', '四', '五', '六', '日'].map(day => <div className="gpm-weekday" key={day}>周{day}</div>)}{days.map(day => { const rows = dayMap.get(day) || []; return <button className={`gpm-day ${day.slice(0, 7) !== anchor.slice(0, 7) ? 'outside' : ''} ${day === selectedDay ? 'selected' : ''} ${day === managementToday() ? 'is-today' : ''}`} key={day} aria-label={`${day}，${rows.length} 项内容`} aria-pressed={day === selectedDay} onClick={() => setSelectedDay(day)}><span className="gpm-day-number">{Number(day.slice(-2))}</span>{rows.slice(0, 2).map(row => <span className={`gpm-calendar-entry ${['failed', 'unknown', 'blocked', 'missed'].includes(row.schedule?.status || '') ? 'is-failed' : ''}`} key={row.task_id}><strong>{row.customer_name}</strong>{row.title}<small>{taskState(row)}</small></span>)}{rows.length > 0 && <span className="gpm-day-count">{rows.length} 项</span>}</button>; })}</div><section className="gpm-agenda" aria-label="所选日期内容"><h3>{selectedDay} · {dayRows.length} 项内容</h3>{!dayRows.length ? <p className="gpm-context">这一天没有已授权的内容计划。可先准备内容，再安排审核和发布。</p> : dayRows.map(row => <article className="gpm-agenda-row" key={row.task_id}><div><strong>{row.customer_name} · {row.title}</strong><small>{row.assignee_name} 负责 · <span className={`gpm-pill gpm-pill-${row.schedule?.status || row.status}`}>{taskState(row)}</span></small><small>{row.schedule ? `门店时间 ${readableTime(row.schedule.planned_at, row.schedule.timezone)} · ${row.schedule.timezone}；北京时间 ${readableTime(row.schedule.planned_at)}` : `任务截止 ${readableTime(row.due_at, row.timezone)} · ${row.timezone}（尚未排期）`}</small>{row.schedule?.message && <small>{row.schedule.message}</small>}{!row.schedule && row.status === 'ready' && row.schedule_blocked_reason && <small>{row.schedule_blocked_reason}</small>}</div><Button variant="ghost" onClick={() => onOpenTask(row.task_id)}>查看内容</Button>{row.schedule && ['scheduled', 'blocked'].includes(row.schedule.status) ? <Button variant="outline" onClick={() => open({ kind: 'cancel', task: row })}>取消排期</Button> : row.status === 'ready' && row.binding_id && (!row.schedule || ['cancelled', 'missed', 'failed'].includes(row.schedule.status)) ? <Button variant="outline" disabled={row.can_schedule !== true} title={row.schedule_blocked_reason || (row.can_schedule === true ? '核对内容和时间后安排发布' : '请先确认主运营及发布权限')} onClick={() => open({ kind: 'schedule', task: row })}>安排发布</Button> : null}</article>)}</section></>}
         </div>
       </>}

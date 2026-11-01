@@ -10,7 +10,7 @@ const apiSource = source('../src/lib/meta-operations-api.ts'), componentSource =
 function compile(body, imports = {}, extra = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, require: name => imports[name] || {}, URL, URLSearchParams, Date, Set, Map, Blob, FormData, TextEncoder, TextDecoder, Uint8Array, DataView, crypto: webcrypto, btoa: value => Buffer.from(value, 'binary').toString('base64'), console, ...extra });
+    { module, exports: module.exports, require: name => name === '@/lib/media-provider-scope' ? compile(source('../src/lib/media-provider-scope.ts')) : imports[name] || {}, URL, URLSearchParams, Date, Set, Map, Blob, FormData, TextEncoder, TextDecoder, Uint8Array, DataView, crypto: webcrypto, btoa: value => Buffer.from(value, 'binary').toString('base64'), console, ...extra });
   return module.exports;
 }
 const images = compile(source('../src/lib/media-publication-images.ts')), api = compile(apiSource, { './media-publication-images': images });
@@ -72,7 +72,7 @@ function harness({ search = '' } = {}) {
   const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) }, '@/lib/meta-operations-api': lib, '@/lib/meta-business-api': meta, '@/lib/media-publication-images': images, '@/lib/tokenStore': { invokeWithAuth }, '@/lib/media-operations-api': { mediaError: (e, m) => e?.message || m, mediaErrorStatus: e => e?.status, mediaRequestId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`, mediaTimezones: [{ value: 'America/Denver', label: '美国山地时间' }, { value: 'America/New_York', label: '美东时间' }], mediaLocalToUtc: (v, zone) => new Date(v + (zone === 'America/New_York' ? ':00-05:00' : zone === 'America/Denver' ? ':00-07:00' : ':00+08:00')).toISOString(), mediaUtcToLocal: v => v }, '@/lib/use-unsaved-changes': { useUnsavedChanges: () => ({ markSaved() {}, confirmDiscard: () => true }), useHardNavigationBlock: () => ({ lock() { held = true; }, release() { held = false; } }) } }, { get: (value, name) => value[name] || fallback });
   const components = compile(componentSource, imports, { window: { location: { search, assign: url => navigation.push(url) } } });
   const resetHooks = () => { si = 0; ri = 0; ei = 0; ci = 0; };
-  return { requests, navigation, get held() { return held; }, render(scope = 'owner:1', isOwner = true) { resetHooks(); return components.default({ scope, isOwner }); }, renderImage(props) { resetHooks(); return components.MetaPrivateImage(props); }, effects() { while (queue.length) queue.shift()(); } };
+  return { requests, navigation, get held() { return held; }, render(scope = 'owner:1', isOwner = true, target = {}) { resetHooks(); return components.default({ scope, isOwner, ...target }); }, renderImage(props) { resetHooks(); return components.MetaPrivateImage(props); }, effects() { while (queue.length) queue.shift()(); } };
 }
 async function ready(h, s = status(), w = workspace()) { h.render(); h.effects(); h.requests[0].resolve({ data: s }); await tick(); h.render(); h.effects(); assert.equal(h.requests[1].options.url, '/api/v1/meta-operations/bindings/5/workspace'); h.requests[1].resolve({ data: w }); await tick(); return h.render(); }
 async function openPreview(h, item, opts = {}) { await ready(h, opts.status || status(), workspace({ drafts: [item] })); find(h.render(), node => typeof node.type === 'function' && node.type.name === 'DraftRows').props.onPreview(item); h.requests[2].resolve({ data: opts.preview || preview(item) }); await tick(); return h.render(); }
@@ -232,4 +232,20 @@ test('paused operations is labelled separately from a grant waiting for executio
   const strip = label(control(h.render(), '当前 Meta 操作能力'));
   assert.match(strip, /运营已暂停/); assert.match(strip, /帖文：操作已暂停/); assert.match(strip, /评论：操作已暂停/);
   assert.equal(button(h.render(), '新建帖文').props.disabled, true); assert.equal(h.requests.some(row => /publish$|continue$|activate$/.test(row.options.url)), false);
+});
+
+
+test('merchant and platform scope cannot select another customer or fall back to the first account', async () => {
+  const h = harness(), render = () => h.render('owner:1', true, { customerId: 8, platformFilter: 'instagram' });
+  render(); h.effects(); h.requests[0].resolve({ data: status({ bindings: [binding(), binding({ id: 6, customer_id: 8, platform: 'facebook' })] }) });
+  await tick(); const tree = render(); h.effects();
+  assert.equal(h.requests.length, 1); assert.match(label(tree), /先绑定/); assert.doesNotMatch(label(tree), /Synthetic Page/);
+});
+test('merchant scope selects only its matching platform and invalidates old workspace replies', async () => {
+  const h = harness(), render = customerId => h.render('owner:1', true, { customerId, platformFilter: 'instagram' });
+  render(8); h.effects(); h.requests[0].resolve({ data: status({ bindings: [binding(), binding({ id: 6, customer_id: 8, platform: 'instagram' })] }) });
+  await tick(); render(8); h.effects(); assert.equal(h.requests[1].options.url, '/api/v1/meta-operations/bindings/6/workspace');
+  render(9); h.effects(); h.requests[1].resolve({ data: workspace({ binding: binding({ id: 6, customer_id: 8, platform: 'instagram' }), drafts: [draft({ binding_id: 6, title: 'Old merchant confidential draft' })] }) });
+  await tick(); assert.doesNotMatch(label(render(9)), /Old merchant confidential draft/);
+  assert.equal(h.requests.filter(row => row.options.method !== 'GET').length, 0);
 });

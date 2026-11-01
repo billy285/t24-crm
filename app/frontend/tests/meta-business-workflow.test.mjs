@@ -11,7 +11,7 @@ const componentSource = source('../src/components/MetaBusinessWorkspace.tsx');
 function compile(body, imports = {}, extra = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, require: name => imports[name] || {}, URL, URLSearchParams, Date, Set, Map, console, ...extra });
+    { module, exports: module.exports, require: name => name === '@/lib/media-provider-scope' ? compile(source('../src/lib/media-provider-scope.ts')) : imports[name] || {}, URL, URLSearchParams, Date, Set, Map, console, ...extra });
   return module.exports;
 }
 const api = compile(apiSource);

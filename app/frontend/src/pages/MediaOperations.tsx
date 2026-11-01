@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, ExternalLink, FileText, Globe2, Image, Link2, ListChecks, Loader2, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarDays, Check, CheckCircle2, Copy, ExternalLink, Globe2, Image, ListChecks, FileText, Loader2, LockKeyhole } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { confirmDiscardAllChanges, useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import MediaPublicationFields from '@/components/MediaPublicationFields';
@@ -7,7 +7,7 @@ import MediaPublicationPreview from '@/components/MediaPublicationPreview';
 import MediaTeamMaterials from '@/components/MediaTeamMaterials';
 import MediaPublicationImage, { PublicationImagePreview } from '@/components/MediaPublicationImage';
 import { imageVersionId } from '@/lib/media-publication-images';
-import MediaPlatformCapabilities from '@/components/MediaPlatformCapabilities';
+import MediaMerchantWorkspace, { type MerchantProviderEntry } from '@/components/MediaMerchantWorkspace';
 import MediaPlanningWorkspace from '@/components/MediaPlanningWorkspace';
 import { blankPublicationForm, publicationEquivalent, publicationForm, publicationPayload, type PublicationForm } from '@/components/media-publication';
 import GoogleBusinessManagement from '@/components/GoogleBusinessManagement';
@@ -24,7 +24,6 @@ import './media-operations.css';
 type Form = { customer_id: string; service_progress_id: string; title: string; platform: string; local_time: string; timezone: string; assignee_id: string; content: string; material_id: string; image_version_id: string; publication: PublicationForm };
 type PendingMutation = { path: string; method: 'POST' | 'PUT'; data: unknown; expectedId?: number };
 const blankForm = (): Form => ({ customer_id: '', service_progress_id: '', title: '', platform: 'google_business', local_time: '', timezone: 'Asia/Shanghai', assignee_id: '', content: '', material_id: '', image_version_id: '', publication: blankPublicationForm() });
-const stages: MediaStatus[] = ['draft', 'in_review', 'ready', 'completed', 'blocked'];
 const emptyOptions: MediaOptions = { customers: [], assignees: [], platforms: [] };
 const imageTypes = new Set(['image', 'photo', 'screenshot', 'picture', '图片', '截图']);
 const isProofImage = (kind: string, contentType?: string | null) => imageTypes.has(kind.toLowerCase()) || kind.toLowerCase().startsWith('image/') || Boolean(contentType?.toLowerCase().startsWith('image/'));
@@ -33,15 +32,14 @@ const timestamp = (value: string) => {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) : '时间待核对';
 };
-const safePreviewTime = (value: string, zone: string) => { try { return mediaLocalToUtc(value, zone); } catch { return ''; } };
 const isOverdue = (item: MediaTask) => item.status !== 'completed' && new Date(item.due_at).getTime() < Date.now();
+const safePreviewTime = (value: string, zone: string) => { try { return mediaLocalToUtc(value, zone); } catch { return ''; } };
 
 export default function MediaOperations() {
   const { employee, systemRole, loading: roleLoading } = useRole();
   const owner = systemRole === 'super_admin';
   const allowed = ['super_admin', 'admin', 'ops'].includes(systemRole || '');
-  const [workspace, setWorkspace] = useState<'tasks' | 'planning' | 'google' | 'meta' | 'materials'>(() => typeof window === 'undefined' ? 'tasks' : (new URLSearchParams(window.location.search).has('meta') || new URLSearchParams(window.location.search).has('meta_ops')) ? 'meta' : new URLSearchParams(window.location.search).has('google') ? 'google' : 'tasks');
-  const [metaRefresh, setMetaRefresh] = useState(0);
+  const [merchantProviderEntry, setMerchantProviderEntry] = useState<MerchantProviderEntry | undefined>();
   const scope = `${employee?.id || ''}:${systemRole || ''}`;
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [resolvedScope, setResolvedScope] = useState(scope);
@@ -49,15 +47,15 @@ export default function MediaOperations() {
   const googleEntrySequence = useRef(0);
   const [list, setList] = useState<MediaList | null>(null);
   const [options, setOptions] = useState<MediaOptions>(emptyOptions);
-  const [listLoading, setListLoading] = useState(true);
+  const [, setListLoading] = useState(true);
   const [optionsLoading, setOptionsLoading] = useState(false);
-  const [listError, setListError] = useState('');
+  const [, setListError] = useState('');
   const [optionsError, setOptionsError] = useState('');
-  const [status, setStatus] = useState<MediaStatus | 'all'>('all');
-  const [customerFilter, setCustomerFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
+  const [status] = useState<MediaStatus | 'all'>('all');
+  const [customerFilter] = useState('all');
+    const [query] = useState('');
+  const [page] = useState(1);
+  const [createCustomerId, setCreateCustomerId] = useState<number | null>(null);
   const [mode, setMode] = useState<'create' | 'edit' | 'view' | null>(null);
   const [item, setItem] = useState<MediaTask | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -131,16 +129,15 @@ export default function MediaOperations() {
 
   useEffect(() => {
     listSeq.current++; optionSeq.current++; detailSeq.current++;
-    setList(null); setOptions(emptyOptions); setItem(null); setMode(null); setForm(blankForm()); setGooglePublicationEntry(undefined);
+    setList(null); setOptions(emptyOptions); setItem(null); setMode(null); setCreateCustomerId(null); setForm(blankForm()); setGooglePublicationEntry(undefined); setMerchantProviderEntry(undefined);
     setAction(null); setNote(''); setProofUrl(''); setProofMaterial(''); setMutationError(''); setDetailError('');
     setUnknownResult(false); setImageHold(false); setImageDraft(false); imageHoldRef.current=false; setImagePreviewReady(false); pending.current = null; activeTaskId.current = null; createId.current = ''; busyRef.current = false; setBusy(false);
     draftGuard.markSaved(); navigationHold.release();
-    setSearch(''); setQuery(''); setStatus('all'); setCustomerFilter('all'); setPage(1); setAnnouncement(''); setCopyError(''); setCopiedTaskId(null); setResolvedScope(scope);
+    setAnnouncement(''); setCopyError(''); setCopiedTaskId(null); setResolvedScope(scope);
     return () => { listSeq.current++; optionSeq.current++; detailSeq.current++; };
   }, [scope]);
   useEffect(() => { void loadList(true); return () => { listSeq.current++; }; }, [loadList]);
   useEffect(() => { void loadOptions(); return () => { optionSeq.current++; }; }, [loadOptions]);
-  useEffect(() => { const timer = window.setTimeout(() => { setQuery(search); setPage(1); }, 250); return () => window.clearTimeout(timer); }, [search]);
 
   async function readDetail(id: number, preserveForm = false, nextAction?: 'return') {
     activeTaskId.current = id;
@@ -162,14 +159,18 @@ export default function MediaOperations() {
 
   function updateForm<K extends keyof Form>(key: K, value: Form[K]) { if(imageDraft && ['material_id','platform'].includes(key)){setMutationError('请先保存或放弃正在准备的配图，再更换素材或平台。');return;} setForm(current => ({ ...current, [key]: value, ...(key === 'material_id' || key === 'platform' && value !== 'google_business' ? {image_version_id: ''} : {}) })); setMutationError(''); }
   function chooseCustomer(value: string) {
+    if (mode === 'create' && createCustomerId !== null && Number(value) !== createCustomerId) return;
     if(imageDraft){setMutationError('请先保存或放弃正在准备的配图，再更换客户。');return;}
     const eligible = options.assignees.filter(row => !row.eligible_customer_ids || row.eligible_customer_ids.includes(Number(value)));
     setForm(current => ({ ...current, customer_id: value, service_progress_id: '', material_id: '', image_version_id: '', assignee_id: eligible.some(row => row.id === Number(employee?.id)) ? String(employee?.id) : eligible.length === 1 ? String(eligible[0].id) : '' }));
   }
-  function openCreate() {
+  function openCreate(customerId?: number, platform?: string) {
     if (busyRef.current || unknownResult || !canCreate) return;
+    if (customerId !== undefined && !options.customers.some(row => row.id === customerId && row.can_write)) return;
+    setCreateCustomerId(customerId || null);
     const next = blankForm();
-    if (customerFilter !== 'all' && options.customers.some(row => row.id === Number(customerFilter) && row.can_write)) next.customer_id = customerFilter;
+    if (customerId && options.customers.some(row => row.id === customerId && row.can_write)) next.customer_id = String(customerId);
+    if (platform && options.platforms.some(row => row.value === platform)) next.platform = platform;
     next.assignee_id = String(employee?.id || '');
     setForm(next); initialForm.current = JSON.stringify(next); createId.current = mediaRequestId();
     setItem(null); setMode('create'); setAction(null); setMutationError(''); setDetailError(''); setLeaveChoice(false);
@@ -271,6 +272,7 @@ export default function MediaOperations() {
       if(imageDraft) throw new Error('请先保存或放弃当前配图准备，再保存任务草稿。');
       if (form.image_version_id && !imageVersionId(form.image_version_id)) throw new Error('请选择有效的固定图片版本。');
       if (!form.title.trim()) throw new Error('请填写任务标题。');
+      if (mode === 'create' && createCustomerId !== null && Number(form.customer_id) !== createCustomerId) throw new Error('当前任务所属商家已固定，请返回商家工作区切换后再创建。');
       if (!form.customer_id || !customer?.can_write) throw new Error('请选择有协作授权的客户。');
       const due_at = mediaLocalToUtc(form.local_time, form.timezone);
       const publication = publicationPayload(form.publication, form.timezone, form.platform);
@@ -293,56 +295,37 @@ export default function MediaOperations() {
     void runMutation({ path: `/${item.id}/transition`, method: 'POST', expectedId: item.id, data: { expected_revision: item.revision, request_id: mediaRequestId(), action, ...(note.trim() ? { note: note.trim() } : {}), ...(action === 'complete' ? { proof_url: proofUrl.trim() || null, proof_material_id: proofMaterial ? Number(proofMaterial) : null } : {}) } });
   }
 
-  const filteredOptions = useMemo(() => [{ value: 'all', label: '全部授权客户' }, ...options.customers.map(row => ({ value: String(row.id), label: row.name }))], [options.customers]);
   const schedulePreview = useMemo(() => { if (!form.local_time) return ''; try { return `${mediaUtcToLocal(mediaLocalToUtc(form.local_time, form.timezone), 'Asia/Shanghai').replace('T', ' ')} 北京时间`; } catch (error) { return error instanceof Error ? error.message : ''; } }, [form.local_time, form.timezone]);
-  const priority = list?.items.find(row => row.status === 'blocked') || list?.items.find(row => isOverdue(row)) || list?.items.find(row => owner ? row.status === 'in_review' : row.status === 'ready') || list?.items.find(row => row.status !== 'completed');
   const modalEditing = mode === 'create' || mode === 'edit';
   const readOnly = busy || unknownResult || imageHold;
   const optionLabel = (value: string) => options.platforms.find(row => row.value === value)?.label || value;
-  function changeWorkspace(next: 'tasks' | 'planning' | 'google' | 'meta' | 'materials') {
-    if (next === workspace || busyRef.current || unknownResult || imageHoldRef.current || !confirmDiscardAllChanges()) return;
-    draftGuard.markSaved(); setMode(null); setItem(null); setAction(null); setLeaveChoice(false); setMutationError('');
-    setGooglePublicationEntry(undefined); setWorkspace(next);
-  }
   function openGooglePublication() {
     if (!item || item.platform !== 'google_business' || !['draft', 'in_review', 'ready'].includes(item.status) || busyRef.current || unknownResult || imageHoldRef.current || dirty) return;
     const target = { key: ++googleEntrySequence.current, customerId: item.customer_id, taskId: item.id, preview: item.status === 'ready' };
-    closeDialog(); setGooglePublicationEntry(target); setWorkspace('google');
+    closeDialog(); setGooglePublicationEntry(target); setMerchantProviderEntry({ key: target.key, customerId: item.customer_id, customerName: item.customer_name, platform: 'google_business' });
   }
 
   if (roleLoading || resolvedScope !== scope) return <div className="mo-loading"><Loader2 className="animate-spin" aria-hidden="true"/>正在确认访问范围…</div>;
   if (!allowed) return <section className="media-operations mo-denied"><LockKeyhole aria-hidden="true"/><h1>代运营中心尚未向此账号开放</h1><p>由老板邀请运营人员，并单独授权客户交付资料。</p></section>;
 
-  return <main className={`media-operations app-page${workspace === 'google' ? ' mo-google-mode' : ''}`} aria-label="代运营中心">
-    <header className="mo-page-header"><div><p className="mo-eyebrow">任务与交付 · 代运营</p><h1>代运营中心</h1><p className="mo-subtitle">{workspace === 'google' ? '在授权范围内处理 Google 评论和帖子。' : '准备内容、完成审核、发布后留下凭证。'}</p></div>{workspace === 'tasks' && <div className="mo-header-actions"><Button variant="outline" onClick={() => { void loadList(); void loadOptions(); }} disabled={listLoading || busy} aria-label="刷新运营资料"><RefreshCw className={listLoading ? 'animate-spin' : ''} aria-hidden="true"/><span>刷新</span></Button><Button onClick={openCreate} disabled={!canCreate || busy || unknownResult}><Plus aria-hidden="true"/>新增任务</Button></div>}</header>
-    <div className="mo-workspace-switch" role="group" aria-label="代运营工作区"><button className={workspace === 'tasks' ? 'active' : ''} aria-pressed={workspace === 'tasks'} onClick={() => changeWorkspace('tasks')}><ListChecks aria-hidden="true"/>运营任务</button><button className={workspace === 'planning' ? 'active' : ''} aria-pressed={workspace === 'planning'} onClick={() => changeWorkspace('planning')}><CalendarDays aria-hidden="true"/>内容编排</button><button className={workspace === 'google' ? 'active' : ''} aria-pressed={workspace === 'google'} onClick={() => changeWorkspace('google')}><Globe2 aria-hidden="true"/>Google 商家</button>{owner && <button className={`mo-meta-switch ${workspace === 'meta' ? 'active' : ''}`} aria-pressed={workspace === 'meta'} onClick={() => changeWorkspace('meta')}><Link2 aria-hidden="true"/>Facebook / Instagram</button>}<button className={workspace === 'materials' ? 'active' : ''} aria-pressed={workspace === 'materials'} onClick={() => changeWorkspace('materials')}><Image aria-hidden="true"/>客户素材</button></div>
-    <MediaPlatformCapabilities key={scope} scope={scope} isOwner={owner} metaRefreshKey={metaRefresh} onOpenMeta={() => changeWorkspace('meta')}/>
-    {workspace === 'meta' ? <MetaBusinessWorkspace key={scope} scope={scope} isOwner={owner} onChanged={() => setMetaRefresh(value => value + 1)}/> : workspace === 'google' ? <GoogleBusinessManagement scope={scope} isOwner={owner} publicationEntry={googlePublicationEntry} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); openCreate(); }} onOpenTask={(id, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; setWorkspace('tasks'); void readDetail(id, false, nextAction); }}/> : workspace === 'materials' ? <MediaTeamMaterials key={scope} scope={scope} customers={options.customers} initialCustomerId={customerFilter !== 'all' ? Number(customerFilter) : undefined} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/> : workspace === 'planning' ? <MediaPlanningWorkspace key={scope} scope={scope} customers={options.customers} assignees={options.assignees} onOpenTask={id=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');void readDetail(id);}} onCreateTask={()=>{if(busyRef.current||unknownResult||!confirmDiscardAllChanges())return;setWorkspace('tasks');openCreate();}} onChanged={()=>{void loadList();void loadOptions();}}/> : <>
-    <div className="mo-scope"><ShieldCheck aria-hidden="true"/><span>{owner ? '老板视角 · 查看全部运营交付，审核后进入发布' : '我的工作 · 仅显示本人负责且老板已授权的客户任务'}</span><span className="mo-manual-tag">按平台能力执行 · 凭证留痕</span></div>
+  return <main className="media-operations app-page mo-merchant-mode" aria-label="代运营中心">
+    <MediaMerchantWorkspace scope={scope} isOwner={owner} providerEntry={merchantProviderEntry}
+      canNavigate={() => !busyRef.current && !unknownResult && !imageHoldRef.current}
+      onOpenTask={id => { if (busyRef.current || unknownResult || imageHoldRef.current || !confirmDiscardAllChanges()) return; void readDetail(id); }}
+      onCreateTask={(id, platform) => { if (!confirmDiscardAllChanges()) return; openCreate(id, platform); }}
+      renderMaterials={id => <MediaTeamMaterials key={`${scope}:${id}`} scope={scope} customerId={id} customers={options.customers.filter(row => row.id === id)} initialCustomerId={id} onChanged={() => void loadOptions()} loading={optionsLoading} error={optionsError} onRetry={() => void loadOptions()}/>}
+      renderPlanning={(id, platform) => <MediaPlanningWorkspace key={`${scope}:${id}:${platform || 'all'}`} scope={scope} customerId={id} platformFilter={platform} customers={options.customers.filter(row => row.id === id)} assignees={options.assignees} onOpenTask={taskId => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; void readDetail(taskId); }} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; openCreate(id, platform); }} onChanged={() => { void loadList(); void loadOptions(); }}/>}
+      renderProvider={(id, platform) => platform === 'google_business' ? <GoogleBusinessManagement key={`${scope}:${id}:google`} scope={scope} customerId={id} platformFilter={platform} isOwner={owner} publicationEntry={googlePublicationEntry?.customerId === id ? googlePublicationEntry : undefined} onCreateTask={() => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; openCreate(id, platform); }} onOpenTask={(taskId, nextAction) => { if (busyRef.current || unknownResult || !confirmDiscardAllChanges()) return; void readDetail(taskId, false, nextAction); }}/> : owner && ['facebook', 'instagram'].includes(platform) ? <MetaBusinessWorkspace key={`${scope}:${id}:${platform}`} scope={scope} customerId={id} platformFilter={platform} isOwner={owner} onChanged={() => void loadOptions()}/> : <p className="mo-boundary">该平台尚未提供此账号可执行的原生操作，请在授权范围内准备任务与交付凭证。</p>}
+    />
     <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
-    {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><AlertCircle aria-hidden="true"/><div><strong>上次操作结果待确认</strong><p>请先确认结果，再继续修改或新增任务。</p></div><Button variant="outline" disabled={busy} onClick={() => void recoverUnknown()}>{busy ? '正在确认…' : '重新确认结果'}</Button></div>}
-    {optionsError && <div className="mo-alert" role="alert"><AlertCircle aria-hidden="true"/><span>{optionsError}</span><Button variant="ghost" size="sm" onClick={() => void loadOptions()} disabled={optionsLoading}>重新读取授权资料</Button></div>}
-    <section className="mo-overview" aria-label="运营任务概况">
-      <button className={status === 'blocked' ? 'mo-metric mo-metric-warning active' : 'mo-metric mo-metric-warning'} onClick={() => { setStatus('blocked'); setPage(1); }}><span><AlertCircle aria-hidden="true"/>需处理</span><strong>{list?.summary.blocked ?? '—'}</strong><small>缺资料、执行遇阻</small></button>
-      <div className="mo-metric"><span><Clock3 aria-hidden="true"/>已逾期</span><strong>{list?.summary.overdue ?? '—'}</strong><small>尚未完成的计划任务</small></div>
-      <button className={status === 'in_review' ? 'mo-metric active' : 'mo-metric'} onClick={() => { setStatus('in_review'); setPage(1); }}><span><ListChecks aria-hidden="true"/>待审核</span><strong>{list?.summary.in_review ?? '—'}</strong><small>确认后交给发布执行</small></button>
-      <button className={status === 'ready' ? 'mo-metric active' : 'mo-metric'} onClick={() => { setStatus('ready'); setPage(1); }}><span><CalendarDays aria-hidden="true"/>待发布</span><strong>{list?.summary.ready ?? '—'}</strong><small>发布后提交链接或截图</small></button>
-    </section>
-    {priority && !listLoading && <section className="mo-next" aria-label="建议优先处理"><div className="mo-next-icon"><ArrowRight aria-hidden="true"/></div><div><small>{owner ? '先看这一项' : '接下来处理'}</small><strong>{priority.customer_name} · {priority.title}</strong><span>{priority.status === 'blocked' ? priority.block_reason || '需要补充资料或处理异常' : `${mediaStatusLabels[priority.status]} · ${mediaScheduleLabel(priority.due_at, priority.timezone)}`}</span></div><Button variant="outline" onClick={() => void readDetail(priority.id)}>打开任务<ArrowRight aria-hidden="true"/></Button></section>}
-    <section className="mo-workspace" aria-label="运营任务列表">
-      <div className="mo-stages" role="group" aria-label="按任务阶段筛选"><button className={status === 'all' ? 'active' : ''} aria-pressed={status === 'all'} onClick={() => { setStatus('all'); setPage(1); }}>全部</button>{stages.map(stage => <button key={stage} className={status === stage ? 'active' : ''} aria-pressed={status === stage} onClick={() => { setStatus(stage); setPage(1); }}>{mediaStatusLabels[stage]}<span>{list?.summary[stage] ?? '—'}</span></button>)}</div>
-      <div className="mo-filters"><label className="mo-search"><Search aria-hidden="true"/><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户或任务" aria-label="搜索客户或任务"/></label><NativeSelect aria-label="筛选授权客户" value={customerFilter} onChange={value => { setCustomerFilter(value); setPage(1); }} options={filteredOptions}/></div>
-      {listError ? <div className="mo-empty" role="alert"><AlertCircle aria-hidden="true"/><h2>运营资料暂时无法读取</h2><p>{listError}</p><Button variant="outline" onClick={() => void loadList(true)}>重新读取</Button></div> : listLoading ? <div className="mo-empty" aria-live="polite"><Loader2 className="animate-spin" aria-hidden="true"/><h2>正在读取运营任务</h2><p>按当前账号和客户授权确认范围。</p></div> : !list?.items.length ? <div className="mo-empty"><FileText aria-hidden="true"/><h2>{query || customerFilter !== 'all' || status !== 'all' ? '这个范围还没有任务' : '从第一项运营任务开始'}</h2><p>{owner ? '选择客户、负责人和计划时间，内容准备后再提交审核。' : '任务分配给你，并获得客户交付授权后，会显示在这里。'}</p>{canCreate && <Button onClick={openCreate} disabled={unknownResult}><Plus aria-hidden="true"/>新增运营任务</Button>}</div> : <><div className="mo-table-head" aria-hidden="true"><span>客户 / 任务</span><span>任务截止</span><span>负责人</span><span>阶段</span><span/></div><div className="mo-task-list">{list.items.map(row => <button key={row.id} className="mo-task-row" onClick={() => void readDetail(row.id)} aria-label={`查看任务：${row.customer_name}，${row.title}`}><span className="mo-task-name"><strong>{row.title}</strong><small>{row.customer_name}<i>·</i>{optionLabel(row.platform)}</small></span><span className={`mo-task-time ${isOverdue(row) ? 'overdue' : ''}`}><CalendarDays aria-hidden="true"/>{mediaUtcToLocal(row.due_at, row.timezone).replace('T', ' ')}<small>{row.timezone}{isOverdue(row) ? ' · 已逾期' : ''}</small></span><span className="mo-task-assignee">{row.assignee_name}</span><span className={`mo-status mo-status-${row.status}`}>{mediaStatusLabels[row.status]}</span><ChevronRight className="mo-row-arrow" aria-hidden="true"/></button>)}</div><footer className="mo-pagination"><span>共 {list.total} 项 · 第 {page} / {Math.max(1, Math.ceil(list.total / limit))} 页</span><div><Button variant="outline" size="sm" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page <= 1 || listLoading} aria-label="上一页"><ChevronLeft aria-hidden="true"/></Button><Button variant="outline" size="sm" onClick={() => setPage(current => current + 1)} disabled={page * limit >= list.total || listLoading} aria-label="下一页"><ChevronRight aria-hidden="true"/></Button></div></footer></>}
-    </section>
-    <p className="mo-boundary"><LockKeyhole aria-hidden="true"/>仅管理运营交付。人工发布后再确认完成，内容审核不会立即发布或记账；Google 排期仍须有相应授权并明确确认。</p>
-
+    {unknownResult && <div className="mo-alert mo-alert-warn" role="alert"><strong>上次操作结果待确认</strong><Button disabled={busy} onClick={() => void recoverUnknown()}>重新确认原请求</Button></div>}
     <Dialog open={mode !== null} onOpenChange={open => { if (!open) closeDialog(); }}>
       <CrmFormDialogContent className="mo-dialog" onEscapeKeyDown={event => { if (busy || dirty) { event.preventDefault(); if (!busy) setLeaveChoice(true); } }} onPointerDownOutside={event => { if (busy || dirty) { event.preventDefault(); if (!busy) setLeaveChoice(true); } }}>
         <CrmFormDialogHeader><DialogTitle>{mode === 'create' ? '新增运营任务' : mode === 'edit' ? '编辑运营草稿' : item?.title || '运营任务'}</DialogTitle><DialogDescription>{modalEditing ? '明确客户、负责人和计划时间，准备完成后再提交审核。' : item ? `${item.customer_name} · ${optionLabel(item.platform)} · ${mediaStatusLabels[item.status]}` : '正在读取已授权的任务资料。'}</DialogDescription></CrmFormDialogHeader>
         <CrmFormDialogBody>
           {leaveChoice && <div className="mo-alert mo-alert-warn"><div><strong>还有未保存的内容</strong><p>可以继续填写，也可以放弃本次修改。</p></div><Button variant="outline" size="sm" onClick={() => setLeaveChoice(false)}>继续填写</Button><Button variant="ghost" size="sm" onClick={() => { initialForm.current = JSON.stringify(form); draftGuard.markSaved(); setLeaveChoice(false); setMode(null); setItem(null); setAction(null); setNote(''); setProofUrl(''); setProofMaterial(''); setReviewConfirmed(false); }}>放弃修改</Button></div>}
           {detailLoading ? <div className="mo-dialog-loading"><Loader2 className="animate-spin" aria-hidden="true"/>正在读取任务…</div> : detailError ? <div className="mo-alert" role="alert"><AlertCircle aria-hidden="true"/><span>{detailError}</span>{activeTaskId.current && <Button variant="outline" size="sm" onClick={() => void readDetail(activeTaskId.current!)}>重新读取</Button>}</div> : modalEditing ? <div className="mo-form">
-            <div className="mo-form-grid"><label>客户（必填）<NativeSelect aria-label="任务客户" value={form.customer_id} onChange={chooseCustomer} disabled={mode === 'edit' || readOnly || optionsLoading} options={[{ value: '', label: '选择已授权客户' }, ...options.customers.filter(row => row.can_write).map(row => ({ value: String(row.id), label: row.name }))]}/></label><label>关联服务<NativeSelect aria-label="关联服务" value={form.service_progress_id} onChange={value => updateForm('service_progress_id', value)} disabled={mode === 'edit' || readOnly || !customer} options={[{ value: '', label: '客户运营任务（不关联具体服务）' }, ...(customer?.services || []).map(row => ({ value: String(row.id), label: row.name }))]}/></label></div>
+            <div className="mo-form-grid"><label>客户（必填）<NativeSelect aria-label="任务客户" value={form.customer_id} onChange={chooseCustomer} disabled={mode === 'edit' || mode === 'create' && createCustomerId !== null || readOnly || optionsLoading} options={[{ value: '', label: '选择已授权客户' }, ...options.customers.filter(row => row.can_write && (mode !== 'create' || createCustomerId === null || row.id === createCustomerId)).map(row => ({ value: String(row.id), label: row.name }))]}/></label><label>关联服务<NativeSelect aria-label="关联服务" value={form.service_progress_id} onChange={value => updateForm('service_progress_id', value)} disabled={mode === 'edit' || readOnly || !customer} options={[{ value: '', label: '客户运营任务（不关联具体服务）' }, ...(customer?.services || []).map(row => ({ value: String(row.id), label: row.name }))]}/></label></div>
             <label>任务标题（必填）<Input aria-label="任务标题" value={form.title} onChange={event => updateForm('title', event.target.value)} placeholder="例如：本周 Instagram 门店介绍" maxLength={200} disabled={readOnly}/></label>
             <div className="mo-form-grid"><label>发布平台<NativeSelect aria-label="发布平台" value={form.platform} onChange={value => updateForm('platform', value)} disabled={readOnly} options={options.platforms}/></label><label>主要负责人{owner ? <NativeSelect aria-label="主要负责人" value={form.assignee_id} onChange={value => updateForm('assignee_id', value)} disabled={readOnly || !form.customer_id} options={[{ value: '', label: '选择具有客户协作授权的同事' }, ...eligibleAssignees.map(row => ({ value: String(row.id), label: row.name }))]}/> : <Input value={employee?.name || '本人'} disabled aria-label="主要负责人"/>}</label></div>
             {owner && customer && eligibleAssignees.length === 0 && <p className="mo-help">此客户暂无具备运营协作权限的员工，可由老板负责，或先在客户中心邀请同事。</p>}
@@ -375,6 +358,5 @@ export default function MediaOperations() {
         </CrmFormDialogFooter>
       </CrmFormDialogContent>
     </Dialog>
-    </>}
   </main>;
 }

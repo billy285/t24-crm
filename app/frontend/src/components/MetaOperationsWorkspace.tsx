@@ -1,3 +1,4 @@
+import { mediaProviderScope, mediaScopedBindings } from '@/lib/media-provider-scope';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CalendarClock, CheckCircle2, Clock3, ExternalLink, FileText, ImagePlus, Loader2, Plus, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { sourceImageDimensions } from '@/lib/media-publication-images';
 import { metaOperationsApi, metaOpsActionLabels, metaOpsAuthorizationUrl, metaOpsImageDataUrl, metaOpsPublicUrl, metaOpsScheduleLabels, verifiedMetaOpsAction, verifiedMetaOpsBinding, verifiedMetaOpsComments, verifiedMetaOpsDraft, verifiedMetaOpsMedia, verifiedMetaOpsPosts, verifiedMetaOpsPreview, verifiedMetaOpsSchedule, verifiedMetaOpsStatus, verifiedMetaOpsWorkspace, type MetaOpsAction, type MetaOpsBinding, type MetaOpsComment, type MetaOpsComments, type MetaOpsDraft, type MetaOpsMedia, type MetaOpsPosts, type MetaOpsPreview, type MetaOpsRequest, type MetaOpsSchedule, type MetaOpsStatus, type MetaOpsWorkspace } from '@/lib/meta-operations-api';
 import './meta-operations.css';
 
-type Props = { scope: string; isOwner: boolean; refreshKey?: string };
+type Props = { scope: string; isOwner: boolean; refreshKey?: string; customerId?: number; platformFilter?: string };
 type Section = 'posts' | 'comments' | 'schedules' | 'history';
 type Editor = { title: string; content: string; media_id: string };
 type Modal = { kind: 'editor'; draft: MetaOpsDraft | null; replyTo: MetaOpsComment | null } | { kind: 'preview'; preview: MetaOpsPreview } | { kind: 'schedule'; preview: MetaOpsPreview } | { kind: 'action'; action: MetaOpsAction } | { kind: 'cancel'; schedule: MetaOpsSchedule } | { kind: 'activate'; schedule: MetaOpsSchedule } | { kind: 'authorize'; authorization: MetaAuthorization } | { kind: 'pause'; binding: MetaOpsBinding };
@@ -55,7 +56,8 @@ export function MetaPrivateImage({ image, scope, onReady }: { image: MetaOpsMedi
   return <figure className="mops-image" aria-label="Meta 固定发布图片预览">{display ? <img src={display.url} alt="本次核对的固定发布图片" referrerPolicy="no-referrer" onLoad={() => { if (display.current()) listener.current?.(true); }} onError={() => { if (display.current()) { setView(null); setError('图片无法显示，请重新读取固定版本。'); listener.current?.(false); } }}/> : error ? <p role="alert">{error}<Button variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>重新读取图片</Button></p> : <p role="status"><Loader2 className="animate-spin"/>正在读取并核对固定图片…</p>}<figcaption>{image.width} × {image.height} · {Math.ceil(image.byte_size / 1024)} KB · 固定版本 {image.id.slice(0, 8)}<small>私有预览 · 内容指纹 {image.sha256.slice(0, 12)}</small></figcaption></figure>;
 }
 
-export default function MetaOperationsWorkspace({ scope, isOwner, refreshKey = '' }: Props) {
+export default function MetaOperationsWorkspace({ scope: identityScope, isOwner, refreshKey = '', customerId, platformFilter }: Props) {
+  const scope = mediaProviderScope(identityScope, customerId, platformFilter);
   const identity = `${scope}:${isOwner ? 'owner' : 'staff'}:${refreshKey}`, fence = useRef(metaRequestScope(identity)); fence.current.update(identity);
   const identityRef = useRef(identity), ownerRef = useRef(isOwner); identityRef.current = identity; ownerRef.current = isOwner;
   const [resolvedIdentity, setResolvedIdentity] = useState(identity), [state, setState] = useState<MetaOpsStatus | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -84,7 +86,8 @@ export default function MetaOperationsWorkspace({ scope, isOwner, refreshKey = '
     if (!isOwner || !ownerRef.current || identityRef.current !== identity) return null;
     const current = fence.current.capture(), seq = ++stateSeq.current; setLoading(true); setError('');
     try {
-      const value = verifiedMetaOpsStatus(await metaOperationsApi<MetaOpsStatus>('/status'));
+      const raw = verifiedMetaOpsStatus(await metaOperationsApi<MetaOpsStatus>('/status'));
+      const value = { ...raw, bindings: mediaScopedBindings(raw.bindings, customerId, platformFilter) };
       if (!current() || seq !== stateSeq.current) return null;
       setState(value);
       if (!value.bindings.some(row => String(row.id) === selectedRef.current)) { const next = value.bindings[0] ? String(value.bindings[0].id) : ''; selectedRef.current = next; setBindingId(next); setWorkspace(null); setModal(null); }
