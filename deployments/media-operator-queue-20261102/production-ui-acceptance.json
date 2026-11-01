@@ -1,0 +1,102 @@
+{
+  "business_records_modified_by_ui_qa": false,
+  "frontend_version": "04e77e374e74",
+  "production": {
+    "accessible_customers": 43,
+    "all_four_pages_reachable": true,
+    "desktop": {
+      "horizontal_overflow": false,
+      "list_top": 397.24,
+      "width": 1280
+    },
+    "mobile": [
+      {
+        "filters_default_collapsed": true,
+        "horizontal_overflow": false,
+        "list_top": 474.04,
+        "width": 390
+      },
+      {
+        "filters_default_collapsed": true,
+        "horizontal_overflow": false,
+        "width": 320
+      }
+    ],
+    "next_authorized_merchant": true,
+    "no_visible_alerts_in_monthly_preview": true,
+    "return_original_queue": true,
+    "saved_monthly_items_rendered": 12,
+    "saved_monthly_month": "2026-11",
+    "search_exact_result": 1
+  },
+  "production_actor": "owner",
+  "provider_actions_submitted": false,
+  "publication_or_schedule_or_review_submitted": false,
+  "source_sha": "e0f39295a912ac6f7518d523a860ee9ca649d54e",
+  "staff_live_session_tested_this_release": false,
+  "stage": "MEDIA_OPERATOR_QUEUE_PRODUCTION_UI_ACCEPTANCE",
+  "synthetic": {
+    "desktop": {
+      "horizontal_overflow": false,
+      "list_top": 363.43,
+      "width": 1280
+    },
+    "flow": {
+      "all_36_reachable_on_three_pages": true,
+      "merchant_2_to_3_continuation": true,
+      "missing_images_block_prepare": true,
+      "month_and_search_always_visible": true,
+      "monthly_item_count_rendered": 12,
+      "return_preserved_queue_page": true,
+      "staff_authorized_merchant_search_result": 1,
+      "staff_monthly_actions": 0,
+      "staff_uninvited_merchant_search_result": 0
+    },
+    "merchant_count": 36,
+    "mobile": [
+      {
+        "filters_default_collapsed": true,
+        "horizontal_overflow": false,
+        "list_top_including_fixture_banner": 466.47,
+        "width": 390
+      },
+      {
+        "filters_default_collapsed": true,
+        "horizontal_overflow": false,
+        "width": 320
+      }
+    ],
+    "mutations_submitted": false,
+    "provider_requests": false,
+    "source": "synthetic fixtures only",
+    "staff_authorized_count": 32
+  },
+  "url": "https://t24-crm.com/media-ops",
+  "validation": {
+    "backend": {
+      "local_mocked_providers_only": true,
+      "passed": 1386,
+      "seconds": 285.36,
+      "warnings": 52
+    },
+    "frontend": {
+      "failed": 0,
+      "passed": 252,
+      "scoped_eslint": "passed",
+      "typescript": "existing unchanged Finance.tsx:5778 TS2322; no media scope errors",
+      "vite_build": "passed"
+    },
+    "frontend_version": "04e77e374e74",
+    "new_public_schedule_submitted": false,
+    "protected_behavior": [
+      "financial calculations",
+      "closing conditions",
+      "commission attribution",
+      "existing permissions",
+      "private workspace"
+    ],
+    "real_publication_submitted": false,
+    "release_tool_tests": 125,
+    "source_sha": "e0f39295a912ac6f7518d523a860ee9ca649d54e"
+  }
+}

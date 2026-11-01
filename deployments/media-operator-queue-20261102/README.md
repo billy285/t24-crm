@@ -58,3 +58,20 @@ production containers, or executing code inside a stopped historical parent.
 Real posts, replies, and public schedules are never submitted by this release.
 The parent must independently review the prepared receipt, activate, and verify
 the production desktop/mobile story before claiming deployment complete.
+
+## Deployed result
+
+Application `e0f39295a912ac6f7518d523a860ee9ca649d54e`, frontend
+`04e77e374e74`, was prepared and deployed through authenticated Alibaba Cloud.
+Canonical prepared receipt: `55586cffdbea74f52330cb68bbda90c1871d9ffc80013e44e7e0c953962a6945`.
+Canonical deployed receipt: `e1af41bb8fe55fee6ca3df26b18a9a7c28a8595946781ac381380907cc2d6638`.
+The parent verified all 43 authorized production customer rows over four pages,
+exact merchant search, persisted 12-item November review, fresh next-merchant
+navigation and return to the queue. Desktop 1280px and mobile 390/320px had no
+horizontal overflow. Staff isolation was validated in synthetic UI and backend
+fixtures, not a new live employee session. No real review, schedule, post, reply,
+permission or business-record mutation was submitted during UI acceptance.
+Production screenshots remain user-local; only sanitized assertions are retained.
+Backend protected regression: 1,386 passed. Frontend: 252 passed. Release tools:
+125 passed. Scoped ESLint and Vite build passed. Full TSC retains only the
+existing unchanged `Finance.tsx:5778` TS2322 baseline error.
