@@ -70,3 +70,12 @@ test('thirty merchants expose ninety exact platform-month entry points without c
   const staff=panels.MerchantStatusList({items,isOwner:false,onChoose(){},onAction(){throw new Error('Staff action forbidden');}});assert.equal(nodes(staff).some(node=>node.type==='button'&&node.props?.children?.[0]?.type==='strong'),false);
   for(const invalid of [{...items[0].work_queue,platform_progress:[items[0].work_queue.platform_progress[0],items[0].work_queue.platform_progress[0]]},{...items[0].work_queue,platform_progress:[{...items[0].work_queue.platform_progress[0],month:'2026-12'}]},{...items[0].work_queue,platform_progress:[{...items[0].work_queue.platform_progress[0],platform:'all'}]}])assert.throws(()=>api.verifiedWorkspaceMerchants(page([{...items[0],work_queue:invalid}])));
 });
+
+test('narrow monthly action separates platform from a short next step and preserves exact navigation',()=>{
+ for(const platform of ['facebook','instagram','google_business'])for(const run_id of [undefined,72]){
+  const action={kind:'monthly',platform,label:run_id?`继续${platform}本月清单`:`准备${platform}本月内容`,...(run_id?{run_id}:{})},opened=[],item={...merchant(1),work_queue:{...baseQueue,next_action:action}};
+  const tree=panels.MerchantStatusList({items:[item],isOwner:true,onChoose(){},onAction:(row,value)=>opened.push([row.id,value])});
+  const primary=nodes(tree).find(node=>node.props?.className==='mw-queue-primary');assert.ok(primary);assert.equal(primary.props.title,action.label);const copy=nodes(primary).find(node=>node.props?.className==='mw-queue-action-copy');const lines=copy.props.children;assert.equal(label(lines[0]),platform==='google_business'?'Google':api.workspacePlatformLabels[platform]);assert.equal(label(lines[1]),run_id?'继续整月':'准备整月');assert.equal(label(copy).split(api.workspacePlatformLabels[platform]).length<=2,true);primary.props.onClick();assert.equal(opened[0][1],action);
+ }
+ const css=source('../src/components/media-merchant-workspace.css');assert.match(css,/button\.mw-queue-primary\{display:grid;grid-template-columns:minmax\(0,1fr\) 12px/);assert.match(css,/\.mw-queue-action-copy\{display:grid/);
+});
