@@ -1,0 +1,66 @@
+{
+  "stage": "MEDIA_WORKSPACE_SCALE_LOCAL_ACCEPTANCE",
+  "application_source_sha": "7697e1adc61f72cf6b13896a3a41389d8a31b09d",
+  "frontend_version": "6a8a9ac27c6c",
+  "backend_regressions": {
+    "passed": 418,
+    "includes": [
+      "media_workspace",
+      "google_business",
+      "media_operations",
+      "meta_operations",
+      "customer_permissions",
+      "owner_invitations",
+      "commission_rules",
+      "commission_portal",
+      "finance_entry",
+      "private_workspace"
+    ]
+  },
+  "frontend_regressions": {
+    "passed": 232,
+    "failed": 0
+  },
+  "release_guard_tests": {
+    "passed": 123,
+    "fresh_process_stopped_container_recovery_verified": true
+  },
+  "build": "passed",
+  "browser": {
+    "synthetic_only": true,
+    "fixture_merchants": 300,
+    "fixture_records": 600,
+    "desktop_widths_verified": [
+      1280,
+      1093
+    ],
+    "mobile_widths_verified": [
+      390,
+      320
+    ],
+    "horizontal_overflow": false,
+    "verified": [
+      "owner_exception_navigation",
+      "merchant_status_rows",
+      "merchant_cursor_next_page",
+      "saved_filter_role_isolation_and_restore",
+      "merchant_month_review_group",
+      "exact_two_task_internal_preview_without_submit",
+      "operator_workload",
+      "staff_approve_disabled",
+      "staff_owner_tools_absent"
+    ]
+  },
+  "scope": {
+    "runtime_backend_files": 2,
+    "schema_changes": false,
+    "provider_requests": false,
+    "publications": false,
+    "permission_changes": false,
+    "finance_or_private_source_changes": false
+  },
+  "limitations": [
+    "Synthetic completeness and browser checks do not establish live hundred-store throughput",
+    "Full-tree TypeScript has an existing Finance.tsx:5778 error; no new scoped errors reported"
+  ]
+}
