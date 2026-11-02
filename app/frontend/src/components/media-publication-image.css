@@ -18,6 +18,16 @@
 .mpi-candidate { display:grid;gap:14px;border-top:1px solid #dde6f3;padding-top:16px; }
 .mpi-candidate>strong { font-size:13px;color:#263b58; }
 .mpi-candidate>p { margin:0;font-size:12px;line-height:1.7;color:#687d9a; }
+.mpi-fit-settings { display:grid;gap:8px;padding:12px 14px;border:1px solid #dce6f3;border-radius:10px;background:#fff;min-width:0; }
+.mpi-fit-settings>label { max-width:400px; }
+.mpi-comparison { display:grid;gap:12px;min-width:0; }
+.mpi-comparison.has-original { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.mpi-comparison figure { display:grid;grid-template-rows:auto minmax(160px,300px);gap:10px;margin:0;min-width:0;overflow:hidden;border:1px solid #dce5f2;border-radius:11px;background:#fff; }
+.mpi-comparison figcaption { display:grid;gap:4px;padding:11px 12px 0;min-width:0;overflow-wrap:anywhere; }
+.mpi-comparison figcaption strong { font-size:12px;color:#253c5f; }
+.mpi-comparison figcaption span { font-size:11px;color:#71829b;line-height:1.6; }
+.mpi-comparison img { width:100%;height:100%;min-height:0;max-height:300px;display:block;object-fit:contain;background:repeating-conic-gradient(#f1f4f8 0% 25%,#fff 0% 50%) 50% / 16px 16px; }
+.mpi-quality { display:grid;gap:6px;margin:0;padding:12px 14px 12px 30px;background:#fff7e7;border:1px solid #f5e4bc;border-radius:10px;font-size:12px;color:#8c631e;line-height:1.7;overflow-wrap:anywhere; }
 .mpi-panel .mpi-check { display:flex;flex-direction:row;align-items:flex-start;gap:9px;font-size:12px;line-height:1.8;color:#516581; }
 .mpi-panel .mpi-check input,.mpi-policy .mpi-check input { flex:none;margin:5px 0 0;width:16px;height:16px;min-height:16px;min-width:16px;accent-color:#2c5fe7; }
 .mpi-actions { display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px; }
@@ -30,3 +40,4 @@
 .mpi-policy .mpi-check { display:flex;flex-direction:row;align-items:flex-start;gap:9px;font-size:12px;line-height:1.8; }
 .mpi-policy .mpi-actions { align-items:center; }
 @media(max-width:640px) { .mpi-panel { padding:14px;gap:12px; }.mpi-preview>img,.mpi-candidate>img { max-height:260px; }.mpi-actions>button { min-height:44px;flex:1;white-space:normal; }.mpi-panel .mpi-check,.mpi-policy .mpi-check { line-height:1.85; }.mpi-policy { padding:14px; }.mpi-preview figcaption small { font-size:11px; } }
+@media(max-width:640px) { .mpi-comparison.has-original { grid-template-columns:minmax(0,1fr); }.mpi-comparison figure { grid-template-rows:auto minmax(160px,250px); }.mpi-comparison img { max-height:250px; }.mpi-fit-settings { padding:11px; }.mpi-fit-settings>label { max-width:none; } }

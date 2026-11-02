@@ -109,7 +109,37 @@ export function publicationImageSize(width: number, height: number): { width: nu
   const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(width, height));
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
-export async function prepareBrowserImage(source: Blob): Promise<{ file: Blob; sourceSha256: string; width: number; height: number }> {
+export type PublicationImageFit = 'original' | 'portrait' | 'square';
+export type PublicationImageLayout = {
+  fit: PublicationImageFit; sourceWidth: number; sourceHeight: number; width: number; height: number;
+  drawWidth: number; drawHeight: number; offsetX: number; offsetY: number; hasPadding: boolean; qualityWarnings: string[];
+};
+/** A fixed canvas is an explicit owner choice. Fit the entire oriented photo;
+ * never crop, stretch or increase its pixels to disguise a small original. */
+export function publicationImageLayout(width: number, height: number, fit: PublicationImageFit = 'original'): PublicationImageLayout {
+  if (![width, height].every(side => Number.isSafeInteger(side) && side > 0 && side <= 12000) || width * height > 40_000_000) {
+    throw new Error('图片解码后的尺寸超出处理范围。');
+  }
+  if (!['original', 'portrait', 'square'].includes(fit)) throw new Error('请选择有效的配图版式。');
+  if (fit !== 'original' && Math.min(width, height) < 320) {
+    throw new Error('原图短边不足320像素，请上传清晰原图；留白或放大不能代替合格素材。');
+  }
+  const size = fit === 'original' ? publicationImageSize(width, height) : {width: 1080, height: fit === 'portrait' ? 1350 : 1080};
+  const scale = Math.min(1, size.width / width, size.height / height);
+  const drawWidth = fit === 'original' ? size.width : Math.max(1, Math.round(width * scale));
+  const drawHeight = fit === 'original' ? size.height : Math.max(1, Math.round(height * scale));
+  const hasPadding = drawWidth !== size.width || drawHeight !== size.height;
+  const qualityWarnings = [];
+  if (Math.min(width, height) < 720) qualityWarnings.push('原图短边不足720像素，细节可能偏少；留白不会提高原图清晰度，请在发布前核对。');
+  if (fit !== 'original' && hasPadding) qualityWarnings.push('本版式使用中性留白完整保留原图，没有裁切餐品或补画内容。');
+  if (fit === 'original' && (size.width < 320 || size.width > 1440 || size.width / size.height < 0.8 || size.width / size.height > 1.91)) {
+    qualityWarnings.push('原比例版本暂不符合 Instagram 的尺寸或比例；可选择4:5或方形版式重新预览。');
+  }
+  return {fit, sourceWidth: width, sourceHeight: height, ...size, drawWidth, drawHeight,
+    offsetX: Math.floor((size.width - drawWidth) / 2), offsetY: Math.floor((size.height - drawHeight) / 2), hasPadding, qualityWarnings};
+}
+export type PreparedPublicationImage = PublicationImageLayout & { file: Blob; sourceSha256: string };
+export async function prepareBrowserImage(source: Blob, fit: PublicationImageFit = 'original'): Promise<PreparedPublicationImage> {
   if (!source.size || source.size > MAX_IMAGE_SOURCE_BYTES) throw new Error('发布图片原文件需小于 20MB。');
   const bytes = new Uint8Array(await source.arrayBuffer()), checked = sourceImageDimensions(bytes);
   if (typeof createImageBitmap !== 'function') throw new Error('当前浏览器尚不支持安全处理图片，请使用新版浏览器后重试。');
@@ -119,13 +149,14 @@ export async function prepareBrowserImage(source: Blob): Promise<{ file: Blob; s
   try {
     // EXIF orientation may exchange width/height; guard decoded dimensions too.
     if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > 40_000_000) throw new Error('图片解码后的尺寸超出处理范围。');
-    const size = publicationImageSize(bitmap.width, bitmap.height), canvas = document.createElement('canvas');
-    canvas.width = size.width; canvas.height = size.height;
+    const layout = publicationImageLayout(bitmap.width, bitmap.height, fit), canvas = document.createElement('canvas');
+    canvas.width = layout.width; canvas.height = layout.height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('浏览器暂不支持图片处理，请换用新版浏览器。');
-    context.drawImage(bitmap, 0, 0, size.width, size.height);
+    if (fit !== 'original') { context.fillStyle = '#F8FAFC'; context.fillRect(0, 0, layout.width, layout.height); }
+    context.drawImage(bitmap, layout.offsetX, layout.offsetY, layout.drawWidth, layout.drawHeight);
     const file = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('图片处理未完成，请重试。')), 'image/png'));
     if (!file.size || file.size > 8 * 1024 * 1024) throw new Error('图片处理后仍过大，请使用尺寸更小的图片。');
-    return { file, sourceSha256: await sha256Blob(source), ...size };
+    return { file, sourceSha256: await sha256Blob(source), ...layout };
   } finally { bitmap.close(); }
 }

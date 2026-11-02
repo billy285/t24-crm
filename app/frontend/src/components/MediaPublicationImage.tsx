@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ImagePlus, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import { mediaError, mediaErrorStatus, mediaRequestId } from '@/lib/media-operations-api';
-import { imagePreviewPath, imageRequestScope, prepareBrowserImage, publicationImagePreviewDataUrl, publicationImages, publicationRights, verifiedPreviewBlob, verifiedPublicationImage, type PublicationImage, type PublicationImageList } from '@/lib/media-publication-images';
+import { imagePreviewPath, imageRequestScope, prepareBrowserImage, publicationImagePreviewDataUrl, publicationImages, publicationRights, verifiedPreviewBlob, verifiedPublicationImage, type PreparedPublicationImage, type PublicationImage, type PublicationImageFit, type PublicationImageList } from '@/lib/media-publication-images';
 import { useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { Button } from './ui/button';
 import { NativeSelect } from './ui/native-select';
@@ -70,7 +70,7 @@ export function PublicationImagePreview({ image, scope = '', title = '审核使�
   return <figure className="mpi-preview" aria-label={title}>{displayState === 'loading' && <div className="mpi-preview-loading" role="status"><Loader2 className="animate-spin" size={18}/>正在读取并核对最终配图…</div>}{display && <img key={display.url} src={display.url} alt={title} referrerPolicy="no-referrer" onLoad={() => { if(display.current()){setState('ready'); listener.current?.('ready');} }} onError={() => { if(display.current()){setView(null); setError('图片无法显示，请重新读取最终版本。'); setState('failed'); listener.current?.('failed');} }}/>} {displayState === 'failed' && <div className="mpi-notice" role="alert">{error}<Button variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>重新读取配图</Button></div>}<figcaption><strong>{title}</strong><span>{image.width} × {image.height} · {formatBytes(image.byte_size)} · {rightsLabel(image.rights_basis)}</span><small>版本 {image.id.slice(0,8)} · 指纹 {image.image_sha256.slice(0,12)} · 此处为授权后读取的私有预览</small></figcaption></figure>;
 }
 
-type Candidate = { file: Blob; sourceSha256: string; width: number; height: number; preview: string };
+type Candidate = PreparedPublicationImage & { preview: string; sourcePreview: string | null };
 type PendingPrepare = { id: string; candidate: Candidate; rights: string };
 type Props = { customerId: number; materialId: number; value: string; onChange: (value: string) => void; canPrepare: boolean; scope: string; onHoldChange?: (active: boolean) => void; onChanged?: () => void; onDraftChange?: (active: boolean) => void; disabled?: boolean };
 export default function MediaPublicationImage({ customerId, materialId, value, onChange, canPrepare, scope, onHoldChange, onChanged, onDraftChange, disabled = false }: Props) {
@@ -78,6 +78,7 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
   const [resolvedIdentity,setResolvedIdentity]=useState(identity);
   const [list, setList] = useState<PublicationImageList | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [candidate, setCandidate] = useState<Candidate | null>(null), [rights, setRights] = useState(''), [confirmed, setConfirmed] = useState(false);
+  const [fit, setFit] = useState<PublicationImageFit>('original');
   const [busy, setBusy] = useState(false), [unknown, setUnknown] = useState(false), [notFound, setNotFound] = useState(false), [revokeConfirmed, setRevokeConfirmed] = useState(false);
   const busyRef = useRef(false), sequence = useRef(0), candidateRef = useRef<Candidate | null>(null), pending = useRef<PendingPrepare | null>(null);
   const holdListener = useRef(onHoldChange); holdListener.current = onHoldChange;
@@ -94,7 +95,7 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
     finally { if (current() && seq === sequence.current) setLoading(false); }
   }
   useEffect(() => {
-    fence.current.activate();setResolvedIdentity(identity);setList(null);setCandidate(null);setRights('');setConfirmed(false);setBusy(false);setUnknown(false);setNotFound(false);setRevokeConfirmed(false);setError('');setNotice('');pending.current=null;busyRef.current=false;candidateRef.current=null;guard.markSaved();hold.release();void load();
+    fence.current.activate();setResolvedIdentity(identity);setList(null);setCandidate(null);setFit('original');setRights('');setConfirmed(false);setBusy(false);setUnknown(false);setNotFound(false);setRevokeConfirmed(false);setError('');setNotice('');pending.current=null;busyRef.current=false;candidateRef.current=null;guard.markSaved();hold.release();void load();
     return () => { fence.current.invalidate();sequence.current++;candidateRef.current=null;holdListener.current?.(false);draftListener.current?.(false); };
   }, [identity]);
   useEffect(() => { holdListener.current?.(blocked); return () => holdListener.current?.(false); }, [blocked]);
@@ -106,13 +107,25 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
       const response = await invokeWithAuth({url: `/api/v1/entities/customer_materials/${materialId}/download`, method: 'GET', options: {responseType: 'blob'}});
       if(!current())return;
       if (!(response.data instanceof Blob)) throw new Error('原图片返回不完整，请重新读取素材。');
-      const result = await prepareBrowserImage(response.data);
+      const result = await prepareBrowserImage(response.data, fit);
       if (!current()) return;
       const preview = await publicationImagePreviewDataUrl(result.file);
       if (!current()) return;
-      clearCandidate(); const next = { ...result, preview }; candidateRef.current = next; setCandidate(next);
+      let sourcePreview: string | null = null;
+      if (fit !== 'original') {
+        const original = await prepareBrowserImage(response.data);
+        if (!current()) return;
+        sourcePreview = await publicationImagePreviewDataUrl(original.file);
+        if (!current()) return;
+      }
+      clearCandidate(); const next = { ...result, preview, sourcePreview }; candidateRef.current = next; setCandidate(next);
     } catch (cause) { if (current()) setError(mediaError(cause, cause instanceof Error ? cause.message : '图片准备失败，请核对原文件。')); }
     finally { if (current()) { busyRef.current = false; setBusy(false); hold.release(); } }
+  }
+  function changeFit(next: string) {
+    if (blocked || busyRef.current || !['original', 'portrait', 'square'].includes(next)) return;
+    clearCandidate(); setFit(next as PublicationImageFit); setError('');
+    setNotice('版式已选择。请读取原图核对实际预览；保存前仍需确认图片使用权。');
   }
   function accept(image: PublicationImage) {
     verifiedPublicationImage(image, customerId, materialId);
@@ -154,5 +167,31 @@ export default function MediaPublicationImage({ customerId, materialId, value, o
     finally { if (current()) { busyRef.current = false; setBusy(false); hold.release(); } }
   }
   if(resolvedIdentity!==identity)return <p className="mpi-help" role="status">正在确认当前客户与素材范围…</p>;
-  return <section className="mpi-panel" aria-label="Google 固定发布图片"><header><div><ImagePlus size={18}/><h3>Google 发布配图</h3></div><Button variant="ghost" size="sm" onClick={()=>void load()} disabled={loading || blocked} aria-label="刷新发布图片版本"><RefreshCw size={15} className={loading?'animate-spin':''}/></Button></header><p className="mpi-help">原文件保持私有。先准备单张固定图片，经老板审核及明确发布后才可供 Google 获取。</p>{error && <div className="mpi-notice warning" role="alert">{error}</div>}{notice && <div className="mpi-notice" role="status">{notice}</div>}{loading ? <p className="mpi-help" role="status"><Loader2 size={15} className="animate-spin"/>正在核对素材与图片版本…</p> : list && <><label>本任务使用的图片版本<NativeSelect aria-label="Google 固定图片版本" value={value} onChange={next=>{onChange(next);setRevokeConfirmed(false);}} disabled={blocked} options={[{value:'',label:'不使用固定版本（保留原素材方式）'},...list.items.map(row=>({value:row.id,label:`${imageStatus[row.status]} · ${row.width}×${row.height} · ${row.id.slice(0,8)}`}))]}/></label>{value && !selected && <p className="mpi-notice warning">当前图片版本已不可用，请重新选择并保存草稿。</p>}{selected && <><PublicationImagePreview image={selected} scope={scope}/>{selected.status !== 'ready' && <p className="mpi-notice warning">此图片版本{imageStatus[selected.status]}，不能继续发布。请准备新版本并重新审核。</p>}{selected.can_revoke && selected.status==='ready' && <details className="mpi-revoke"><summary>撤销此版本</summary><label className="mpi-check"><input type="checkbox" checked={revokeConfirmed} disabled={blocked} onChange={event=>setRevokeConfirmed(event.target.checked)}/>确认阻止此固定图片版本的后续发布和图片投递</label><Button variant="outline" disabled={blocked||!revokeConfirmed} onClick={()=>void revoke()}>确认撤销版本</Button></details>}</>}{!list.delivery_available && <p className="mpi-notice"><ShieldCheck size={16}/>固定图片可准备和审核；图片公开投递尚未由老板启用，自动配图发布会暂停在检查阶段。</p>}{canMake && !candidate && !unknown && <Button variant="outline" onClick={()=>void readSource()} disabled={busy}><ImagePlus size={16}/>{busy?'正在准备…':'读取原图并准备新版本'}</Button>}{candidate && <div className="mpi-candidate"><strong>待保存的配图预览</strong><img src={candidate.preview} alt="本次待保存的配图预览"/><p>{candidate.width} × {candidate.height} · 保留原比例，不自动裁切；图片元数据将在固定版本中移除。</p><label>公开使用依据<NativeSelect aria-label="发布图片使用权依据" value={rights} onChange={next=>{setRights(next);setConfirmed(false);}} disabled={blocked} options={[{value:'',label:'请选择并核实使用权'},...publicationRights]}/></label><label className="mpi-check"><input type="checkbox" checked={confirmed} disabled={blocked} onChange={event=>setConfirmed(event.target.checked)}/><span>我确认这张图片可用于该客户的公开宣传。老板审核及发布确认后，Google 可读取固定副本；持有投递地址的人在有效期内也可能读取。原文件不会公开。</span></label><div className="mpi-actions"><Button variant="outline" disabled={blocked} onClick={clearCandidate}>放弃准备</Button><Button disabled={blocked||!rights||!confirmed} onClick={()=>void save()}><CheckCircle2 size={16}/>保存固定图片版本</Button></div></div>}{unknown && <div className="mpi-actions"><Button variant="outline" disabled={busy} onClick={()=>void recover()}>{busy?'正在查询…':'查询原保存结果'}</Button>{notFound && pending.current && <Button disabled={busy} onClick={()=>void save(pending.current!)}>以原编号重新确认保存</Button>}</div>}{!canMake && <p className="mpi-help">准备新图片需要该客户的素材编辑、交付协作及任务编辑权限。当前可查看已授权版本。</p>}</>}</section>;
+  return <section className="mpi-panel" aria-label="固定发布配图">
+    <header><div><ImagePlus size={18}/><h3>固定发布配图</h3></div><Button variant="ghost" size="sm" onClick={()=>void load()} disabled={loading || blocked} aria-label="刷新发布图片版本"><RefreshCw size={15} className={loading?'animate-spin':''}/></Button></header>
+    <p className="mpi-help">原文件保持私有。先核对构图与使用权，再保存固定版本；各平台仍需审核并确认发布。</p>
+    {error && <div className="mpi-notice warning" role="alert">{error}</div>}{notice && <div className="mpi-notice" role="status">{notice}</div>}
+    {loading ? <p className="mpi-help" role="status"><Loader2 size={15} className="animate-spin"/>正在核对素材与图片版本…</p> : list && <>
+      <label>本任务使用的图片版本<NativeSelect aria-label="固定图片版本" value={value} onChange={next=>{onChange(next);setRevokeConfirmed(false);}} disabled={blocked} options={[{value:'',label:'不使用固定版本（保留原素材方式）'},...list.items.map(row=>({value:row.id,label:`${imageStatus[row.status]} · ${row.width}×${row.height} · ${row.id.slice(0,8)}`}))]}/></label>
+      {value && !selected && <p className="mpi-notice warning">当前图片版本已不可用，请重新选择并保存草稿。</p>}
+      {selected && <><PublicationImagePreview image={selected} scope={scope}/>{selected.status !== 'ready' && <p className="mpi-notice warning">此图片版本{imageStatus[selected.status]}，不能继续发布。请准备新版本并重新审核。</p>}{selected.can_revoke && selected.status==='ready' && <details className="mpi-revoke"><summary>撤销此版本</summary><label className="mpi-check"><input type="checkbox" checked={revokeConfirmed} disabled={blocked} onChange={event=>setRevokeConfirmed(event.target.checked)}/>确认阻止此固定图片版本的后续发布和图片投递</label><Button variant="outline" disabled={blocked||!revokeConfirmed} onClick={()=>void revoke()}>确认撤销版本</Button></details>}</>}
+      {!list.delivery_available && <p className="mpi-notice"><ShieldCheck size={16}/>固定图片可准备和审核；Google 图片公开投递尚未由老板启用。Meta 是否可发布以对应平台操作面板为准。</p>}
+      {canMake && !unknown && <div className="mpi-fit-settings"><label>配图版式<NativeSelect aria-label="准备配图版式" value={fit} onChange={changeFit} disabled={blocked} options={[{value:'original',label:'保留原比例 · 最长边2048'}, {value:'portrait',label:'4:5竖版 · 1080×1350'}, {value:'square',label:'1:1方形 · 1080×1080'}]}/></label><p className="mpi-help">4:5和方形使用中性留白，完整保留照片，不裁切、不放大、不补画餐品。先看实际预览，再决定保存。</p></div>}
+      {canMake && !candidate && !unknown && <Button variant="outline" onClick={()=>void readSource()} disabled={busy}><ImagePlus size={16}/>{busy?'正在准备…':'读取原图并准备新版本'}</Button>}
+      {candidate && <div className="mpi-candidate">
+        <strong>待保存的配图预览</strong>
+        <div className={`mpi-comparison${candidate.sourcePreview ? ' has-original' : ''}`}>
+          {candidate.sourcePreview && <figure><figcaption><strong>原图构图</strong><span>{candidate.sourceWidth} × {candidate.sourceHeight} · 已按照片方向显示</span></figcaption><img src={candidate.sourcePreview} alt="原图构图预览（未裁切）"/></figure>}
+          <figure><figcaption><strong>{candidate.fit === 'original' ? '原比例固定副本' : candidate.fit === 'portrait' ? '4:5竖版固定副本' : '方形固定副本'}</strong><span>{candidate.width} × {candidate.height}{candidate.hasPadding ? ' · 中性留白' : ''}</span></figcaption><img src={candidate.preview} alt="本次待保存的配图预览"/></figure>
+        </div>
+        <p>原图实际显示尺寸 {candidate.sourceWidth} × {candidate.sourceHeight}；照片内容保留原比例，不裁切、不放大。固定副本将移除图片元数据，原文件保持不变。</p>
+        {candidate.qualityWarnings.length > 0 && <ul className="mpi-quality" aria-label="配图质量检查">{candidate.qualityWarnings.map(warning=><li key={warning}>{warning}</li>)}</ul>}
+        <label>公开使用依据<NativeSelect aria-label="发布图片使用权依据" value={rights} onChange={next=>{setRights(next);setConfirmed(false);}} disabled={blocked} options={[{value:'',label:'请选择并核实使用权'},...publicationRights]}/></label>
+        <label className="mpi-check"><input type="checkbox" checked={confirmed} disabled={blocked} onChange={event=>setConfirmed(event.target.checked)}/><span>我确认这张图片可用于该客户已授权平台的公开宣传。保存仅建立私有版本；老板审核并确认发布后，平台可读取发布副本。持有投递地址者在有效期内也可能读取，原文件不会公开。</span></label>
+        <div className="mpi-actions"><Button variant="outline" disabled={blocked} onClick={clearCandidate}>放弃准备</Button><Button disabled={blocked||!rights||!confirmed} onClick={()=>void save()}><CheckCircle2 size={16}/>保存固定图片版本</Button></div>
+      </div>}
+      {unknown && <div className="mpi-actions"><Button variant="outline" disabled={busy} onClick={()=>void recover()}>{busy?'正在查询…':'查询原保存结果'}</Button>{notFound && pending.current && <Button disabled={busy} onClick={()=>void save(pending.current!)}>以原编号重新确认保存</Button>}</div>}
+      {!canMake && <p className="mpi-help">准备新图片需要该客户的素材编辑、交付协作及任务编辑权限。当前可查看已授权版本。</p>}
+    </>}
+  </section>;
 }

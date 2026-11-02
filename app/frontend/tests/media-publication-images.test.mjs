@@ -42,6 +42,34 @@ test('scales long and portrait images proportionally, without upscaling',()=>{
   assert.deepEqual(JSON.parse(JSON.stringify(api.publicationImageSize(800,1600))),{width:800,height:1600});
   assert.deepEqual(JSON.parse(JSON.stringify(api.publicationImageSize(3000,6000))),{width:1024,height:2048});
 });
+test('explicit Instagram layouts preserve the entire oriented photo with neutral padding',()=>{
+  const portrait=api.publicationImageLayout(3024,4032,'portrait');
+  assert.equal(portrait.width,1080);assert.equal(portrait.height,1350);assert.equal(portrait.drawHeight,1350);
+  assert.ok(Math.abs(portrait.drawWidth-1012.5)<=.5);assert.equal(portrait.offsetX,Math.floor((1080-portrait.drawWidth)/2));assert.equal(portrait.offsetY,0);assert.equal(portrait.hasPadding,true);
+  const landscape=api.publicationImageLayout(4032,3024,'square');
+  assert.equal(landscape.drawWidth,1080);assert.equal(landscape.drawHeight,810);assert.equal(landscape.offsetY,135);
+  for(const value of [portrait,landscape]){
+    assert.ok(value.drawWidth<=value.sourceWidth&&value.drawHeight<=value.sourceHeight);
+    assert.ok(value.width>=320&&value.width<=1440&&value.width/value.height>=.8&&value.width/value.height<=1.91);
+  }
+});
+test('a padded canvas never turns a thumbnail into a qualified photo or upscales a smaller source',()=>{
+  for(const fit of ['portrait','square'])for(const [w,h] of [[101,126],[160,128],[2000,319]])assert.throws(()=>api.publicationImageLayout(w,h,fit),/320像素/);
+  const small=api.publicationImageLayout(400,640,'portrait');
+  assert.equal(small.drawWidth,400);assert.equal(small.drawHeight,640);assert.equal(small.offsetX,340);assert.equal(small.offsetY,355);
+  assert.ok(small.qualityWarnings.some(value=>value.includes('不会提高原图清晰度')));
+});
+test('normalization refuses invalid dimensions and never silently changes the original default',()=>{
+  for(const [w,h] of [[0,300],[NaN,500],[500,Infinity],[1.5,200],[9000,9000]])assert.throws(()=>api.publicationImageLayout(w,h,'portrait'));
+  assert.throws(()=>api.publicationImageLayout(900,1200,'crop'));
+  const original=api.publicationImageLayout(3024,4032);
+  assert.equal(original.fit,'original');assert.equal(original.width,1536);assert.equal(original.height,2048);assert.equal(original.hasPadding,false);
+  assert.ok(original.qualityWarnings.some(value=>value.includes('Instagram')));
+  for(const [width,height] of [[1987,9000],[9000,1987],[1247,4011],[4011,1247]]){
+    const retained=api.publicationImageLayout(width,height),size=api.publicationImageSize(width,height);
+    assert.equal(retained.drawWidth,size.width);assert.equal(retained.drawHeight,size.height);assert.equal(retained.hasPadding,false);
+  }
+});
 test('only the exact authenticated derivative path is accepted for img preparation',()=>{
   assert.equal(api.imagePreviewPath(dto().preview_path,id),true);
   for(const value of ['https://t24-crm.com'+dto().preview_path,'//attacker.example/image.png',dto().preview_path+'?token=x','/api/v1/media-publication-images/delivery/secret.png',dto().preview_path.replace(id,'c'.repeat(32))])assert.equal(api.imagePreviewPath(value,id),false);
@@ -67,6 +95,24 @@ test('browser conversion closes decoded bitmap and bounds generated output',asyn
   assert.equal(result.width,2048);assert.equal(result.height,1024);assert.equal(canvas.width,2048);assert.equal(option.imageOrientation,'from-image');assert.equal(closed,1);assert.equal(result.sourceSha256,await api.sha256Blob(new Blob([png])));
   canvas.toBlob=callback=>callback(new Blob([new Uint8Array(8*1024*1024+1)]));
   await assert.rejects(api.prepareBrowserImage(new Blob([png])),/过大/);assert.equal(closed,2);
+});
+test('padded browser preparation uses EXIF-aware decoded size, a neutral canvas and no crop or upscaling',async()=>{
+  let closed=0,draw,fill,orientation;
+  sandbox.createImageBitmap=async(_blob,options)=>{orientation=options.imageOrientation;return{width:3024,height:4032,close(){closed++;}};};
+  const context={fillStyle:'',fillRect(...args){fill={color:this.fillStyle,args};},drawImage(...args){draw=args.slice(1);}};
+  const canvas={width:0,height:0,getContext:()=>context,toBlob:callback=>callback(new Blob([png],{type:'image/png'}))};
+  sandbox.document={createElement:()=>canvas};
+  const source=new Blob([jpeg]);const result=await api.prepareBrowserImage(source,'portrait');
+  assert.equal(orientation,'from-image');assert.equal(result.sourceWidth,3024);assert.equal(result.sourceHeight,4032);
+  assert.equal(result.width,1080);assert.equal(result.height,1350);assert.deepEqual(fill,{color:'#F8FAFC',args:[0,0,1080,1350]});
+  assert.equal(draw.length,4);assert.equal(draw[0],Math.floor((1080-draw[2])/2));assert.equal(draw[1],0);assert.ok(Math.abs(draw[2]-1012.5)<=.5);assert.equal(draw[3],1350);assert.equal(closed,1);
+  assert.equal(result.sourceSha256,await api.sha256Blob(source));assert.deepEqual(Buffer.from(await source.arrayBuffer()),Buffer.from(jpeg));
+});
+test('a decoded thumbnail is rejected for a platform layout and its bitmap is released',async()=>{
+  let closed=false,drew=false;
+  sandbox.createImageBitmap=async()=>({width:101,height:126,close(){closed=true;}});
+  sandbox.document={createElement:()=>({getContext:()=>({drawImage(){drew=true;}})})};
+  await assert.rejects(api.prepareBrowserImage(new Blob([jpeg]),'square'),/320像素/);assert.equal(closed,true);assert.equal(drew,false);
 });
 test('oversized source is refused without invoking the browser decoder',async()=>{
   let decoded=false;sandbox.createImageBitmap=async()=>{decoded=true;};
@@ -121,7 +167,7 @@ const componentSource=fs.readFileSync(new URL('../src/components/MediaPublicatio
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const flatten=node=>node==null||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(flatten):[node,...flatten(node.props?.children)];
 const label=node=>node==null||typeof node==='boolean'?'':typeof node!=='object'?String(node):Array.isArray(node)?node.map(label).join(''):label(node.props?.children);
-function componentHarness(kind='final') {
+function componentHarness(kind='final',dimensions={width:1,height:1}) {
   const states=[],refs=[],effects=[],effectQueue=[],requests=[],notifications=[],changes=[];
   let stateIndex=0,refIndex=0,effectIndex=0;
   const hooks={useState(initial){const i=stateIndex++;if(!(i in states))states[i]=typeof initial==='function'?initial():initial;return[states[i],value=>{states[i]=typeof value==='function'?value(states[i]):value;}];},
@@ -130,7 +176,7 @@ function componentHarness(kind='final') {
   const invokeWithAuth=options=>new Promise((resolve,reject)=>requests.push({options,resolve,reject}));
   const libModule={exports:{}};
   const library={module:libModule,exports:libModule.exports,require:()=>({invokeWithAuth}),Blob,crypto:webcrypto,Uint8Array,DataView,btoa:base64,console,
-    createImageBitmap:async()=>({width:1,height:1,close(){}}),document:{createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){}}),toBlob:callback=>callback(new Blob([png],{type:'image/png'}))})}};
+    createImageBitmap:async()=>({...dimensions,close(){}}),document:{createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){},fillRect(){}}),toBlob:callback=>callback(new Blob([png],{type:'image/png'}))})}};
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,library);
   const compiled={exports:{}};
   const objectUrlForbidden={createObjectURL(){throw new Error('blob: previews are blocked by production CSP');},revokeObjectURL(){throw new Error('no object URL should exist');}};
@@ -182,4 +228,23 @@ test('actual candidate preview respects CSP and saves the PNG Blob, never a data
   const file=save.data.get('file');assert.equal(file.type,'image/png');assert.equal(file.size,png.length);
   for(const value of save.data.values())if(typeof value==='string')assert.equal(value.startsWith('data:'),false);
   assert.equal(h.requests.some(x=>/delivery-policy|\/posts$|\/schedules$/.test(x.options.url)),false);
+});
+test('changing a preview layout drops old pixels and rights consent without saving or publishing',async()=>{
+  const h=componentHarness('candidate',{width:900,height:1200});h.render();h.effects();h.requests[0].resolve({data:{items:[],can_prepare:true,delivery_available:true}});await tick();
+  let tree=h.render();flatten(tree).find(x=>x.props?.['aria-label']==='准备配图版式').props.onChange('portrait');tree=h.render();
+  flatten(tree).find(x=>x.type==='Button'&&label(x)==='读取原图并准备新版本').props.onClick();h.requests[1].resolve({data:new Blob([png])});
+  await settleUntil(()=>flatten(h.render()).filter(x=>x.type==='img').length===2);
+  tree=h.render();assert.ok(flatten(tree).find(x=>x.type==='img'&&x.props.alt==='原图构图预览（未裁切）'));
+  for(const img of flatten(tree).filter(x=>x.type==='img'))assert.ok(policyAllowsImage(img.props.src));
+  flatten(tree).find(x=>x.props?.['aria-label']==='发布图片使用权依据').props.onChange('client_provided');tree=h.render();
+  flatten(tree).find(x=>x.type==='input'&&x.props.type==='checkbox').props.onChange({target:{checked:true}});tree=h.render();
+  assert.equal(flatten(tree).find(x=>x.type==='Button'&&label(x)==='保存固定图片版本').props.disabled,false);
+  flatten(tree).find(x=>x.props?.['aria-label']==='准备配图版式').props.onChange('square');tree=h.render();
+  assert.equal(flatten(tree).some(x=>x.type==='img'),false);assert.equal(h.requests.length,2);
+  flatten(tree).find(x=>x.type==='Button'&&label(x)==='读取原图并准备新版本').props.onClick();h.requests[2].resolve({data:new Blob([png])});
+  await settleUntil(()=>flatten(h.render()).some(x=>x.type==='img'));
+  tree=h.render();assert.equal(flatten(tree).find(x=>x.props?.['aria-label']==='发布图片使用权依据').props.value,'');
+  assert.equal(flatten(tree).find(x=>x.type==='input'&&x.props.type==='checkbox').props.checked,false);
+  assert.equal(flatten(tree).find(x=>x.type==='Button'&&label(x)==='保存固定图片版本').props.disabled,true);
+  assert.equal(h.requests.some(x=>x.options.method==='POST'),false);
 });
