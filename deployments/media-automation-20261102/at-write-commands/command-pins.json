@@ -1,0 +1,12 @@
+{
+  "application_source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "carrier": "904603fcf809ed7cc27bd20ee2c68a64f0bb9c7a",
+  "command_sha256": {
+    "at-write-activate-command.sh": "8a87fc8a930d4ea5f049d65f297800f6c544b5dcc1000ca558b3fae65fef0dcb",
+    "at-write-recover-command.sh": "c5783db213c8d08be914dc3d316e3c43efc475dbb528ebba5aeb2c56dbc3cea2"
+  },
+  "controller_bytes": 20487,
+  "controller_sha256": "8727edc4ae5ef1a99ef1276f7f337412ec1de67526d3eeb5a5baf9664853cd78",
+  "executed": false,
+  "prepared_sha256": "29ae8e354c8555a9aca186f5ef0b2368d17bd7f6007f73e57e6195e62558a47d"
+}

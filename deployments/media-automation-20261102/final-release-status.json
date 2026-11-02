@@ -1,0 +1,116 @@
+{
+  "additive_empty_table_count_at_cutover": 3,
+  "ai_calls_requested_by_release": false,
+  "all165_rows_sequences_preserved_at_worker_enable": true,
+  "all_current162_rows_and_sequences_preserved_at_main_cutover": true,
+  "application_source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "audit_date": "2026-11-02",
+  "base_release_helper_sha256": "9cc1abc634f927fc0f3b54c1d8d6f8ede2fe5573eb4c730236f756015a97eefe",
+  "candidate_image": "sha256:f456f7aaca2452db96c9df796f3c01efda9a2f23403bdd5e3b755b409c6de8f1",
+  "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+  "controller_carrier_sha": "904603fcf809ed7cc27bd20ee2c68a64f0bb9c7a",
+  "current_runtime": {
+    "config": "b01627120f6ade88898d49db1301837104817ec67c66f211dd99a0f0ed368529",
+    "id": "0e33ad4fcfb91258d37206ff66473cb95e6a033fb15b572e8cbc89a8a56849b2",
+    "image": "sha256:f456f7aaca2452db96c9df796f3c01efda9a2f23403bdd5e3b755b409c6de8f1",
+    "restart": 0,
+    "started": "2026-11-02T04:19:00.366678579Z"
+  },
+  "database_restored": false,
+  "deployed_controller_sha256": "8727edc4ae5ef1a99ef1276f7f337412ec1de67526d3eeb5a5baf9664853cd78",
+  "deployed_worker_helper_sha256": "c5acd2d20de6ef07e1f417849b07ff6a0a28b6934cb6a590d08913207f5e66f9",
+  "existing_environment_files_flags_credentials_static_acl_preserved": true,
+  "finance_calculation_closing_commission_acl_private_application_sources_unchanged": true,
+  "frontend_version": "569fa342f1c3",
+  "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+  "google_scheduler_enabled": true,
+  "known_unreleased_items": {
+    "prepare_activate": {
+      "accepted_workflow": false,
+      "durable_prepare_succeeded": true,
+      "failure": "RETAINED_TOOL_MODULE_ALREADY_LOADED_on_second_Enable_construction",
+      "fixed": false,
+      "runtime_or_business_mutation_by_failed_second_construction": false,
+      "successful_replacement": "separate_activate_only_process_with_published_c5_helper"
+    },
+    "recovery_retry_idempotence": {
+      "deployed": false,
+      "patch_path": "unreleased/recovery-idempotence.patch",
+      "patch_sha256": "0af1b20cc729823bf0e12d1bf64cc43d128514b4fc5c1351a134387ddd5cf1e1",
+      "source_sha256": "5e37434d1aeaad1a7ba17663a27c35fde71e8746b0d7bc2dbed6f117d7ae67e9"
+    }
+  },
+  "meta_execution_enabled": false,
+  "meta_scheduler_enabled": false,
+  "nginx_sha256": "fa702dcd4c3be4cae9faaff0462ef4a6fb70b3e955d724857bbe0c68c5ebd74b",
+  "original_table_count": 162,
+  "owner_pilot_configuration": {
+    "attention_jobs": 0,
+    "customer_id": 38,
+    "enabled_policy_count": 2,
+    "generated_jobs": 0,
+    "global_policy_count": 2,
+    "next_run_local": "2026-11-24 09:00",
+    "next_target_month": "2026-12",
+    "platforms": [
+      "facebook",
+      "instagram"
+    ],
+    "preexisting_draft_status": "generated_not_adopted",
+    "preexisting_month_drafts_by_platform": {
+      "facebook": 12,
+      "instagram": 12
+    },
+    "real_publication_performed": false,
+    "timezone": "America/Denver"
+  },
+  "post_configuration_active_worker_verification": {
+    "automatic_occurrences": 0,
+    "both_rules_seen_within_3_minutes": true,
+    "enabled_platform_count": 2,
+    "observed_in_production": true,
+    "original_trial_month_items_preserved": 24,
+    "target_month_runs_created": 0,
+    "verification_database_writes": false,
+    "verification_provider_requests": false,
+    "verification_publication_requests": false
+  },
+  "production_ui_verification": {
+    "frontend_version_verified": true,
+    "mobile_document_width": 390,
+    "mobile_overflow_elements": 0,
+    "mobile_viewport": [
+      390,
+      844
+    ],
+    "owner_visual_evidence_kept_local_untracked": true,
+    "source_image_warnings_require_owner_review": true
+  },
+  "provider_requests_by_main_release": false,
+  "public_git_audit_contains_only_aggregate_hashes_configuration_schema_and_evidence_booleans": true,
+  "public_inventory_sha256": "10d2f885a116c76600fe4d5c3282e6c3b70832e2a07f1604ec9c6cf4da2b3819",
+  "public_root": "/var/www/t24-crm-public/media-automation-c78b50a11e02-20261102",
+  "publications_requested_by_release": false,
+  "quiescent_all162_rows_sequences_schema_baseline_sha256": "2df9b0f4268f50cae490d65abb08cb05c1eaa796e6caec6175067213aba865bc",
+  "receipts": {
+    "main": {
+      "canonical_sha256": "bea765503d909b4ad5f7b1899cb040016ff44fdbe07970da3d82b0b4fbf1f212",
+      "path": "main-deployed-envelope.json"
+    },
+    "worker_enabled": {
+      "canonical_sha256": "067d8e6f15b801f8a7a7736d2c8772820d2cf5b8208aae19b3d57ec34481804a",
+      "path": "worker-enabled-envelope.json"
+    },
+    "worker_prepared": {
+      "canonical_sha256": "bef104a103f0a5dfc9b7cd010eb3a649af5626bb6e07fa7113eda9a8cc425297",
+      "path": "worker-prepared-envelope.json"
+    }
+  },
+  "release_tests_passed": 49,
+  "schema_revision": "h43fe567f803",
+  "schema_sha256": "7bccbd8ff34d0d10d102b5fe3510470ee6b7817be7f168921f2887e7f6bf3872",
+  "stage": "MEDIA_AUTOMATION_DEPLOYED_WORKER_ENABLED_OWNER_PILOT_CONFIGURED",
+  "table_count": 165,
+  "worker_activation_method": "published_c5_activate_only_single_Enable_after_durable_prepare",
+  "worker_new_runtime_entry": "T24_MEDIA_MONTHLY_AUTOPREP_ENABLED=true"
+}

@@ -1,0 +1,12 @@
+{
+  "application_changed": false,
+  "deployed": false,
+  "deployed_carrier": "904603fcf809ed7cc27bd20ee2c68a64f0bb9c7a",
+  "deployed_controller_sha256": "8727edc4ae5ef1a99ef1276f7f337412ec1de67526d3eeb5a5baf9664853cd78",
+  "note": "Only permits exact durable recovery-intent reuse after interruption before original container start; not part of successful production release.",
+  "patch_path": "unreleased/recovery-idempotence.patch",
+  "patch_sha256": "0af1b20cc729823bf0e12d1bf64cc43d128514b4fc5c1351a134387ddd5cf1e1",
+  "server_changed": false,
+  "stage": "UNRELEASED_RECOVERY_RETRY_PATCH_PRESERVED",
+  "unreleased_controller_sha256": "5e37434d1aeaad1a7ba17663a27c35fde71e8746b0d7bc2dbed6f117d7ae67e9"
+}

@@ -1,0 +1,13 @@
+{
+  "carrier": "904603fcf809ed7cc27bd20ee2c68a64f0bb9c7a",
+  "command_bytes": 3438,
+  "command_sha256": "988661bb63ec0c5cee1f483459a97d626f6ad4fe4c3c07e140ca38056ad2894f",
+  "executed": false,
+  "main_deployed_sha256": "bea765503d909b4ad5f7b1899cb040016ff44fdbe07970da3d82b0b4fbf1f212",
+  "only_runtime_entry_added": "T24_MEDIA_MONTHLY_AUTOPREP_ENABLED=true",
+  "policies_created": false,
+  "prepare_and_activate_in_one_reviewed_invocation": true,
+  "source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "worker_helper_sha256": "c5acd2d20de6ef07e1f417849b07ff6a0a28b6934cb6a590d08913207f5e66f9",
+  "worker_prepared_sha256": null
+}

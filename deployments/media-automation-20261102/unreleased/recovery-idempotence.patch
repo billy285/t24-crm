@@ -1,0 +1,39 @@
+diff --git a/deployments/media-automation-20261102/at_write_release.py b/deployments/media-automation-20261102/at_write_release.py
+index d42f4a8..80dcc87 100644
+--- a/deployments/media-automation-20261102/at_write_release.py
++++ b/deployments/media-automation-20261102/at_write_release.py
+@@ -93,6 +93,11 @@ class Methods:
+         need(observed==set(allowed),'EXACT_KNOWN_DATABASE_WRITER_SET_REQUIRED');return {'running_database_writers':len(observed)}
+     def current(self):
+         self.immutable();old=self.m.inspect('t24-crm');need(old['State']['Running'] is True and self.m.runtime(old)==self.original_proof['crm'] and self.m.inventory(old['Id'])==self.original_inventory,'EXACT_ORIGINAL420_RUNTIME_REQUIRED');self.environment(old);self.writer_census((old['Id'],));return old
++    def recovery_record(self,name,value):
++        path=self.root/name
++        if path.exists():
++            body=self.r.protected(path);need(self.r.strict_json(body)==value,'EXISTING_RECOVERY_RECORD_CHANGED');return H(body)
++        return self.record(name,value)
+     def stable_sample(self,old):
+         need(self.m.inspect(old['Id'])['State']['Running'] is False,'OLD_WRITER_MUST_BE_STOPPED');self.writer_census();no_open_database_fds(self.m.BUSINESS);self.immutable()
+         value={'rows':self.rows(),'table_definitions':self.definitions(),'database_metadata':self.c.metadata(self.m.BUSINESS),'schema_sha256':self.m.schema_signature(self.m.BUSINESS,self.r.OLD_REVISION),'database_identity':[self.m.BUSINESS.stat().st_dev,self.m.BUSINESS.stat().st_ino]}
+@@ -129,8 +134,8 @@ class Methods:
+         if b['Name']=='/t24-crm':m.run(['docker','rename',b['Id'],self.candidate_name],'RETAIN_STOPPED_AT_WRITE_CANDIDATE_FAILED')
+         if a['Name']!='/t24-crm':m.run(['docker','rename',a['Id'],'t24-crm'],'RESTORE_ORIGINAL_NAME_FAILED')
+         if not a['State']['Running']:
+-            self.record('original-resume-intent.json',{'protocol':PROTOCOL,'original_id':a['Id'],'image':a['Image'],'config':m.runtime(a)['config'],'candidate_id':b['Id'],'schema_revision':head,'database_restore':False})
+-            m.run(['docker','start',a['Id']],'AT_WRITE_ORIGINAL_RESUME_FAILED');started=m.inspect(a['Id']);need(started['State']['Running'] is True,'ORIGINAL_START_RESULT_REQUIRED');self.record('original-resume-started.json',{'protocol':PROTOCOL,'runtime':m.runtime(started),'image':started['Image'],'candidate_id':b['Id']})
++            self.recovery_record('original-resume-intent.json',{'protocol':PROTOCOL,'original_id':a['Id'],'image':a['Image'],'config':m.runtime(a)['config'],'candidate_id':b['Id'],'schema_revision':head,'database_restore':False})
++            m.run(['docker','start',a['Id']],'AT_WRITE_ORIGINAL_RESUME_FAILED');started=m.inspect(a['Id']);need(started['State']['Running'] is True,'ORIGINAL_START_RESULT_REQUIRED');self.recovery_record('original-resume-started.json',{'protocol':PROTOCOL,'runtime':m.runtime(started),'image':started['Image'],'candidate_id':b['Id']})
+         m.ready(a['Id']);resumed=m.inspect('t24-crm');need(resumed['Id']==old['Id'] and resumed['State']['Running'] is True and m.runtime(resumed)['config']==self.original_proof['crm']['config'],'EXACT_ORIGINAL_RESUMED_REQUIRED');self.environment(resumed);self.immutable(migrated=head==self.r.NEW_REVISION);self.writer_census((resumed['Id'],))
+         result={'stage':'MEDIA_AUTOMATION_AT_WRITE_ORIGINAL_RESUMED','protocol':PROTOCOL,'schema_revision':head,'baseline_was_durable':(self.root/'activation-baseline-identity.json').exists(),'all_current_rows_preserved':True,'database_restored':False,'additive_tables_retained':head==self.r.NEW_REVISION,'provider_requests':False};return {**result,'receipt_sha256':self.record('at-write-recovery.json',result)}
+     def activate(self):
+diff --git a/deployments/media-automation-20261102/test_at_write.py b/deployments/media-automation-20261102/test_at_write.py
+index 4745752..58e69f3 100644
+--- a/deployments/media-automation-20261102/test_at_write.py
++++ b/deployments/media-automation-20261102/test_at_write.py
+@@ -88,6 +88,7 @@ class RecoveryTests(unittest.TestCase):
+             events.append(('census',allowed))
+             if unknown:raise RuntimeError('UNKNOWN_RUNNING_DATABASE_WRITER')
+         o=types.SimpleNamespace(m=m,root=root,identities=lambda r,orig:(old,candidate),settle_migration=lambda *x:None,revision=lambda:'g32ed456e792',immutable=lambda **x:None,c=types.SimpleNamespace(retained=types.SimpleNamespace(compare=lambda *x:None),source_boundary=lambda *x:None),environment=lambda *x:None,original_inventory={},r=types.SimpleNamespace(NEW_REVISION='h43fe567f803',BACKEND_AFTER={}),writer_census=census,original_proof={'crm':crm},record=lambda name,v:events.append(('record',name)) or 'f'*64,old_name='before',candidate_name='candidate')
++        o.recovery_record=o.record
+         return o,old,events
+     def test_missing_baseline_recovery_resumes_known_old(self):
+         o,old,events=self.fake()

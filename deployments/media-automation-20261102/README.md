@@ -1,5 +1,36 @@
 # Reviewed additive media automation release
 
+Final accepted state, 2026-11-02: application `c78b50a11e02`, UI
+`569fa342f1c3`, carrier `904603fcf809`, deployed at-write controller
+`8727edc4ae5e`, worker helper `c5acd2d20de6`. The current container uses the same
+`f456f7aaca24` image with only the draft worker runtime flag added. Schema is
+`h43fe567f803`, 165 tables. The stopped-writer baseline `2df9b0f4268f` proves
+preservation of every current original table and sequence; no database was
+restored. The original financial rules, permissions, private space and platform
+execution flags remain unchanged.
+
+The owner enabled two platform policies for pilot customer 38. The next target
+is December 2026, preparation on November 24 at 09:00 America/Denver. No AI or
+public publication was executed by this release. Desktop acceptance and the
+390px mobile no-overflow check passed; owner visual evidence remains local.
+
+Canonical evidence: [main release](main-deployed-envelope.json),
+[worker preparation](worker-prepared-envelope.json),
+[worker activation](worker-enabled-envelope.json), and the complete aggregate
+[final audit](final-release-status.json). The successful worker action was a
+separate **activate-only** process using its durable prepared receipt. The
+`prepare_activate` convenience path is not accepted: its second `Enable`
+construction triggers the retained-helper namespace guard. It was not fixed in
+this release and must not be used for a new rollout.
+
+The local recovery retry improvement is preserved separately as
+[an unreleased patch](unreleased/recovery-idempotence.patch), with
+[audit metadata](unreleased/recovery-idempotence.json). Its controller hash
+`5e37434d1aea` was **not deployed**. The controller and test source files in this
+directory match the actually deployed carrier. The instructions below retain
+the preparation history; production activation used `at_write_release.py` and
+its exact stopped-writer baseline instead of the earlier live-row snapshot.
+
 This directory only contains release tooling and aggregate evidence. It does
 not contain credentials, provider tokens or customer documents. None of the
 generators executes a remote command.

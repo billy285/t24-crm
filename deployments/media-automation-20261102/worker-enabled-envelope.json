@@ -1,0 +1,21 @@
+{
+  "ai_calls_requested": false,
+  "crm": {
+    "config": "b01627120f6ade88898d49db1301837104817ec67c66f211dd99a0f0ed368529",
+    "id": "0e33ad4fcfb91258d37206ff66473cb95e6a033fb15b572e8cbc89a8a56849b2",
+    "image": "sha256:f456f7aaca2452db96c9df796f3c01efda9a2f23403bdd5e3b755b409c6de8f1",
+    "restart": 0,
+    "started": "2026-11-02T04:19:00.366678579Z"
+  },
+  "database_written": false,
+  "existing_environment_files_flags_credentials_static_acl_preserved": true,
+  "main_deployed_sha256": "bea765503d909b4ad5f7b1899cb040016ff44fdbe07970da3d82b0b4fbf1f212",
+  "only_new_runtime_flag_added": true,
+  "policies_created": false,
+  "publications_requested": false,
+  "receipt_sha256": "067d8e6f15b801f8a7a7736d2c8772820d2cf5b8208aae19b3d57ec34481804a",
+  "source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "stage": "MEDIA_AUTOMATION_WORKER_ENABLED",
+  "three_tables_empty": true,
+  "worker_prepared_sha256": "bef104a103f0a5dfc9b7cd010eb3a649af5626bb6e07fa7113eda9a8cc425297"
+}
