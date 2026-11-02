@@ -1,0 +1,9 @@
+{
+  "carrier": "dcfde534e1040a75a8a63826e347ed6f1e4257a4",
+  "manifest_sha256": "65fdf21e9d88273ee558354428346882a1b869fa4df857184e95430a7edadcd3",
+  "payload_sha256": "76eec467ac5c43d54b27dfdd9fbaa99bf1bd5728816d0e0481f8cf6e016010fc",
+  "production_changed": false,
+  "release_sha256": "9c7a0fb049625e9550ff38a405c0f69389555a988c01191e87e7af38a61279ec",
+  "source_sha": "53d66ebb6c69d283c22596e806778989206763ec",
+  "stage": "MEDIA_AUTOMATION_ATTEMPT1_LOCAL_REVIEW_ARTIFACTS_PRESERVED"
+}

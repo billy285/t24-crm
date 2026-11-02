@@ -1,0 +1,10 @@
+{
+  "business_rows_written": false,
+  "command_bytes": 3901,
+  "command_sha256": "56f5a3edcc583ecd1cf28567bc37a49bd2ee0c6dc51be432520b142091f7451e",
+  "diagnosis_bytes": 5517,
+  "diagnosis_sha256": "68de263b626e90065f485ebaced4e7284c6e451843272769ae5183407cf38da9",
+  "executed": false,
+  "existing_files_changed": false,
+  "provider_requests": false
+}

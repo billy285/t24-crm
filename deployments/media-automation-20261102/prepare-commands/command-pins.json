@@ -1,0 +1,34 @@
+{
+  "carrier": "dcfde534e1040a75a8a63826e347ed6f1e4257a4",
+  "command_sha256": {
+    "prepare-command.sh": "58b73ef87b56ebf20f9beef0d9b1f89462d658697cf44b4ef82a8c7db011656c"
+  },
+  "executed": false,
+  "frontend_version": "569fa342f1c3",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "65fdf21e9d88273ee558354428346882a1b869fa4df857184e95430a7edadcd3",
+      151908
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "76eec467ac5c43d54b27dfdd9fbaa99bf1bd5728816d0e0481f8cf6e016010fc",
+      2310293
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "57deb06c6c9ebd11336cf9408887f36754ba2246d294faa5cbe38896a56f99ce",
+      9665
+    ],
+    "release.py": [
+      "release.py",
+      "9c7a0fb049625e9550ff38a405c0f69389555a988c01191e87e7af38a61279ec",
+      42813
+    ]
+  },
+  "preflight_sha256": "ecc7ae9cf9dfbdff68306b928b9b3a8f0ad98c90e5785611a061730f78a8beda",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/media-automation-53d66ebb6c69-20261102",
+  "source_sha": "53d66ebb6c69d283c22596e806778989206763ec"
+}

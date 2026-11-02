@@ -4,7 +4,7 @@
     "media_monthly_automation_policies",
     "media_monthly_automation_requests"
   ],
-  "application_freeze_sha256": "711fb12eb54b1ca6f1f940a69cbadd581865579aff37bfd555ae1a3cfd2aaf81",
+  "application_freeze_sha256": "40867d59c59675e7509bce45faab259e3e5e08019e681684470f72dff7df13e1",
   "automation_worker_enabled": false,
   "backend_after": {
     "alembic/versions/h43fe567f803_media_monthly_automation.py": "736cce595e9ae8d7903bba3308a69440c1c253c667c526b4a63196f1704df9e2",
@@ -13,7 +13,7 @@
     "routers/media_monthly_automation.py": "79415b0f50b934376665d157dee9604832278368bc098532e082b5b9a75a6091",
     "schemas/media_monthly_automation.py": "2f084a8ded8925287a3f2b58d2b78ba0898350f4c4435f9fc3f3425e90b211bb",
     "services/media_monthly.py": "129a4752fb54c3299c1da799cba457671f2441474ea6f1db15f832cbf004699d",
-    "services/media_monthly_automation.py": "dcd5c71a6bfc361127343c5f1262836641828a7941a7265446b059cbc624d851",
+    "services/media_monthly_automation.py": "3b431233f665bd8cbae629cf965f66848270525a5ac9b22f1065457e2d47d06b",
     "services/media_monthly_automation_worker.py": "e84b09dda41aea86d9e5957b59a2f21f1fe8824d59afeba774bc90809d110308",
     "services/media_monthly_editorial.py": "5753761a0526aa81cf11f883f558d51201adfb517e6e68ad6486bc29b8957751"
   },
@@ -38,10 +38,10 @@
     "app/backend/routers/media_monthly_automation.py": "79415b0f50b934376665d157dee9604832278368bc098532e082b5b9a75a6091",
     "app/backend/schemas/media_monthly_automation.py": "2f084a8ded8925287a3f2b58d2b78ba0898350f4c4435f9fc3f3425e90b211bb",
     "app/backend/services/media_monthly.py": "129a4752fb54c3299c1da799cba457671f2441474ea6f1db15f832cbf004699d",
-    "app/backend/services/media_monthly_automation.py": "dcd5c71a6bfc361127343c5f1262836641828a7941a7265446b059cbc624d851",
+    "app/backend/services/media_monthly_automation.py": "3b431233f665bd8cbae629cf965f66848270525a5ac9b22f1065457e2d47d06b",
     "app/backend/services/media_monthly_automation_worker.py": "e84b09dda41aea86d9e5957b59a2f21f1fe8824d59afeba774bc90809d110308",
     "app/backend/services/media_monthly_editorial.py": "5753761a0526aa81cf11f883f558d51201adfb517e6e68ad6486bc29b8957751",
-    "app/backend/tests/test_media_monthly_automation.py": "6a4ae579ddf3bcfc280251dad51f393df94b6417551be09c0f2dfbf87dee46bf",
+    "app/backend/tests/test_media_monthly_automation.py": "62893f7253c2af2c176e838476b31f1fad93ea96b8c50d15f3723493524ab841",
     "app/backend/tests/test_media_monthly_editorial.py": "e156ef032486013943c55db59985b540bc40f807eca44734aa2971c69f5278da",
     "app/frontend/src/components/MediaAutomationOverview.tsx": "dc479f69e5cb7664f3b2ee1486477769dc0fb7ce3038bf0efb02cff7080b69a7",
     "app/frontend/src/components/MediaAutomationPanel.tsx": "9f054194df5c4db1e49ba95bdbbcac7aeaa73312d7465b1482dd0c56e5832244",
@@ -66,7 +66,7 @@
     "backend/routers/media_monthly_automation.py": "79415b0f50b934376665d157dee9604832278368bc098532e082b5b9a75a6091",
     "backend/schemas/media_monthly_automation.py": "2f084a8ded8925287a3f2b58d2b78ba0898350f4c4435f9fc3f3425e90b211bb",
     "backend/services/media_monthly.py": "129a4752fb54c3299c1da799cba457671f2441474ea6f1db15f832cbf004699d",
-    "backend/services/media_monthly_automation.py": "dcd5c71a6bfc361127343c5f1262836641828a7941a7265446b059cbc624d851",
+    "backend/services/media_monthly_automation.py": "3b431233f665bd8cbae629cf965f66848270525a5ac9b22f1065457e2d47d06b",
     "backend/services/media_monthly_automation_worker.py": "e84b09dda41aea86d9e5957b59a2f21f1fe8824d59afeba774bc90809d110308",
     "backend/services/media_monthly_editorial.py": "5753761a0526aa81cf11f883f558d51201adfb517e6e68ad6486bc29b8957751",
     "static/app-version.json": "21b4b387cd17473f74c344fbd99f1886703ea2ac190047ae01d77fbeec1efc14",
@@ -215,9 +215,9 @@
   "old_schema_revision": "g32ed456e792",
   "operations_execution_enabled": false,
   "operations_scheduler_enabled": false,
-  "payload_sha256": "76eec467ac5c43d54b27dfdd9fbaa99bf1bd5728816d0e0481f8cf6e016010fc",
+  "payload_sha256": "7054749c962d4cf5bd88b1ba040e6efd8ab85cca904675fb00aeb32340554c45",
   "permissions_changed": false,
-  "preflight_sha256": "ecc7ae9cf9dfbdff68306b928b9b3a8f0ad98c90e5785611a061730f78a8beda",
+  "preflight_sha256": "b130a39759f3638b4428fd974913e1b1cf6b964f757f010ec7b76364baa2d8c0",
   "production_seed_rows": false,
   "protected_source_inventory": {
     "app/.dockerignore": "00904b81cc471610bce2ea2881a3d8f85c31a05f863952f6917a9a8a09a7c8b4",
@@ -1293,6 +1293,6 @@
   "provider_requests": false,
   "runtime_environment_changed": false,
   "schema_revision": "h43fe567f803",
-  "source_sha": "53d66ebb6c69d283c22596e806778989206763ec",
+  "source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
   "stage": "MEDIA_AUTOMATION_PAYLOAD"
 }
