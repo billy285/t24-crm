@@ -36,19 +36,49 @@ PROCESS_LANGUAGE = re.compile(
 )
 
 
+def topic_counts(total, mix):
+    """Largest remainders, fixed tie order; totals always match the calendar."""
+    keys = ("featured", "discovery", "business")
+    if set(mix) != set(keys) or any(type(mix[k]) is not int or not 0 <= mix[k] <= 100 for k in keys) or sum(mix.values()) != 100:
+        raise ValueError("内容比例合计须为100%")
+    counts = {key: total * mix[key] // 100 for key in keys}
+    order = sorted(keys, key=lambda key: (-(total * mix[key] % 100), keys.index(key)))
+    for key in order[:total - sum(counts.values())]: counts[key] += 1
+    return counts
+
+
+def topic_sequence(total, mix):
+    targets = topic_counts(total, mix); used = {key: 0 for key in targets}; result = []
+    for step in range(1, total + 1):
+        choices = [key for key in targets if used[key] < targets[key]]
+        key = max(choices, key=lambda key: (targets[key] * step - used[key] * total, -list(targets).index(key)))
+        result.append(key); used[key] += 1
+    return result
+
+
 def directions(snapshot):
     """One deterministic direction per existing slot; no new dates or menu IDs."""
     counts = defaultdict(int)
     first_positions = {}
     result = []
+    plan = snapshot.get("rules", {}).get("_automation_plan")
+    topics = topic_sequence(len(snapshot.get("slots", [])), plan["content_mix"]) if plan else []
     for index, slot in enumerate(snapshot.get("slots", [])):
         identity = tuple(slot.get("menu_item_ids", []))
         occurrence = counts[identity]
         counts[identity] += 1
         first_positions.setdefault(identity, index)
         angle, explanation = ANGLES[(first_positions[identity] + occurrence) % len(ANGLES)]
-        result.append({"slot_id": slot["slot_id"], "angle": angle,
-                       "direction": explanation, "cta": CTAS[index % len(CTAS)]})
+        direction = {"slot_id": slot["slot_id"], "angle": angle,
+                     "direction": explanation, "cta": CTAS[index % len(CTAS)]}
+        if plan:
+            topic = topics[index]
+            direction.update(topic=topic, tone=plan["tone"], direction={
+                "featured": "介绍本条已确认的主推产品或服务，仅使用本slot的菜单与公开事实，换用不同开头。",
+                "discovery": "围绕已确认菜单或服务项目帮助读者了解选择，不新增供应、原料、功效或优惠承诺。",
+                "business": "以已确认门店介绍、位置与卖点为主；不要凭照片猜测环境或经营事实。",
+            }[topic])
+        result.append(direction)
     return result
 
 
@@ -59,6 +89,7 @@ def instructions(platform):
         "这是面向消费者的真实社交文案草稿，不是资料核对报告。"
         "用商家口吻写，不把'官网列有'、'已确认事实'、'商家选定主题'、AI流程或禁写规则写进公开正文。"
         "editorial_plan仅决定写作角度，不是新增事实或供应承诺；每条仍只引用本slot已确认菜品和公开事实。"
+        "如有topic则按featured主推、discovery推荐、business门店介绍安排；tone=friendly用亲切自然语气，professional用专业清楚语气，lively用轻快语气，不夸大事实。"
         "cta=question时才以一个自然问题收尾；none无需号召；save可建议收藏；"
         "menu_explore可邀请了解该分类，不添加链接、电话号码或未确认的下单方式。"
         "不同篇目使用不同开头和结构，重复出现的产品换用不同角度，不重复整段店铺介绍。"

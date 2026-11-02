@@ -142,7 +142,9 @@ def effective_profile(row, platform="google_business"):
 def profile_data(row, platform="google_business"):
     row = effective_profile(row, platform)
     if row is None: return None
-    return {key: getattr(row, key) for key in ("id", "customer_id", "revision", "public_facts", "rules", "menu_item_ids", "images")}
+    data = {key: getattr(row, key) for key in ("id", "customer_id", "revision", "public_facts", "rules", "menu_item_ids", "images")}
+    data["rules"] = {key: value for key, value in data["rules"].items() if key != "_automation_plan"}
+    return data
 
 
 def _menu(row):
@@ -208,7 +210,12 @@ def platform_clause(platform):
 
 async def _platform_input(db, ctx, customer, profile, month, platform):
     profile = effective_profile(profile, platform)
+    from services import media_automation_settings as settings
+    profile, plan = await settings.plan_for_month(db, ctx, customer, profile, month, platform)
     result = await _input(db, ctx, customer, profile, month)
+    if plan and result[0] is not None:
+        snapshot = dict(result[0], automation_settings=plan)
+        result = snapshot, digest(snapshot), *result[2:]
     if platform == "google_business": return result
     from services import media_monthly_meta
     binding = await media_monthly_meta.binding_data(db, ctx, customer, platform)
@@ -271,13 +278,16 @@ async def setup(db, user, customer_id, *, month=MONTH, platform="google_business
         if platform != "google_business":
             from services import media_monthly_meta
             if not await media_monthly_meta.binding_data(db, ctx, customer, platform): gaps = ["本商家此平台尚无有效独立运营授权，或授权需要重连；请老板先核对平台账号，只读连接不能用于整月运营"]
+    from services import media_automation_settings as settings
+    profile, planning_settings = await settings.plan_for_month(db, ctx, customer, profile, month, platform)
     _, runtime = await _runtime(db)
     if not menus: gaps.append("尚无结构化菜单；只能使用老板另行确认的公开事实，不会从图片猜菜名或价格")
     if customer.status != "closed": gaps.append("客户当前未在合作，仅可查看历史内容与异常；不会生成或发布新内容")
     menu_ready = bool(profile and (profile.menu_item_ids or profile.rules.get("generic_mode")))
     if profile and not menu_ready: gaps.append("请确认所选菜单，或明确选择只使用公开事实的通用草稿模式")
     quality_ack = bool(profile and snapshot and all(not r["quality_warnings"] or r.get("quality_confirmed") is True for r in snapshot["images"]))
-    return {"platform": platform, "month": month, "slots": snapshot["slots"] if snapshot else [], "customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
+    return {"planning_settings": planning_settings,
+        "platform": platform, "month": month, "slots": snapshot["slots"] if snapshot else [], "customer": {"id": customer.id, "name": customer.business_name}, "profile": profile_data(profile), "menu_items": menus,
         "materials": materials, "runtime": runtime, "input_hash": input_hash, "source_hash": input_hash, "gaps": gaps,
         "capabilities": {"is_owner": True, "can_generate": bool(customer.status == "closed" and runtime["enabled"] and profile and quality_ack and menu_ready and snapshot),
             "cooperation_active": customer.status == "closed", "read_only_reason": None if customer.status == "closed" else "客户当前未在合作，仅查看历史和异常，不再创建内容"},
@@ -303,6 +313,13 @@ async def save_profile(db, user, customer_id, *, month=MONTH, platform="google_b
         row = await db.scalar(select(Profile).where(Profile.owner_id == ctx.identity, Profile.customer_id == customer.id).with_for_update().execution_options(populate_existing=True))
         current = effective_profile(row, platform)
         if (current.revision if current else 0) != expected_revision: raise HTTPException(409, "本平台规则版本已变化，请读取后重新确认")
+        from services import media_automation_settings as settings
+        planned, plan = await settings.plan_for_month(db, ctx, customer, current, month, platform)
+        if plan:
+            managed_keys = ("weekdays", "local_time", "timezone", "posts_per_week", "language", "include_prices", "forbidden_claims")
+            if any(rules.get(key) != planned.rules.get(key) for key in managed_keys):
+                raise HTTPException(409, "本月新批次使用统一自动化设置；请在商家自动化设置中修改节奏与文案规则")
+            rules = {**current.rules, "generic_mode": rules.get("generic_mode", False)}
         changed = current is None or (current.public_facts, current.rules, current.menu_item_ids, current.images) != (facts, rules, menu_item_ids, images)
         if row is None:
             row = Profile(owner_id=ctx.identity, customer_id=customer.id, revision=0, public_facts={}, rules={}, menu_item_ids=[], images=[], created_at=now(), confirmed_at=now(), updated_at=now()); db.add(row)
@@ -351,7 +368,7 @@ async def run_data(db, row):
     state = "unknown" if row.status == "generating" and now() - aware(row.updated_at) > timedelta(minutes=5) else row.status
     return {"id": row.id, "platform": run_platform(row), "customer_id": row.customer_id, "month": row.month, "status": state, "revision": row.revision,
         "input_hash": row.input_hash, "ai_used": row.ai_used, "message": row.message,
-        "profile_snapshot": {key: row.snapshot[key] for key in ("public_facts", "rules")}, "items": items, "preview_hash": preview,
+        "profile_snapshot": {"public_facts": row.snapshot["public_facts"], "rules": {key: value for key, value in row.snapshot["rules"].items() if key != "_automation_plan"}}, "items": items, "preview_hash": preview,
         "adoptable": bool(row.status == "generated" and len(entries) == len(slots(row.month, row.snapshot["rules"])) and all(not item.quality_warnings for item in entries)),
         "request_id": row.request_id, "canonical_request_id": row.request_id, "created_at": iso(row.created_at),
         "editorial_review": editorial.review(items)}
@@ -530,7 +547,7 @@ async def generate(db, user, customer_id, *, request_id, expected_profile_revisi
             raise HTTPException(409, "已有生成请求待确认，请先读取原请求，不能同时重复生成")
         selected_images = snapshot["images"]
         selected_menu_ids = [value["id"] for value in snapshot["menu_items"]]
-        snapshot["slots"] = [dict(slot, image_index=index % len(selected_images), menu_item_ids=[selected_images[index % len(selected_images)]["menu_item_id"]] if selected_images[index % len(selected_images)].get("menu_item_id") else ([selected_menu_ids[index % len(selected_menu_ids)]] if selected_menu_ids else [])) for index, slot in enumerate(slots(month, effective.rules))]
+        snapshot["slots"] = [dict(slot, image_index=index % len(selected_images), menu_item_ids=[selected_images[index % len(selected_images)]["menu_item_id"]] if selected_images[index % len(selected_images)].get("menu_item_id") else ([selected_menu_ids[index % len(selected_menu_ids)]] if selected_menu_ids else [])) for index, slot in enumerate(snapshot["slots"])]
         _ai_payload(snapshot)  # Reject excessive input before reserving/calling AI.
         row = Run(owner_id=ctx.identity, customer_id=customer_id, profile_id=profile.id, request_id=key, fingerprint=fingerprint,
             input_hash=input_hash, month=month, snapshot=snapshot, runtime=public_runtime, consent=consent, status="generating", revision=1,

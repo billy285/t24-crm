@@ -50,3 +50,24 @@ def test_distinct_customer_facing_copy_and_empty_legacy_run_are_supported():
              {"id": 2, "content": "Put a burrito in the rotation. Save a menu idea for your next visit."}]
     assert not editorial.review(items)["needs_review"]
     assert editorial.review([])["item_warnings"] == {}
+
+
+def test_unified_mix_exact_rounding_and_interleaving_preserves_slots():
+    from collections import Counter
+    for total in range(1, 32):
+        for mix in ({"featured":50,"discovery":30,"business":20}, {"featured":0,"discovery":0,"business":100}, {"featured":34,"discovery":33,"business":33}):
+            counts = editorial.topic_counts(total, mix)
+            sequence = editorial.topic_sequence(total, mix)
+            assert sum(counts.values()) == len(sequence) == total
+            assert dict(Counter(sequence)) == {k:v for k,v in counts.items() if v}
+            assert sequence == editorial.topic_sequence(total, mix)
+    assert editorial.topic_counts(12, {"featured":50,"discovery":30,"business":20}) == {"featured":6,"discovery":4,"business":2}
+    source = snapshot(); source['rules']['_automation_plan'] = {'content_mix':{'featured':50,'discovery':30,'business':20},'tone':'professional'}
+    original = copy.deepcopy(source)
+    result = editorial.directions(source)
+    assert source == original and [r['slot_id'] for r in result] == [s['slot_id'] for s in source['slots']]
+    assert Counter(r['topic'] for r in result) == {'featured':6,'discovery':4,'business':2}
+    assert all(r['tone'] == 'professional' for r in result)
+    payload = monthly._ai_payload(source)
+    assert Counter(r['topic'] for r in payload['editorial_plan']) == {'featured':6,'discovery':4,'business':2}
+    assert '$99' not in str(payload) and 'PRIVATE' not in str(payload)

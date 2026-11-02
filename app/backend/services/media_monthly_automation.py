@@ -71,6 +71,9 @@ async def _source(db, ctx, customer, platform, at, lead_days):
         try: zone = monthly.valid_rules(profile.rules).key
         except HTTPException: blocking.append("已保存规则的门店时区或频率需要重新核对")
     else: blocking.append("请先在本商家、本平台保存已核实的整月资料和规则")
+    if profile and zone:
+        from services import media_automation_settings as settings
+        zone = await settings.planning_zone(db, ctx, customer, profile, platform, at)
     month, trigger, _ = target_window(at, zone or "UTC", lead_days)
     try: _, runtime = await monthly._runtime(db)
     except HTTPException:
@@ -80,8 +83,14 @@ async def _source(db, ctx, customer, platform, at, lead_days):
     snapshot = None; input_hash = None; signature = None
     if profile:
         try:
+            source_month = month
             snapshot, input_hash, _, _, gaps = await monthly._platform_input(db, ctx, customer, profile, month, platform)
             if not snapshot: raise HTTPException(409, "当前资料尚未确认")
+            # Freeze an existing month's own settings; future edits never alter it.
+            zone = snapshot["rules"]["timezone"]
+            month, trigger, _ = target_window(at, zone, lead_days)
+            if month != source_month:
+                raise HTTPException(409, "新旧门店时区处于跨月边界，自动准备暂缓；请稍后读取当前月份，不会改动已有批次")
             # The consent pin excludes only the future calendar. Prices,
             # material fingerprints, quality acknowledgements and binding
             # revisions all remain pinned. Public sender switches do not grant
