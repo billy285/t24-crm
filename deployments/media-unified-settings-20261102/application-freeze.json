@@ -1,0 +1,32 @@
+{
+  "business_seed_rows": false,
+  "dist_inventory_sha256": "cf431f5552a4991dbb7d0cb3ec709349194847f6da2316fd02b659482518b7fa",
+  "flags_changed": false,
+  "frontend_version": "32a580644502",
+  "new_empty_table_count": 4,
+  "old_schema_revision": "h43fe567f803",
+  "preflight_sha256": "0dd43fefcf43ee7c925cbf825b3d88fb125abe1168f3adde9478ba603205dc83",
+  "provider_requests": false,
+  "schema_revision": "i54af678a914",
+  "source_files": {
+    "app/backend/alembic/versions/i54af678a914_media_automation_settings.py": "29146c5673cfce364eb1b868de25695c3815f02f40cbfc044f0000cf12e78bce",
+    "app/backend/models/media_automation_settings.py": "3ec119125b27200aa75dd7df12e5c0d1f8416dbb444ffd6c0c118053adaab32a",
+    "app/backend/routers/media_automation_settings.py": "b5389eb5dc797b9c10d3ea8aa9b864a6735dd2ddf880aebaf719a7225feca622",
+    "app/backend/schemas/media_automation_settings.py": "c478c561476b4b6a943e371e1d12c57b8e17f6e5942c889dd1bda88eb055dbe6",
+    "app/backend/services/media_automation_settings.py": "6bd889b58064194759c16beb91e73a408db85b0f33424f938194dd09990971ec",
+    "app/backend/services/media_monthly.py": "21e079775d89bc6c97110c474786872508c05bd28ae40112f08fb2e3c3c5248a",
+    "app/backend/services/media_monthly_automation.py": "04545a23eb1b6a2a3cdd7f718faca080118092bc6789e7e1ab98064f137e34ef",
+    "app/backend/services/media_monthly_editorial.py": "91bcb1e27c5f955ed94a09b24a06f3970a59f9ecbcee8f0ce14e7f53053e6220",
+    "app/backend/tests/test_media_automation_settings.py": "ff09109393fc13f6671251514df0354712c8a00a21cdbdb5e008b40cae5f329a",
+    "app/backend/tests/test_media_monthly_editorial.py": "e3d4ec229e649b5ce483a7dea2d1b333400a796a9f42534d446999482579e67d",
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "8a8b0c4ddbedd642ebd060f22d67e82ffa5ed13f3a3e6a2999e8562a622cd6e5",
+    "app/frontend/src/components/MediaMonthlyWorkspace.tsx": "f3d95599771b542a46c2b47205469951955d871a5914042f81fc72a93dacb3a8",
+    "app/frontend/src/components/MediaUnifiedAutomationSettings.tsx": "2987977b2e75c48001f39a05222aab1a5df31841b26249d4fb02446bd1ecc293",
+    "app/frontend/src/components/media-unified-automation-settings.css": "fe808df63e660dc9dd6d2035c98f2ef6f4c8b89c2519c6189184038e57510c8b",
+    "app/frontend/src/lib/media-automation-settings-api.ts": "1885b3858fde29436e3e9a3097dd12c08bf67e38dcec8ff07c6061dde0fe04b5",
+    "app/frontend/src/lib/media-monthly-api.ts": "338bb94d6b848b11514ba7b8f145a5a3085ae85f21101c8913c995f438e97f7a",
+    "app/frontend/tests/media-automation-settings.test.mjs": "25798e87a724b64db40771883a8378c8d187625322a9005a0177ff46c1d68991"
+  },
+  "source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "stage": "MEDIA_UNIFIED_SETTINGS_APPLICATION_FREEZE"
+}
