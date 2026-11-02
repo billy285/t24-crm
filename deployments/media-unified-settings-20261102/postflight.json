@@ -1,0 +1,124 @@
+{
+  "all165_rows_sequences_preserved_before_candidate_start": true,
+  "all169_table_definitions_verified": true,
+  "all_old_worker_flags_environment_credentials_private_static_csp_preserved": true,
+  "authenticated_browser_requests": false,
+  "automatic_recovery_requested": false,
+  "business_writes": false,
+  "current_runtime": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "restart": 0,
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "deployed_sha256": "b5d270391535704c36a756a8d1a3b8f0cf0c1e7e312ceb64ba64fd842b09d68d",
+  "existing_active_worker": {
+    "enabled_platform_counts": {
+      "facebook": 1,
+      "instagram": 1
+    },
+    "enabled_policies_missing_last_checked": 0,
+    "enabled_policies_seen_within_180_seconds": 2,
+    "enabled_policy_count": 2,
+    "enabled_policy_max_age_seconds": 18.5,
+    "enabled_policy_min_age_seconds": 18.5,
+    "occurrence_count": 0,
+    "sampled_at_utc": "2026-11-02T07:44:41.185996+00:00",
+    "total_policy_count": 2
+  },
+  "four_new_settings_tables_empty": true,
+  "frontend_version": "32a580644502",
+  "monthly_auto_prep_enabled": true,
+  "old_post_start_changed_table_names": [
+    "media_monthly_automation_policies"
+  ],
+  "old_post_start_changed_tables_truncated": false,
+  "post_start_live_rows_frozen": false,
+  "prestart_preservation_sha256": "3ae22282dc1a0a10fd1d9c6ffd140629b70c9d13dc978f9165a98139cabf1498",
+  "provider_requests": false,
+  "quiescent165_baseline_sha256": "1743b67147090a464b8529fd8a0b011cc4a0a65c8126103567bb1079aceca3f3",
+  "runtime_backend_file_count": 432,
+  "runtime_mutations": false,
+  "schema_revision": "i54af678a914",
+  "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4",
+  "schema_writes": false,
+  "selected_media_comparison": {
+    "google_business_actions": {
+      "before_count": 18,
+      "current_count": 18,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "google_business_schedules": {
+      "before_count": 0,
+      "current_count": 0,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_monthly_items": {
+      "before_count": 36,
+      "current_count": 36,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_monthly_runs": {
+      "before_count": 3,
+      "current_count": 3,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_monthly_workflow_requests": {
+      "before_count": 1,
+      "current_count": 1,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_monthly_workflows": {
+      "before_count": 1,
+      "current_count": 1,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_operation_events": {
+      "before_count": 9,
+      "current_count": 9,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_operation_publication_specs": {
+      "before_count": 0,
+      "current_count": 0,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "media_operation_tasks": {
+      "before_count": 2,
+      "current_count": 2,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "meta_operations_actions": {
+      "before_count": 0,
+      "current_count": 0,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "meta_operations_drafts": {
+      "before_count": 1,
+      "current_count": 1,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    },
+    "meta_operations_schedules": {
+      "before_count": 0,
+      "current_count": 0,
+      "rows_hash_match": true,
+      "shape_hash_match": true
+    }
+  },
+  "selected_media_tables_requiring_review": [],
+  "source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "stage": "MEDIA_UNIFIED_SETTINGS_READONLY_POSTFLIGHT",
+  "table_count": 169
+}

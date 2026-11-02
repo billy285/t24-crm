@@ -1,0 +1,110 @@
+{
+  "application_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "audit_scope": {
+    "author_performed_cloud_or_provider_actions": false,
+    "contains_merchant_names_or_caption_text": false,
+    "real_publication_remains_subject_to_owner_confirmation": true,
+    "root_executed_deployment_and_readonly_postflight": true
+  },
+  "deployment_carrier_sha": "89a83ab0e0a595b29c56d7e6d4fa04553d4969f5",
+  "evidence": {
+    "baseline_sha256": "0dd43fefcf43ee7c925cbf825b3d88fb125abe1168f3adde9478ba603205dc83",
+    "canonical_receipt_encoding": "sorted JSON, indent 2, trailing LF; receipt_sha256 excluded from transport envelopes",
+    "deployed_canonical_sha256": "b5d270391535704c36a756a8d1a3b8f0cf0c1e7e312ceb64ba64fd842b09d68d",
+    "postflight_canonical_sha256": "cd5748bcaece14f756b6d4db64e4fd44b36aecfe5e430b88996b3318fa2bd1a3",
+    "postflight_sampled_at_utc": "2026-11-02T07:44:41.185996+00:00",
+    "prepared_canonical_sha256": "c96bb2707cfd7c1c83a0bc01e7e17671a5997b20f09d27b44bbb42801ab91482",
+    "prestart_preservation_sha256": "3ae22282dc1a0a10fd1d9c6ffd140629b70c9d13dc978f9165a98139cabf1498",
+    "quiescent165_baseline_sha256": "1743b67147090a464b8529fd8a0b011cc4a0a65c8126103567bb1079aceca3f3"
+  },
+  "frontend_version": "32a580644502",
+  "migration": {
+    "all_old_rows_and_sequences_preserved_before_candidate_start": true,
+    "all_table_definitions_verified_after_start": true,
+    "business_defaults_or_settings_seeded": false,
+    "database_restored": false,
+    "from_revision": "h43fe567f803",
+    "new_settings_rows": 0,
+    "new_settings_tables": 4,
+    "new_table_count": 169,
+    "old_table_count": 165,
+    "post_start_business_rows_frozen": false,
+    "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4",
+    "to_revision": "i54af678a914"
+  },
+  "pins": {
+    "application_freeze_sha256": "741cab247da5f316d946e76fb8fddda5cd92e46788b12a1ede835d822ef6e333",
+    "manifest_sha256": "0292d5bf251f16b03bfb0692942715c0cd304f998fe644211b95e780433341e3",
+    "payload_sha256": "64537d65fbdf9b8f249d004f6639e9d2d7b5c28ac14bf43f256cee3cdf442439",
+    "postflight_code_sha256": "bff9dbf982f36b3171af6d1570974fa01a521b8e41922c4b36d15eb2135bce13",
+    "preflight_code_sha256": "89f9685f829f96c94f1fe3c84f07b33f604948f375fc52edbb963feaadb76669",
+    "release_helper_sha256": "b9d954130b99802bf444fe1ce99b73ba869c21ca95d1387ebb6d124d06ea109e"
+  },
+  "postflight": {
+    "business_writes_by_postflight": false,
+    "existing_policy_heartbeat": {
+      "enabled_platform_counts": {
+        "facebook": 1,
+        "instagram": 1
+      },
+      "enabled_policies_missing_last_checked": 0,
+      "enabled_policies_seen_within_180_seconds": 2,
+      "enabled_policy_count": 2,
+      "enabled_policy_max_age_seconds": 18.5,
+      "enabled_policy_min_age_seconds": 18.5,
+      "occurrence_count": 0,
+      "sampled_at_utc": "2026-11-02T07:44:41.185996+00:00",
+      "total_policy_count": 2
+    },
+    "four_new_settings_tables_empty": true,
+    "merchant_settings_changed_by_release": false,
+    "new_publication_or_ai_generation_requested_by_release": false,
+    "old_post_start_changed_table_names": [
+      "media_monthly_automation_policies"
+    ],
+    "provider_requests_by_release_or_postflight": false,
+    "read_only": true,
+    "runtime_mutations_by_postflight": false,
+    "selected_media_row_and_shape_hashes_all_match": true,
+    "selected_media_tables_compared": 12,
+    "selected_media_tables_requiring_review": []
+  },
+  "public_static": {
+    "inventory_sha256": "3466c4ca6dda8f946d13586c5cf64815809892abaf9fb5901779a8db096df274",
+    "nginx_sha256": "e03166467fa1e953847b0d9bb9a16f9e34e5784367363d35e63886554c42ee7e",
+    "root": "/var/www/t24-crm-public/media-unified-settings-54e027aad00e-20261102"
+  },
+  "runtime": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "restart": 0,
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "runtime_backend_file_count": 432,
+  "stage": "MEDIA_UNIFIED_SETTINGS_DEPLOYED_AND_READONLY_POSTFLIGHT_VERIFIED",
+  "unchanged_boundaries": {
+    "all_ordered_environment_worker_flags_and_credentials": true,
+    "closing_conditions_source": true,
+    "commission_ownership_source": true,
+    "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+    "existing_permissions": true,
+    "finance_calculation_source": true,
+    "google_scheduler_enabled": true,
+    "meta_execution_enabled": false,
+    "meta_scheduler_enabled": false,
+    "monthly_auto_prep_enabled": true,
+    "private_space_boundary": true
+  },
+  "validation": {
+    "local_readonly_postflight_tests_passed": 3,
+    "local_release_failure_tests_passed": 31,
+    "root_reported_live_ui": {
+      "evidence_source": "root live UI acceptance; private screenshots remain outside public audit artifacts",
+      "mobile_document_scroll_width": 390,
+      "mobile_horizontal_overflow": false,
+      "mobile_viewport_width": 390,
+      "settings_templates_platform_reads_passed": true
+    }
+  }
+}
