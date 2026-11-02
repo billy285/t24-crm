@@ -1,0 +1,158 @@
+{
+  "application_source_sha": "835be7a06d614e11080274426d8110797f53b5ef",
+  "audit_scope": {
+    "author_performed_cloud_or_provider_actions": false,
+    "merchant_names_captions_and_private_screenshots_included": false,
+    "real_publication_requires_owner_confirmation": true,
+    "root_performed_deployment": true
+  },
+  "backend_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "baseline_application_source_sha": "68fa8589101f4a3075141c910ec51fd86b9ec9ed",
+  "deployment_carrier_sha": "3c132016e231e89cd3e8ada4b0bca6b1d3ce0fa5",
+  "frontend_version": "40f5a63a9156",
+  "pins": {
+    "application_freeze_sha256": "d4b4bf4817ba2b8329ea87aa67fd19581fa1a4fb9c02cea7b139c672e3ce5d5e",
+    "baseline_sha256": "338bef1356329348180bcab4648921687047d4bf464ece3f38cdf46fec7d0c33",
+    "deployed_canonical_sha256": "f8981993bc44c7286fcd84111d728a3a0fe381853e5495e584a108ac247475f4",
+    "helper_sha256": "6df39ea24eefc3e607bc8d55d9a125d2ef15901d1093e4044cdfef0b37487403",
+    "manifest_sha256": "d5f60508fc44627facd81702eff2605363d4d54cc5c75a24a0a42a0824373e9d",
+    "payload_sha256": "fef3fc7d8646324d206e39ebecec7e159d9a1b02e98ed392cfe1a46c5e55a19b",
+    "preflight_code_sha256": "d75c6008ea00ac190c61c3b58d4a0cc7b843b688d03001b7b5a77ad8f2ec3c77",
+    "prepared_canonical_sha256": "e4998c3917f4e8ded7b3d03929565ef7ebff7eae5c6c49a671f83a1c9528486b"
+  },
+  "preserved": {
+    "all169_table_definitions": true,
+    "all_environment_worker_flags_credentials": true,
+    "backend_source_inventory": true,
+    "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+    "environment_sha256": "c66484ab88783b45e42b22757a6b6e8e2effb706639415123c716445104690a8",
+    "existing_permissions": true,
+    "finance_calculation_closing_commission_source": true,
+    "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+    "google_scheduler_enabled": true,
+    "meta_execution_enabled": false,
+    "meta_scheduler_enabled": false,
+    "monthly_auto_prep_enabled": true,
+    "ordered_environment_sha256": "9ecc4a543dc193736e08a8526f691722e68ecae9f8e0a206beb8d4f61d4329d0",
+    "private_boundary": true,
+    "runtime_config_id_image_start_time_restart_count": true,
+    "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4"
+  },
+  "release_mutations": {
+    "backend_or_worker_restart": false,
+    "database_migration": false,
+    "database_restore": false,
+    "database_writes": false,
+    "environment_or_permissions_changes": false,
+    "only_static_staging_active_root_and_nginx_reload": true,
+    "provider_or_publication_actions": false
+  },
+  "runtime_unchanged": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "restart": 0,
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "scope": {
+    "backend_file_count_unchanged": 432,
+    "business_rows_read_or_frozen": false,
+    "changed_source_files": {
+      "app/frontend/src/components/DesktopBusinessNavigation.tsx": "e00c9669a2323a893533c2d2a19b2fb16105ad630d230def38473766b6dbdef8",
+      "app/frontend/src/components/Layout.tsx": "964638c33bc08cf277481f4baaf712f81dbe68c70f4f1207e92b104b89526a0c",
+      "app/frontend/src/components/MediaAutomationOverview.tsx": "22dc45ec6e5e928067f74354b62242ee8e2cd7ed03da86199fb539af0dc648f5",
+      "app/frontend/src/components/MediaMerchantWorkspace.tsx": "e7185d782022fcb737ad95bcf55845a9f36bc73da4bc37d53417a01cd9fae412",
+      "app/frontend/src/components/MediaWorkspacePriorities.tsx": "f8d6d09d54e242a9421514a7498a169f12f36e3ee33d442ef410b0274cc5187b",
+      "app/frontend/src/components/MediaWorkspaceToolbar.tsx": "f0484d6c81e3a8af6faad96a41b364bc5af7ec32971e6b34d6bf0ca5dd09c21a",
+      "app/frontend/src/components/media-layout-navigation.css": "357ed42367eadf4f0307dc353f21717c9bb6a95f80b743c46584d041b55e4112",
+      "app/frontend/src/components/media-ops-refinement.css": "72b18b05b3bdbe78e3130b5b76eb5e1cdd2a7aa1d4266ae0dd33bca6ac4d2796",
+      "app/frontend/tests/media-automation.test.mjs": "14f9aceef4ce6fb9b7d6bd1039f75521b4475f14fec12ddcab709ba97356508d",
+      "app/frontend/tests/media-layout-navigation.test.mjs": "6982715bf02106bd5c1c8907c5ac614082bf88838f227a1db97f6737894ec8e5",
+      "app/frontend/tests/media-workspace-refinement.test.mjs": "f000760d7550f9abe1d5c3c4f88d45272b7600795914c4e3f6627f2399367f5c"
+    },
+    "exact_application_delta_paths": 11,
+    "reviewed_new_frontend_or_test_paths": 6,
+    "schema_revision": "i54af678a914",
+    "static_only": true,
+    "table_count_unchanged": 169
+  },
+  "stage": "MEDIA_OPS_UI_REFINED_STATIC_DEPLOYED_AND_SCOPED_PRODUCTION_UI_ACCEPTED",
+  "static": {
+    "inventory_sha256": "30bf67da0e214b8f3e21a040f7b046eb46ae0665b2a1057c072f54468571dfe0",
+    "nginx_sha256": "7465f221c0c3b0be761401035e12a123628771ddb9643bda68d31cfcbb34c67a",
+    "old_hashed_assets_preserved": true,
+    "public_root": "/var/www/t24-crm-public/media-ops-ui-refined-835be7a06d61-20261102"
+  },
+  "validation": {
+    "all_frozen_carrier_bytes_unchanged_after_deploy": true,
+    "independent_static_tool_review_passed": true,
+    "local_release_subtests_passed": 6,
+    "local_release_tests_passed": 97,
+    "prepared_and_deployed_boundaries_equal": true,
+    "prepared_and_deployed_canonical_hashes_independently_recomputed": true,
+    "production_ui_acceptance": {
+      "accepted": true,
+      "application_mutations_requested_by_qa": false,
+      "console_error_count": 0,
+      "coverage_limitations": [
+        "this release scope only",
+        "not a whole-site acceptance certification",
+        "not comprehensive real-account testing of every role and permission",
+        "no numeric whole-system UI score assigned"
+      ],
+      "desktop": {
+        "central_review_and_one_instagram_monthly_detail_get_loaded": true,
+        "loaded_merchant_count": 43,
+        "monthly_detail_item_count": 12,
+        "navigation_dialog_inert_background_and_escape_passed": true,
+        "normal_automation_summary_collapsed": true,
+        "viewport_height": 800,
+        "viewport_width": 1280,
+        "workspace_width_with_navigation_closed_and_open": 964
+      },
+      "evidence_source": "root live production UI; screenshots and detailed record remain local outputs",
+      "methods_observed": "GET only for reviewed application data",
+      "mobile": {
+        "advanced_filters_expand_and_close_passed": true,
+        "document_scroll_width": 390,
+        "new_buttons_inputs_and_select_min_height": 44,
+        "viewport_height": 844,
+        "viewport_width": 390
+      },
+      "narrow_mobile": {
+        "main_scroll": 655,
+        "month_input_width": 188,
+        "month_input_within_card": true,
+        "navigation_top_after_scroll": 77,
+        "toolbar_top_after_scroll": 137,
+        "viewport_height": 740,
+        "viewport_width": 320
+      },
+      "performed_by": "root",
+      "screenshots_in_public_audit_artifacts": false,
+      "status": "passed_for_this_release_scope"
+    },
+    "root_reported_application_focused_tests_passed": 173,
+    "root_reported_eslint_errors": 0,
+    "root_reported_existing_layout_warnings": 2,
+    "root_reported_vite_modules": 3083,
+    "synthetic_fixture": {
+      "actual_components": [
+        "Layout",
+        "DesktopBusinessNavigation",
+        "BrowserRouter",
+        "MediaOperations",
+        "MediaMerchantWorkspace",
+        "task detail Dialog",
+        "content-plan Dialog",
+        "single-store automation settings"
+      ],
+      "beforeunload_installed": false,
+      "browser_acceptance_performed_by_fixture_author": false,
+      "local_write_free_bundle_modules": 1773,
+      "owner_staff_empty_partial_workspace_responses_checked_with_actual_dto_verifiers": true,
+      "provider_connected": false,
+      "roles_and_api_transport_are_mocked": true
+    }
+  }
+}

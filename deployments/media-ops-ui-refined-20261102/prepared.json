@@ -1,0 +1,37 @@
+{
+  "backend_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "boundary": {
+    "backend_source_unchanged": true,
+    "business_rows_read_or_frozen": false,
+    "content_security_policy_unchanged": true,
+    "credentials_preserved": true,
+    "environment_sha256": "c66484ab88783b45e42b22757a6b6e8e2effb706639415123c716445104690a8",
+    "ordered_environment_sha256": "9ecc4a543dc193736e08a8526f691722e68ecae9f8e0a206beb8d4f61d4329d0",
+    "original169_schema_preserved": true,
+    "private_boundary_preserved": true,
+    "runtime": {
+      "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+      "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+      "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+      "restart": 0,
+      "started": "2026-11-02T07:13:16.110095163Z"
+    },
+    "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4"
+  },
+  "container_restarts": false,
+  "database_writes": false,
+  "frontend_version": "40f5a63a9156",
+  "manifest_sha256": "d5f60508fc44627facd81702eff2605363d4d54cc5c75a24a0a42a0824373e9d",
+  "nginx_next_sha256": "7465f221c0c3b0be761401035e12a123628771ddb9643bda68d31cfcbb34c67a",
+  "payload_sha256": "fef3fc7d8646324d206e39ebecec7e159d9a1b02e98ed392cfe1a46c5e55a19b",
+  "permissions_changes": false,
+  "preflight_sha256": "338bef1356329348180bcab4648921687047d4bf464ece3f38cdf46fec7d0c33",
+  "provider_or_publication_actions": false,
+  "public_inventory_sha256": "30bf67da0e214b8f3e21a040f7b046eb46ae0665b2a1057c072f54468571dfe0",
+  "public_root": "/var/www/t24-crm-public/media-ops-ui-refined-835be7a06d61-20261102",
+  "receipt_sha256": "e4998c3917f4e8ded7b3d03929565ef7ebff7eae5c6c49a671f83a1c9528486b",
+  "schema_changes": false,
+  "source_sha": "835be7a06d614e11080274426d8110797f53b5ef",
+  "stage": "MEDIA_OPS_UI_REFINED_STATIC_PREPARED",
+  "static_only": true
+}

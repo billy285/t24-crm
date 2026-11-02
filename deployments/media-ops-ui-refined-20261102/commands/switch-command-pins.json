@@ -1,0 +1,36 @@
+{
+  "carrier": "3c132016e231e89cd3e8ada4b0bca6b1d3ce0fa5",
+  "command_sha256": {
+    "activate-command.sh": "77131bf762657915db4756ba958d8f0061299ae59761aad01c42f640a37e12e6",
+    "prepare-command.sh": "f883d796092ba28cf84289f43be516112db56dfe9b301149187f8834c5586727",
+    "recover-command.sh": "61b9b9f28bf8ae21dd355c02cba10574c11a51b560e1e1b0bb9290ad00e658ab"
+  },
+  "executed": false,
+  "frontend_version": "40f5a63a9156",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "d5f60508fc44627facd81702eff2605363d4d54cc5c75a24a0a42a0824373e9d",
+      151412
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "fef3fc7d8646324d206e39ebecec7e159d9a1b02e98ed392cfe1a46c5e55a19b",
+      2292500
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "d75c6008ea00ac190c61c3b58d4a0cc7b843b688d03001b7b5a77ad8f2ec3c77",
+      9007
+    ],
+    "release.py": [
+      "release.py",
+      "6df39ea24eefc3e607bc8d55d9a125d2ef15901d1093e4044cdfef0b37487403",
+      21433
+    ]
+  },
+  "preflight_sha256": "338bef1356329348180bcab4648921687047d4bf464ece3f38cdf46fec7d0c33",
+  "prepared_sha256": "e4998c3917f4e8ded7b3d03929565ef7ebff7eae5c6c49a671f83a1c9528486b",
+  "release": "/opt/t24-crm/releases/media-ops-ui-refined-835be7a06d61-20261102",
+  "source_sha": "835be7a06d614e11080274426d8110797f53b5ef"
+}
