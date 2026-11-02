@@ -25,6 +25,19 @@ def project(info):
 def candidate_config(m,image,current):
     need(not any(v.split('=',1)[0]==KEY for v in current['Config']['Env']),'NEW_WORKER_FLAG_MUST_BE_ABSENT_BEFORE_ENABLE')
     config=m.clone_config(image,current);need(config['Env']==current['Config']['Env'],'ORIGINAL_ORDERED_ENVIRONMENT_REQUIRED');config['Env']=[*config['Env'],KEY+'=true'];return config
+def bind_quiescent_baseline(release,r,deployed):
+    need(deployed.get('protocol')=='media-automation-at-write-v1','REVIEWED_AT_WRITE_DEPLOYMENT_REQUIRED')
+    sha=deployed.get('quiescent_baseline_sha256');need(re.fullmatch('[a-f0-9]{64}',sha or ''),'MAIN_QUIESCENT_BASELINE_HASH_REQUIRED');value=r.strict_json(r.protected(release.root/'activation-baseline.json',sha,1048576));p=release.proof
+    need(value['stage']=='MEDIA_AUTOMATION_QUIESCENT_BASELINE' and value['protocol']==deployed['protocol'] and value['source_sha']==r.SOURCE_SHA and value['prepared_sha256']==deployed['prepared_sha256'] and value['preflight_sha256']==r.PREFLIGHT_SHA and value['original_runtime']==p['crm'] and value['candidate_id']==deployed['crm']['id'] and value['database_identity']==p['database_identity'] and value['schema_sha256']==p['schema_sha256'] and set(value['rows'])==set(p['rows']) and len(value['rows'])==162,'EXACT_MAIN_QUIESCENT_BASELINE_REQUIRED')
+    r.compare_definitions(p['table_definitions'],value['table_definitions']);need(all(value['rows'][n]['shape_sha256']==p['rows'][n]['shape_sha256'] for n in p['rows']),'ORIGINAL162_TABLE_SHAPES_REQUIRED')
+    release.proof={**p,'rows':value['rows'],'table_definitions':value['table_definitions'],'database_metadata':value['database_metadata']}
+    def strict_boundary(self,path=None,*,migrated=False,rows=True,empty=True):
+        path=path or self.m.BUSINESS;head=r.NEW_REVISION if migrated else r.OLD_REVISION;need(self.revision(path)==head,'EXACT_DATABASE_REVISION_REQUIRED');r.compare_rows(self.proof['rows'],self.rows(path),migrated=migrated,rows=rows,empty=empty);r.compare_definitions(self.proof['table_definitions'],self.definitions(path),migrated=migrated)
+        current=self.c.metadata(path)
+        if rows:self.c.retained.sequence_boundary(self.proof['database_metadata'],current)
+        else:need(current['pragma_sha256']==self.proof['database_metadata']['pragma_sha256'] and current['sequence_exists'] is self.proof['database_metadata']['sequence_exists'],'RECOVERY_IMMUTABLE_PRAGMAS_CHANGED')
+        return self.m.schema_signature(path,head)
+    release.db_boundary=types.MethodType(strict_boundary,release);return sha
 
 class Enable:
     def __init__(self,a):
@@ -32,13 +45,14 @@ class Enable:
         mainargs=types.SimpleNamespace(phase='recover',release=a.release,manifest_sha256=a.manifest_sha256,payload_sha256=a.payload_sha256,preflight=a.preflight,preflight_sha256=a.preflight_sha256,review_sha256=a.main_prepared_sha256)
         self.r=r;self.release=r.Release(mainargs);self.m=self.release.m;self.main_prepared,self.main_original=self.release.reviewed();self.deployed=r.strict_json(r.protected(a.release/'deployed.json',a.main_deployed_sha256))
         v=self.deployed;need(v['stage']=='MEDIA_AUTOMATION_DEPLOYED' and v['source_sha']==r.SOURCE_SHA and v['schema_revision']==r.NEW_REVISION and v['prepared_sha256']==a.main_prepared_sha256 and v['automation_worker_enabled'] is False and v['original162_rows_schema_preserved'] is True and v['three_new_tables_empty'] is True,'EXACT_COMPLETED_DEFAULT_OFF_RELEASE_REQUIRED')
+        self.baseline_sha=bind_quiescent_baseline(self.release,r,v)
         self.old_name='t24-crm-before-autoprep-'+r.SOURCE_SHA[:12];self.candidate_name='t24-crm-autoprep-candidate-'+r.SOURCE_SHA[:12];self.inventory={**self.release.original_inventory,**r.BACKEND_AFTER}
     def record(self,name,value):return self.release.record(name,value)
     def current(self):
         info=self.m.inspect('t24-crm');need(info['State']['Running'] is True and self.m.runtime(info)==self.deployed['crm'] and info['Image']==self.main_prepared['candidate_image'],'EXACT_DEPLOYED_DEFAULT_OFF_RUNTIME_REQUIRED');self.release.environment(info);self.release.protections(migrated=True,updated=True);need(self.m.inventory(info['Id'])==self.inventory,'EXACT_ADDITIVE_SOURCE_REQUIRED');return info
     def prepare(self):
         current=self.current();need(not(self.a.release/'worker-prepared.json').exists(),'FRESH_WORKER_PREPARATION_REQUIRED')
-        result={'stage':'MEDIA_AUTOMATION_WORKER_PREPARED','source_sha':self.r.SOURCE_SHA,'main_release_sha256':self.a.main_release_sha256,'main_prepared_sha256':self.a.main_prepared_sha256,'main_deployed_sha256':self.a.main_deployed_sha256,'runtime':self.m.runtime(current),'new_runtime_entry':KEY+'=true','three_tables_empty':True,'existing_flags_environment_order_and_files_preserved':True,'policies_created':False,'provider_requests':False,'publications_requested':False,'database_written':False};return {**result,'receipt_sha256':self.record('worker-prepared.json',result)}
+        result={'stage':'MEDIA_AUTOMATION_WORKER_PREPARED','source_sha':self.r.SOURCE_SHA,'main_release_sha256':self.a.main_release_sha256,'main_prepared_sha256':self.a.main_prepared_sha256,'main_deployed_sha256':self.a.main_deployed_sha256,'quiescent_baseline_sha256':self.baseline_sha,'runtime':self.m.runtime(current),'new_runtime_entry':KEY+'=true','three_tables_empty':True,'existing_flags_environment_order_and_files_preserved':True,'policies_created':False,'provider_requests':False,'publications_requested':False,'database_written':False};return {**result,'receipt_sha256':self.record('worker-prepared.json',result)}
     def reviewed(self):
         p=self.r.strict_json(self.r.protected(self.a.release/'worker-prepared.json',self.a.review_sha256));need(p['stage']=='MEDIA_AUTOMATION_WORKER_PREPARED' and p['source_sha']==self.r.SOURCE_SHA and p['main_release_sha256']==self.a.main_release_sha256 and p['main_prepared_sha256']==self.a.main_prepared_sha256 and p['main_deployed_sha256']==self.a.main_deployed_sha256 and p['runtime']==self.deployed['crm'] and p['new_runtime_entry']==KEY+'=true','EXACT_REVIEWED_WORKER_PREPARATION_REQUIRED');need(all(p[k] is False for k in ('policies_created','provider_requests','publications_requested','database_written')) and p['three_tables_empty'] is True and p['existing_flags_environment_order_and_files_preserved'] is True,'ZERO_POLICY_RUNTIME_ONLY_ENABLE_REQUIRED');return p
     def identities(self):
@@ -69,16 +83,20 @@ class Enable:
     def recover(self):
         self.reviewed();need(not(self.a.release/'worker-enabled.json').exists(),'SUCCESSFUL_WORKER_SWITCH_RECOVERY_REQUIRES_SEPARATE_REVIEW');return self.recover_internal()
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--phase',choices=('prepare','activate','recover'),required=True);p.add_argument('--release',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--phase',choices=('prepare','prepare_activate','activate','recover'),required=True);p.add_argument('--release',type=Path,required=True)
     for key in ('main-release-sha256','main-prepared-sha256','main-deployed-sha256','manifest-sha256','payload-sha256','preflight-sha256'):p.add_argument('--'+key,required=True)
     p.add_argument('--preflight',type=Path,required=True);p.add_argument('--review-sha256');a=p.parse_args();need(os.geteuid()==0 and socket.gethostname()==HOST,'EXACT_ROOT_SERVER_REQUIRED');resource.setrlimit(resource.RLIMIT_CORE,(0,0));os.umask(0o077)
-    need(all(re.fullmatch('[a-f0-9]{64}',getattr(a,k.replace('-','_')) or '') for k in ('main-release-sha256','main-prepared-sha256','main-deployed-sha256','manifest-sha256','payload-sha256','preflight-sha256')) and (a.phase=='prepare' or re.fullmatch('[a-f0-9]{64}',a.review_sha256 or '')),'EXACT_REVIEWED_PHASE_HASHES_REQUIRED')
+    need(all(re.fullmatch('[a-f0-9]{64}',getattr(a,k.replace('-','_')) or '') for k in ('main-release-sha256','main-prepared-sha256','main-deployed-sha256','manifest-sha256','payload-sha256','preflight-sha256')) and (a.phase in {'prepare','prepare_activate'} or re.fullmatch('[a-f0-9]{64}',a.review_sha256 or '')),'EXACT_REVIEWED_PHASE_HASHES_REQUIRED')
     lock=Path('/opt/t24-crm/releases/.media-workspace-scale.lock')
     for path in lock.parents:
         row=path.lstat();need(path.resolve()==path and stat.S_ISDIR(row.st_mode) and row.st_uid==0 and not row.st_mode&0o022,'PROTECTED_LOCK_PARENT_REQUIRED')
     fd=os.open(lock,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     try:
-        row=os.fstat(fd);need(stat.S_ISREG(row.st_mode) and row.st_uid==0 and row.st_nlink==1 and stat.S_IMODE(row.st_mode)==0o600,'ROOT_PRIVATE_SHARED_LOCK_REQUIRED');fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);print(json.dumps(getattr(Enable(a),a.phase)(),sort_keys=True))
+        row=os.fstat(fd);need(stat.S_ISREG(row.st_mode) and row.st_uid==0 and row.st_nlink==1 and stat.S_IMODE(row.st_mode)==0o600,'ROOT_PRIVATE_SHARED_LOCK_REQUIRED');fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        if a.phase=='prepare_activate':
+            first=Enable(a).prepare();canonical={k:v for k,v in first.items() if k!='receipt_sha256'};sha=H((json.dumps(canonical,sort_keys=True,indent=2)+'\n').encode());need(first['receipt_sha256']==sha and first['three_tables_empty'] is True and first['existing_flags_environment_order_and_files_preserved'] is True and first['new_runtime_entry']==KEY+'=true' and all(first[k] is False for k in ('policies_created','provider_requests','publications_requested','database_written')),'EXACT_ZERO_POLICY_PREPARATION_REQUIRED')
+            protected(a.release/'worker-prepared.json',sha,1048576);a.review_sha256=sha;a.phase='activate';second=Enable(a).activate();print(json.dumps({'stage':'MEDIA_AUTOMATION_WORKER_PREPARED_AND_ENABLED','prepared':first,'enabled':second,'single_reviewed_zero_policy_invocation':True},sort_keys=True))
+        else:print(json.dumps(getattr(Enable(a),a.phase)(),sort_keys=True))
     finally:os.close(fd)
 if __name__=='__main__':
     try:main()

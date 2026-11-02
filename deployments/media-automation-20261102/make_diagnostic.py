@@ -4,7 +4,7 @@ from pathlib import Path
 HERE=Path(__file__).resolve().parent
 H=lambda b:hashlib.sha256(b).hexdigest()
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--out',type=Path,required=True);a=p.parse_args();path=HERE/'diagnose.py';body=path.read_bytes();need=lambda x:None if x else (_ for _ in ()).throw(RuntimeError('CANONICAL_BOUNDED_DIAGNOSIS_REQUIRED'))
+    p=argparse.ArgumentParser();p.add_argument('--out',type=Path,required=True);p.add_argument('--source',choices=('diagnose.py','diagnose_r2.py'),default='diagnose.py');a=p.parse_args();path=HERE/a.source;body=path.read_bytes();need=lambda x:None if x else (_ for _ in ()).throw(RuntimeError('CANONICAL_BOUNDED_DIAGNOSIS_REQUIRED'))
     need(path.resolve()==path and path.is_file() and not path.is_symlink() and path.stat().st_nlink==1 and 0<len(body)<65536);payload=base64.b64encode(zlib.compress(body,9)).decode();sha=H(body)
     command="""#!/bin/bash
 set -eu

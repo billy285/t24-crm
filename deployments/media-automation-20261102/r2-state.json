@@ -1,0 +1,51 @@
+{
+  "backend_file_count": 420,
+  "business_rows_written": false,
+  "candidate_image": "sha256:f456f7aaca2452db96c9df796f3c01efda9a2f23403bdd5e3b755b409c6de8f1",
+  "changed_table_count": 3,
+  "changed_tables": [
+    {
+      "before_count": 18,
+      "current_count": 18,
+      "rows_changed": true,
+      "shape_changed": false,
+      "table": "stripe_history_bindings"
+    },
+    {
+      "before_count": 11,
+      "current_count": 14,
+      "rows_changed": true,
+      "shape_changed": false,
+      "table": "stripe_history_events"
+    },
+    {
+      "before_count": 29,
+      "current_count": 30,
+      "rows_changed": true,
+      "shape_changed": false,
+      "table": "stripe_history_invoice_reviews"
+    }
+  ],
+  "changed_tables_truncated": false,
+  "existing_files_changed": false,
+  "nginx_sha256": "0184a613c95d04fb74f6d674213b1d787c000af33c5add5c90eb02637302ba40",
+  "no_activation_records": true,
+  "no_candidate_or_live_migration": true,
+  "offline_migration_exited_successfully": true,
+  "prepared_sha256": "29ae8e354c8555a9aca186f5ef0b2368d17bd7f6007f73e57e6195e62558a47d",
+  "provider_requests": false,
+  "public_root": "/var/www/t24-crm-public/media-meta-monthly-static-eec3d1d02a97-20261102",
+  "runtime": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  },
+  "runtime_changed": false,
+  "schema162_unchanged": true,
+  "schema_revision": "g32ed456e792",
+  "source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "stage": "MEDIA_AUTOMATION_R2_PREACTIVATION_READONLY_STATE",
+  "table_count": 162
+}

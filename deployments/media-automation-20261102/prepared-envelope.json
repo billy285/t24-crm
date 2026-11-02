@@ -1,0 +1,33 @@
+{
+  "automation_worker_enabled": false,
+  "business_seed_rows": false,
+  "candidate_image": "sha256:f456f7aaca2452db96c9df796f3c01efda9a2f23403bdd5e3b755b409c6de8f1",
+  "candidate_inventory_sha256": "0f4c2e90da7f4fe8d3b3f514c6ac89278380de5656d083ab9409b01fd888ea90",
+  "database_restored": false,
+  "frontend_version": "569fa342f1c3",
+  "manifest_sha256": "96f1baa987eeea40115fb8408ddb28d1a39b8a1dbbb254098f2da2ae554e44f8",
+  "nginx_next_sha256": "fa702dcd4c3be4cae9faaff0462ef4a6fb70b3e955d724857bbe0c68c5ebd74b",
+  "offline_network_none_credentials_absent_workers_off": true,
+  "offline_three_empty_tables_verified": true,
+  "old_crm": {
+    "config": "5038d2dcddb9b0215926f5d45411c25b56542c678a082a8b05774054b1d9c94e",
+    "id": "1ee579193b73048fb1120f516d53d2400191c2499cfad5284184ca0506ed698e",
+    "image": "sha256:05dc7e8e8ce620e0d92e07e95d304537250d17beb14dbeb63713e06d2319bf41",
+    "restart": 0,
+    "started": "2026-11-01T22:06:12.469255563Z"
+  },
+  "old_schema_revision": "g32ed456e792",
+  "original162_rows_schema_preserved": true,
+  "payload_sha256": "7054749c962d4cf5bd88b1ba040e6efd8ab85cca904675fb00aeb32340554c45",
+  "preflight_sha256": "b130a39759f3638b4428fd974913e1b1cf6b964f757f010ec7b76364baa2d8c0",
+  "production_database_written": false,
+  "provider_requests": false,
+  "public_inventory_sha256": "10d2f885a116c76600fe4d5c3282e6c3b70832e2a07f1604ec9c6cf4da2b3819",
+  "public_root": "/var/www/t24-crm-public/media-automation-c78b50a11e02-20261102",
+  "receipt_sha256": "29ae8e354c8555a9aca186f5ef0b2368d17bd7f6007f73e57e6195e62558a47d",
+  "schema_after_sha256": "7bccbd8ff34d0d10d102b5fe3510470ee6b7817be7f168921f2887e7f6bf3872",
+  "schema_revision": "h43fe567f803",
+  "source_sha": "c78b50a11e020674ad53b34fbbfb5b1badd4a9a5",
+  "stage": "MEDIA_AUTOMATION_PREPARED",
+  "table_count": 165
+}
