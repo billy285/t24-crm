@@ -1,0 +1,10 @@
+{
+  "command_bytes": 5694,
+  "command_sha256": "b38caeff292365b237ee62672bc1cf000a1e394b511a4aca3fdd907686c82a6d",
+  "database_writes": false,
+  "executed": false,
+  "preflight_bytes": 8844,
+  "preflight_sha256": "d0804c7a35074f7e71206ade76b8b428021e366da428c4fb151c1bdc7fb812ff",
+  "provider_requests": false,
+  "writes_only_new_root_private_aggregate": true
+}

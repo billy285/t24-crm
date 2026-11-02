@@ -1,0 +1,27 @@
+{
+  "backend_changes": false,
+  "baseline_frontend_version": "32a580644502",
+  "baseline_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "container_restarts": false,
+  "content_security_policy_changes": false,
+  "credentials_included": false,
+  "database_migration": false,
+  "database_writes": false,
+  "dependencies_changes": false,
+  "dist_inventory_sha256": "0b58d771c7bc32816268046155729841943c12e4a48ad7d81ef3b53324101af3",
+  "environment_changes": false,
+  "exact_navigation_layout_only": true,
+  "existing_hashed_assets_preserved": true,
+  "files": {
+    "app/frontend/src/components/media-merchant-workspace.css": "f3b3822f6f24ccb96c52385bbc63607badf40240b2a41c581f9fe1e87e0d9ca2"
+  },
+  "frontend_version": "6f71217e47f1",
+  "original169_schema_preservation_required": true,
+  "permissions_changes": false,
+  "preflight_sha256": "6c8dcf5954a5ccac79b323dc40a67e001034e232d27505a55d101c451a103216",
+  "publications_or_provider_writes": false,
+  "runtime_environment_and_private_boundaries_preservation_required": true,
+  "source_sha": "68fa8589101f4a3075141c910ec51fd86b9ec9ed",
+  "stage": "MEDIA_NAVIGATION_STICKY_APPLICATION_FREEZE",
+  "static_only": true
+}
