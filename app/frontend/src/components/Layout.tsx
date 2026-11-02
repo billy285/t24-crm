@@ -4,6 +4,7 @@ import './crm-desktop-layout.css';
 import './crm-desktop-refined-type.css';
 import './crm-desktop-compact.css';
 import './crm-visual-polish.css';
+import './media-layout-navigation.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
@@ -57,6 +58,10 @@ export default function Layout({ children }: LayoutProps) {
   const [expandedWorkRoutes, setExpandedWorkRoutes] = useState<Record<string, boolean>>({});
   const isFocusedWorkspace = appNavigationItems.some(item => item.path === currentPath);
   const isSalesWorkspace = salesWorkspacePaths.includes(currentPath);
+  const isMediaWorkspace = currentPath === '/media-ops';
+  const [mediaSecondaryFloats, setMediaSecondaryFloats] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (max-width: 1599px)').matches,
+  );
   const [salesSecondaryFloats, setSalesSecondaryFloats] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches,
   );
@@ -66,6 +71,8 @@ export default function Layout({ children }: LayoutProps) {
   const navigationScope = isSalesWorkspace ? 'sales-center' : currentPath;
   const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
   const salesSecondaryOverlayOpen = isSalesWorkspace && salesSecondaryFloats && !navigationCollapsed;
+  const mediaSecondaryOverlayOpen = isMediaWorkspace && mediaSecondaryFloats && !navigationCollapsed;
+  const secondaryOverlayOpen = salesSecondaryOverlayOpen || mediaSecondaryOverlayOpen;
   const { employee, role, loading, authError, retryAuth, isLoggedIn, isDisabled, logout, canAccess } = useRole();
 
   const prefetchAllowedLink = (target: EventTarget | null) => {
@@ -83,22 +90,30 @@ export default function Layout({ children }: LayoutProps) {
     return () => query.removeEventListener('change', update);
   }, []);
 
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1024px) and (max-width: 1599px)');
+    const update = () => setMediaSecondaryFloats(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+
   const closeBusinessNavigation = useCallback(() => {
     setSidebarOpen(false);
-    if (isSalesWorkspace && window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) {
+    if (secondaryOverlayOpen) {
       setExpandedWorkRoutes(value => ({ ...value, [navigationScope]: false }));
     }
-  }, [isSalesWorkspace, navigationScope]);
+  }, [secondaryOverlayOpen, navigationScope]);
 
   useEffect(() => {
-    if (!isSalesWorkspace || navigationCollapsed) return;
+    if (!secondaryOverlayOpen) return;
     const handleOverlayKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         closeBusinessNavigation();
       } else if (event.key === 'Tab') {
-        const sidebar = document.querySelector<HTMLElement>('.app-sales-layout .app-sidebar');
+        const sidebar = document.querySelector<HTMLElement>('.app-sidebar');
         if (!sidebar || sidebar.contains(document.activeElement)) return;
         const controls = [...sidebar.querySelectorAll<HTMLElement>('a[href], button, input')]
           .filter(control => control.getClientRects().length > 0 && !control.hasAttribute('disabled'));
@@ -108,7 +123,7 @@ export default function Layout({ children }: LayoutProps) {
     };
     document.addEventListener('keydown', handleOverlayKey);
     return () => document.removeEventListener('keydown', handleOverlayKey);
-  }, [isSalesWorkspace, navigationCollapsed, closeBusinessNavigation]);
+  }, [secondaryOverlayOpen, closeBusinessNavigation]);
 
   useEffect(() => {
     window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
@@ -298,8 +313,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div data-crm-polish="20261026" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}`} onKeyDown={isSalesWorkspace ? event => {
-      if (navigationCollapsed || !window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches) return;
+    <div data-crm-polish="20261026" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}${isMediaWorkspace ? ' app-media-layout' : ''}`} onKeyDown={secondaryOverlayOpen ? event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -321,8 +335,8 @@ export default function Layout({ children }: LayoutProps) {
       }
     } : undefined}>
       {/* Mobile overlay */}
-      {(sidebarOpen || salesSecondaryOverlayOpen) && (
-        <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className={`fixed inset-0 z-40 ${salesSecondaryOverlayOpen ? 'sales-navigation-backdrop bg-slate-950/20' : 'hidden bg-slate-950/40 md:block lg:hidden'}`} onClick={closeBusinessNavigation} />
+      {(sidebarOpen || secondaryOverlayOpen) && (
+        <button type="button" tabIndex={-1} aria-label="关闭业务导航遮罩" className={`fixed inset-0 z-40 ${secondaryOverlayOpen ? 'business-navigation-backdrop bg-slate-950/20' : 'hidden bg-slate-950/40 md:block lg:hidden'}`} onClick={closeBusinessNavigation} />
       )}
 
       {/* Sidebar */}
@@ -333,7 +347,8 @@ export default function Layout({ children }: LayoutProps) {
         homePath={homePath}
         employeeName={employee?.name}
         roleLabel={displayRole}
-        open={sidebarOpen || salesSecondaryOverlayOpen}
+        open={sidebarOpen || secondaryOverlayOpen}
+        modal={mediaSecondaryOverlayOpen}
         collapsed={navigationCollapsed}
         onClose={closeBusinessNavigation}
         onCollapsedChange={collapsed => isSalesWorkspace || isFocusedWorkspace ? setExpandedWorkRoutes(value => ({ ...value, [navigationScope]: !collapsed })) : setSidebarCollapsed(collapsed)}
@@ -341,7 +356,7 @@ export default function Layout({ children }: LayoutProps) {
       />}
 
       {/* Main content */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div {...(mediaSecondaryOverlayOpen ? { inert: '' } : {})} aria-hidden={mediaSecondaryOverlayOpen || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
         {isOffline && (
           <div className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-amber-50 px-4 py-2 text-xs text-amber-800 shadow-sm">
             <span>当前网络连接不稳定，暂时不要重复提交表单。</span>

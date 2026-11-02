@@ -16,6 +16,7 @@ interface DesktopBusinessNavigationProps {
   roleLabel: string;
   open: boolean;
   collapsed: boolean;
+  modal?: boolean;
   onClose: () => void;
   onCollapsedChange: (collapsed: boolean) => void;
   onLogout: () => void;
@@ -96,7 +97,7 @@ function SecondaryNavigation({ section, pathname, search, onNavigate }: {
 }
 
 export default function DesktopBusinessNavigation({
-  sections, pathname, search, homePath, employeeName, roleLabel, open, collapsed,
+  sections, pathname, search, homePath, employeeName, roleLabel, open, collapsed, modal = false,
   onClose, onCollapsedChange, onLogout,
 }: DesktopBusinessNavigationProps) {
   const activeSection = sections.find(section => section.paths.includes(pathname)) || sections[0];
@@ -112,6 +113,8 @@ export default function DesktopBusinessNavigation({
   return (
     <aside
       aria-label="业务导航"
+      role={modal ? 'dialog' : undefined}
+      aria-modal={modal || undefined}
       className={`app-sidebar hidden ${open ? 'md:flex' : ''} lg:flex${collapsed ? ' app-sidebar-collapsed' : ''}`}
       onKeyDown={event => {
         if (!open || window.matchMedia('(min-width: 1024px)').matches) return;

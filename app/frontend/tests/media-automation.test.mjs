@@ -133,3 +133,9 @@ test('older exceptions remain actionable beyond the latest twenty successful job
   assert.throws(() => api.verifiedAutomationOverview(overview({ attention_jobs: [job()] })));
   assert.throws(() => api.verifiedAutomationOverview(overview({ attention_total: 0 })));
 });
+test('normal preparation overview is a collapsed summary and expansion retains refresh without extra reads', async () => {
+  const h = harness({}, true), value = overview({ counts: { policies: 2, enabled: 2, blocked: 0, unknown: 0, generated: 0 }, recent_jobs: [], attention_jobs: [], attention_total: 0 });
+  let tree = await ready(h, value), toggle = find(tree, node => node.props?.className === 'ma-overview-toggle');
+  assert.equal(toggle.props['aria-expanded'], false); assert.match(label(tree), /规则 2\/2/); assert.match(label(tree), /服务未启用/); assert.ok(!nodes(tree).some(node => node.props?.['aria-label'] === '刷新草稿自动准备总览'));
+  toggle.props.onClick(); tree = h.render(); toggle = find(tree, node => node.props?.className === 'ma-overview-toggle'); assert.equal(toggle.props['aria-expanded'], true); assert.ok(nodes(tree).some(node => node.props?.['aria-label'] === '刷新草稿自动准备总览')); assert.match(label(tree), /已保存规则暂不后台执行/); assert.equal(h.requests.length, 1); assert.equal(h.requests[0].options.method, 'GET');
+});

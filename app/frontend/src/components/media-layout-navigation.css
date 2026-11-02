@@ -1,0 +1,24 @@
+/* Media is a full work area. On laptops the business directory opens over the
+   work area, keeping the module navigation and content at their original width. */
+@media (min-width: 1024px) and (max-width: 1599px) {
+  .app-media-layout .app-sidebar,
+  .app-media-layout .app-sidebar.app-sidebar-collapsed {
+    width: 88px;
+  }
+  .app-media-layout .app-sidebar:not(.app-sidebar-collapsed) .app-secondary-panel {
+    position: absolute;
+    inset: 0 auto 0 88px;
+    width: 256px;
+    border-right: 1px solid #dce5f1;
+    box-shadow: 18px 0 36px -22px #1831514d;
+  }
+  .app-media-layout .app-navigation-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 8px;
+  }
+  .app-media-layout .app-navigation-close:hover { background: #edf3ff; }
+}
