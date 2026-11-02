@@ -250,8 +250,66 @@ async def test_crash_after_reservation_is_quarantined_not_replayed(automation):
 async def test_future_window_only_and_no_historical_catchup(automation):
     env = automation; assert (await enable(env))[0].status_code == 200
     assert (await service.run_tick(sessions=env.sessions, clock=lambda: AT-timedelta(days=10)))["processed"] == 0
-    assert (await service.run_tick(sessions=env.sessions, clock=lambda: datetime(2026, 12, 1, 16, tzinfo=timezone.utc)))["processed"] == 0
+    assert (await service.run_tick(sessions=env.sessions, clock=lambda: datetime(2026, 12, 1, 16, tzinfo=timezone.utc)))["processed"] == 1
+    async with env.sessions() as db:
+        job = await db.scalar(select(Occurrence))
+        assert job.month == "2026-12" and job.status == "missed" and job.generation_input is None
     assert not env.monthly_state.calls
+
+
+@pytest.mark.parametrize("limit", ["OWNER_DAILY_LIMIT", "GLOBAL_DAILY_LIMIT"])
+@pytest.mark.asyncio
+async def test_exhausted_budget_surfaces_missed_current_month_without_historical_ai(automation, monkeypatch, limit):
+    env = automation; assert (await enable(env))[0].status_code == 200
+    monkeypatch.setattr(service, limit, 0)
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 0
+    async with env.sessions() as db:
+        assert await db.scalar(select(func.count(Occurrence.id))) == 0
+    # One durable exception, despite a restart, budget exhaustion and two ticks.
+    boundary = datetime(2026, 12, 1, 16, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, "now", lambda: boundary)
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 1
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 0
+    value = (await env.auto_client.get(PREFIX+"/automation/overview")).json()
+    assert value["attention_total"] == 1 and value["attention_jobs"][0]["status"] == "missed"
+    assert value["attention_jobs"][0]["month"] == "2026-12"
+    async with env.sessions() as db:
+        job = await db.scalar(select(Occurrence))
+        assert job.ai_attempted_at is None and job.generation_input is None and job.run_id is None
+        assert await db.scalar(select(func.count(Run.id))) == 0
+    # A long outage records only today's local month, no catchup loop over the
+    # intervening months, and cannot generate current/past content.
+    boundary = datetime(2027, 3, 1, 16, tzinfo=timezone.utc)
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 1
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 0
+    async with env.sessions() as db:
+        assert set((await db.scalars(select(Occurrence.month))).all()) == {"2026-12", "2027-03"}
+    assert not env.monthly_state.calls
+
+
+@pytest.mark.parametrize("native_status,expected", [("generated", "existing"), ("adopted", "existing"), ("generating", "unknown"), ("unknown", "unknown"), ("failed", "blocked"), ("archived", "blocked")])
+@pytest.mark.asyncio
+async def test_expired_window_preserves_existing_manual_month(automation, monkeypatch, native_status, expected):
+    env = automation; assert (await enable(env))[0].status_code == 200
+    from services import media_monthly as monthly_service
+    async with env.sessions() as db:
+        state = await monthly_service.setup(db, OWNER, 20, month="2026-12")
+        original = await monthly_service.generate(db, OWNER, 20, request_id=str(uuid4()), expected_profile_revision=1,
+            month="2026-12", input_hash=state["input_hash"], consent={"confirmed": True, "notice_version": monthly_service.NOTICE_VERSION,
+                "input_hash": state["input_hash"], "runtime_fingerprint": state["runtime"]["fingerprint"]})
+        (await db.get(Run, original["id"])).status = native_status
+        await db.commit()
+    calls = len(env.monthly_state.calls)
+    monkeypatch.setattr(service, "now", lambda: datetime(2026, 12, 1, 16, tzinfo=timezone.utc))
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 1
+    assert (await service.run_tick(sessions=env.sessions))["processed"] == 0
+    job = (await read(env))["latest_job"]
+    assert job["status"] == expected and job["run_id"] == original["id"]
+    assert len(env.monthly_state.calls) == calls
+    async with env.sessions() as db:
+        assert (await db.get(Run, original["id"])).status == native_status
+        assert await db.scalar(select(func.count(Run.id))) == 1
+        assert (await db.scalar(select(Occurrence))).ai_attempted_at is None
 
 
 @pytest.mark.asyncio

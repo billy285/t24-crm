@@ -250,6 +250,45 @@ async def _actor(db, identity):
     return SimpleNamespace(id=str(employee.id), role=employee.role, name=employee.name) if employee else None
 
 
+async def _existing_month(db, policy, month):
+    return await db.scalar(select(Run).where(Run.owner_id == policy.owner_id, Run.customer_id == policy.customer_id,
+        Run.month == month, monthly.platform_clause(policy.platform)).order_by(Run.id.desc()).limit(1))
+
+
+def _existing_status(run):
+    return "existing" if run.status in {"generated", "adopted"} else "unknown" if run.status in {"generating", "unknown"} else "blocked"
+
+
+async def _record_expired_month(db, policy, at):
+    # A daily budget or interrupted service can exhaust the preparation window.
+    # Surface only the CURRENT local month's missing preparation, never walk
+    # older months or call AI to backfill an expired/current month.
+    month = monthly.aware(at).astimezone(ZoneInfo(policy.timezone)).strftime("%Y-%m")
+    if month < policy.first_target_month:
+        return None
+    previous = await db.scalar(select(Occurrence.id).where(Occurrence.owner_id == policy.owner_id,
+        Occurrence.customer_id == policy.customer_id, Occurrence.platform == policy.platform, Occurrence.month == month).limit(1))
+    if previous:
+        return None
+    user = await _actor(db, policy.owner_id)
+    if user is None:
+        return None
+    try:
+        _, customer = await _context(db, user, policy.customer_id)
+    except HTTPException:
+        return None  # revoked identity/ownership never obtains new source access
+    existing = await _existing_month(db, policy, month)
+    identity = str(uuid5(NAMESPACE_URL, f"t24-monthly-autoprep:{policy.owner_id}:{policy.customer_id}:{policy.platform}:{month}"))
+    job = Occurrence(policy_id=policy.id, policy_revision=policy.revision, owner_id=policy.owner_id,
+        customer_id=policy.customer_id, customer_name=customer.business_name, platform=policy.platform, month=month,
+        request_id=identity, source_signature=policy.source_signature, runtime_fingerprint=policy.runtime_fingerprint,
+        generation_input=None, run_id=existing.id if existing else None, status=_existing_status(existing) if existing else "missed",
+        message="本月已有原批次，保留原文案与审核安排，不重复生成" if existing else "本月自动准备窗口已过，未生成或补发内容；请老板核对后在原整月流程中处理",
+        ai_attempted_at=None, created_at=at, updated_at=at)
+    db.add(job); await db.flush()
+    return {"id": job.id, "user": user, "generate": False}
+
+
 async def _claim(db, at):
     """Atomic reservation, including owner/global daily AI budgets."""
     async with media._write(db):
@@ -262,6 +301,9 @@ async def _claim(db, at):
         global_attempts = await db.scalar(select(func.count(Occurrence.id)).where(Occurrence.ai_attempted_at >= day_start)) or 0
         for policy in policies:
             policy.last_checked_at = at
+            expired = await _record_expired_month(db, policy, at)
+            if expired:
+                return expired
             month, trigger, first = target_window(at, policy.timezone, policy.lead_days)
             if not trigger <= at < first or month < policy.first_target_month: continue
             previous = await db.scalar(select(Occurrence.id).where(Occurrence.owner_id == policy.owner_id, Occurrence.customer_id == policy.customer_id, Occurrence.platform == policy.platform, Occurrence.month == month).limit(1))
@@ -275,9 +317,9 @@ async def _claim(db, at):
                 source = await _source(db, ctx, customer, policy.platform, at, policy.lead_days)
                 if not source["can_enable"] or source["source_signature"] != policy.source_signature or source["runtime"]["fingerprint"] != policy.runtime_fingerprint or source["profile"].revision != policy.profile_revision:
                     raise HTTPException(409, "商家资料、账号、合作状态或AI服务已变化，请老板重新确认自动准备")
-                existing = await db.scalar(select(Run).where(Run.owner_id == policy.owner_id, Run.customer_id == policy.customer_id, Run.month == month, monthly.platform_clause(policy.platform)).order_by(Run.id.desc()).limit(1))
+                existing = await _existing_month(db, policy, month)
                 if existing:
-                    status = "existing" if existing.status in {"generated", "adopted"} else "unknown" if existing.status in {"generating", "unknown"} else "blocked"
+                    status = _existing_status(existing)
                     message = "本月已有原批次，保留原文案与审核安排，不重复生成"
             except HTTPException as exc:
                 status = "blocked"; message = str(exc.detail)[:300]; existing = None
