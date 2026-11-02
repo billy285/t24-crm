@@ -1,0 +1,34 @@
+{
+  "carrier": "928f517be094541434594212ad4a5ca3d5044ed0",
+  "command_sha256": {
+    "prepare-command.sh": "e89382cb2658a499c32830dfa7c2f51e1d891accf53d06d629fbb7729b07d3c9"
+  },
+  "executed": false,
+  "frontend_version": "6f71217e47f1",
+  "members": {
+    "artifacts/manifest.json": [
+      "manifest.json",
+      "b4139c1fb240c7a6d1bfe913be1b78aabba3457c1fa9543304dbe29b3dade0bf",
+      150636
+    ],
+    "artifacts/payload.tar.gz": [
+      "payload.tar.gz",
+      "7b5b12340dcedcaf52260db4296e15e75c6043d7a36f028389ed752ff747c73f",
+      2288125
+    ],
+    "preflight.py": [
+      "preflight.py",
+      "d0804c7a35074f7e71206ade76b8b428021e366da428c4fb151c1bdc7fb812ff",
+      8844
+    ],
+    "release.py": [
+      "release.py",
+      "eba0044e3ab176be9cd7235da48cb41d67d2940c617e226f30c80d6eeb756181",
+      19546
+    ]
+  },
+  "preflight_sha256": "6c8dcf5954a5ccac79b323dc40a67e001034e232d27505a55d101c451a103216",
+  "prepared_sha256": null,
+  "release": "/opt/t24-crm/releases/media-navigation-sticky-68fa8589101f-20261102",
+  "source_sha": "68fa8589101f4a3075141c910ec51fd86b9ec9ed"
+}

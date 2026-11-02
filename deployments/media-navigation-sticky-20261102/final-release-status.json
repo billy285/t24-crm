@@ -1,0 +1,111 @@
+{
+  "application_source_sha": "68fa8589101f4a3075141c910ec51fd86b9ec9ed",
+  "audit_scope": {
+    "author_performed_cloud_or_provider_actions": false,
+    "contains_merchant_names_captions_or_private_images": false,
+    "real_publication_requires_owner_confirmation": true,
+    "root_performed_deployment_and_production_ui_qa": true
+  },
+  "backend_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "deployment_carrier_sha": "928f517be094541434594212ad4a5ca3d5044ed0",
+  "frontend_version": "6f71217e47f1",
+  "pins": {
+    "application_freeze_sha256": "379ecf31eabbaee86be3d837992952cbf492c72979d19c3d031ed120fd321ea9",
+    "baseline_sha256": "6c8dcf5954a5ccac79b323dc40a67e001034e232d27505a55d101c451a103216",
+    "deployed_canonical_sha256": "a921c62e832ed0ede42409f3dab590303bfb5547af06addf7d30c2468c5bd5e4",
+    "helper_sha256": "eba0044e3ab176be9cd7235da48cb41d67d2940c617e226f30c80d6eeb756181",
+    "manifest_sha256": "b4139c1fb240c7a6d1bfe913be1b78aabba3457c1fa9543304dbe29b3dade0bf",
+    "payload_sha256": "7b5b12340dcedcaf52260db4296e15e75c6043d7a36f028389ed752ff747c73f",
+    "preflight_code_sha256": "d0804c7a35074f7e71206ade76b8b428021e366da428c4fb151c1bdc7fb812ff",
+    "prepared_canonical_sha256": "1958c97791a8785ed95e65f6548486f761a09b8c9fddd561ec432e7571e31e4d"
+  },
+  "preserved": {
+    "all169_table_definitions": true,
+    "all_backend_source": true,
+    "all_environment_worker_flags_credentials": true,
+    "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+    "environment_sha256": "c66484ab88783b45e42b22757a6b6e8e2effb706639415123c716445104690a8",
+    "finance_calculation_closing_commission_source": true,
+    "google_scheduler_activation_from": "2026-10-30T19:42:04Z",
+    "google_scheduler_enabled": true,
+    "meta_execution_enabled": false,
+    "meta_scheduler_enabled": false,
+    "monthly_auto_prep_enabled": true,
+    "ordered_environment_sha256": "9ecc4a543dc193736e08a8526f691722e68ecae9f8e0a206beb8d4f61d4329d0",
+    "permissions": true,
+    "private_boundary": true,
+    "runtime_config_id_image_started_at_restart_count": true,
+    "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4"
+  },
+  "release_mutations": {
+    "backend_or_worker_restart": false,
+    "database_migration": false,
+    "database_restore": false,
+    "database_writes": false,
+    "environment_changes": false,
+    "only_active_static_root_and_nginx_reload": true,
+    "permissions_changes": false,
+    "provider_or_publication_actions": false
+  },
+  "runtime_unchanged": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "restart": 0,
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "scope": {
+    "application_files": {
+      "app/frontend/src/components/media-merchant-workspace.css": "f3b3822f6f24ccb96c52385bbc63607badf40240b2a41c581f9fe1e87e0d9ca2"
+    },
+    "backend_file_count_unchanged": 432,
+    "business_rows_read_or_frozen": false,
+    "schema_revision": "i54af678a914",
+    "static_only": true,
+    "table_count_unchanged": 169
+  },
+  "stage": "MEDIA_NAVIGATION_STICKY_STATIC_DEPLOYED_AND_UI_ACCEPTED",
+  "static": {
+    "inventory_sha256": "23de6e842828ec137b75abbdf36663b77f1c3f2a69f59970c5dbbacb2a5caa30",
+    "nginx_sha256": "a8cbd5556d10436ef38351c075d87c1a98253ed766f5289f911aec703b8c007d",
+    "old_hashed_assets_preserved": true,
+    "public_root": "/var/www/t24-crm-public/media-navigation-sticky-68fa8589101f-20261102"
+  },
+  "validation": {
+    "all_frozen_carrier_bytes_verified_after_deploy": true,
+    "deployed_receipt_canonical_hash_recomputed": true,
+    "independent_release_review_passed": true,
+    "local_focused_tests_passed": 97,
+    "local_subtests_passed": 6,
+    "production_ui_acceptance_by_root": {
+      "desktop": {
+        "last_nav_bottom_after": 465,
+        "last_nav_clicked_and_aria_current_page": true,
+        "main_scroll_after": 627,
+        "nav_height": 591,
+        "nav_top_after": 93,
+        "nav_top_before": 93,
+        "viewport_width": 1280
+      },
+      "evidence_type": "root live production scroll and click measurements",
+      "mobile": {
+        "document_scroll_width": 390,
+        "last_button_clicked_and_active": true,
+        "last_button_left": 248,
+        "last_button_right": 368,
+        "main_scroll_after": 759,
+        "nav_top_after": 77,
+        "navigation_height": 60,
+        "navigation_horizontal_scroll": 272,
+        "six_buttons_same_row_y": 85,
+        "viewport_width": 390
+      },
+      "prior_observation": {
+        "desktop_main_scroll": 627,
+        "desktop_nav_height": 2151,
+        "desktop_nav_top_after": -534
+      },
+      "screenshots_in_public_artifacts": false
+    }
+  }
+}

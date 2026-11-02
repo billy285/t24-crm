@@ -1,0 +1,46 @@
+{
+  "all169_schema_preserved": true,
+  "backend_source_sha": "54e027aad00e81a4ebb747ada1299e7a10e1ec52",
+  "boundary": {
+    "backend_source_unchanged": true,
+    "business_rows_read_or_frozen": false,
+    "content_security_policy_unchanged": true,
+    "credentials_preserved": true,
+    "environment_sha256": "c66484ab88783b45e42b22757a6b6e8e2effb706639415123c716445104690a8",
+    "ordered_environment_sha256": "9ecc4a543dc193736e08a8526f691722e68ecae9f8e0a206beb8d4f61d4329d0",
+    "original169_schema_preserved": true,
+    "private_boundary_preserved": true,
+    "runtime": {
+      "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+      "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+      "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+      "restart": 0,
+      "started": "2026-11-02T07:13:16.110095163Z"
+    },
+    "schema_sha256": "7eb5fb2bee9bc5523e20bddca16542b2f465a715c073c20c8551d40aa63ec2b4"
+  },
+  "container_restarts": false,
+  "content_security_policy_unchanged": true,
+  "database_writes": false,
+  "environment_changes": false,
+  "frontend_version": "6f71217e47f1",
+  "old_hashed_assets_preserved": true,
+  "permissions_changes": false,
+  "preflight_sha256": "6c8dcf5954a5ccac79b323dc40a67e001034e232d27505a55d101c451a103216",
+  "prepared_sha256": "1958c97791a8785ed95e65f6548486f761a09b8c9fddd561ec432e7571e31e4d",
+  "provider_or_publication_actions": false,
+  "public_inventory_sha256": "23de6e842828ec137b75abbdf36663b77f1c3f2a69f59970c5dbbacb2a5caa30",
+  "public_root": "/var/www/t24-crm-public/media-navigation-sticky-68fa8589101f-20261102",
+  "receipt_sha256": "a921c62e832ed0ede42409f3dab590303bfb5547af06addf7d30c2468c5bd5e4",
+  "runtime": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "restart": 0,
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "schema_changes": false,
+  "source_sha": "68fa8589101f4a3075141c910ec51fd86b9ec9ed",
+  "stage": "MEDIA_NAVIGATION_STICKY_STATIC_DEPLOYED",
+  "static_only": true
+}
