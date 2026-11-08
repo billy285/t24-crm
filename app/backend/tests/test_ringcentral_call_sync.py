@@ -283,7 +283,8 @@ async def test_sales_call_report_uses_verified_provider_calls_for_connection_met
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     tables = [
         Employees.__table__, SalesLeads.__table__, SalesDailyDialTasks.__table__,
-        SalesCallActivities.__table__, RingCentralCallRecords.__table__, SalesLeadConversionLogs.__table__,
+        SalesCallActivities.__table__, RingCentralCallRecords.__table__, RingCentralConnections.__table__,
+        SalesLeadConversionLogs.__table__,
     ]
     async with engine.begin() as connection:
         await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))

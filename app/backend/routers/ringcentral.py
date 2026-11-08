@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from core.database import db_manager, get_db
 from dependencies.auth import get_current_user
@@ -34,6 +35,7 @@ from services.ringcentral import (
     webhook_verification_token,
 )
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
+from services.ringcentral_team import passive_connection_status, team_connection_statuses, connection_summary
 
 
 router = APIRouter(prefix="/api/ringcentral", tags=["ringcentral"])
@@ -55,53 +57,7 @@ def _ensure_sales_access(user: UserResponse) -> None:
 
 
 def _status_payload(connection: Optional[RingCentralConnections]) -> dict:
-    configured = connection_configured()
-    if not connection:
-        return {
-            "configured": configured,
-            "connected": False,
-            "degraded": False,
-            "needs_reconnect": False,
-            "realtime_sync_enabled": False,
-            "sync_health": "disconnected",
-            "authorization_status": "not_connected",
-            "message": "可连接 RingCentral" if configured else "等待系统管理员完成服务器凭证配置",
-        }
-    webhook_status = str(connection.webhook_subscription_status or "").strip().lower()
-    realtime_sync_enabled = bool(connection.is_active and webhook_status in HEALTHY_WEBHOOK_STATUSES)
-    degraded = bool(connection.is_active and (connection.last_error or (webhook_status and not realtime_sync_enabled)))
-    sync_health = (
-        "disconnected"
-        if not connection.is_active
-        else "enabled"
-        if realtime_sync_enabled
-        else "attention"
-        if degraded
-        else "pending"
-    )
-    return {
-        "configured": configured,
-        "connected": bool(connection.is_active),
-        "degraded": degraded,
-        "needs_reconnect": not bool(connection.is_active),
-        "realtime_sync_enabled": realtime_sync_enabled,
-        "sync_health": sync_health,
-        "authorization_status": "connected" if connection.is_active else "reconnect_required",
-        "extension_number": connection.extension_number,
-        "connected_at": connection.created_at,
-        "last_synced_at": connection.last_synced_at,
-        "last_error": connection.last_error,
-        "webhook_status": webhook_status or None,
-        "webhook_expires_at": connection.webhook_expires_at,
-        "last_event_at": connection.last_event_at,
-        "message": (
-            "RingCentral 已授权，但实时通话同步需要处理"
-            if connection.is_active and not realtime_sync_enabled
-            else "RingCentral 实时通话同步已启用"
-            if connection.is_active
-            else "RingCentral 授权已失效，请重新连接"
-        ),
-    }
+    return passive_connection_status(connection, configured=connection_configured())
 
 
 def _access_token(connection: RingCentralConnections) -> str:
@@ -143,6 +99,7 @@ async def _hydrate_call_log_later(employee_id: int, telephony_session_id: str | 
             )
             for record in records:
                 await upsert_call_log_record(db, connection, record)
+            connection.last_synced_at = datetime.now(timezone.utc)
             await db.commit()
         except HTTPException as exc:
             connection.last_error = str(exc.detail)
@@ -213,7 +170,6 @@ async def _refresh_connection_if_needed(
         webhook_status = str(connection.webhook_subscription_status or "").strip().lower()
         if not webhook_status or webhook_status in HEALTHY_WEBHOOK_STATUSES:
             connection.last_error = None
-        connection.last_synced_at = datetime.now(timezone.utc)
         await db.commit()
         return connection
 
@@ -231,7 +187,27 @@ async def ringcentral_status(
         )
     ).scalar_one_or_none()
     connection = await _refresh_connection_if_needed(employee_id, connection, db)
-    return _status_payload(connection)
+    items = await team_connection_statuses(db, [employee_id], configured=connection_configured())
+    return items[0] if items else {"employee_id": employee_id, **_status_payload(connection)}
+
+
+@router.get("/team-status")
+async def ringcentral_team_status(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_sales_access(current_user)
+    role = str(current_user.role or "").strip().lower()
+    query = select(Employees.id)
+    if role == "sales":
+        query = query.where(Employees.id == _employee_id(current_user))
+    else:
+        query = query.where(Employees.role == "sales", Employees.status.in_(["active", "probation"]))
+        if role == "sales_manager":
+            query = query.where(Employees.supervisor == (current_user.name or ""))
+    employee_ids = list((await db.execute(query)).scalars().all())
+    items = await team_connection_statuses(db, employee_ids, configured=connection_configured())
+    return {"items": items, "summary": connection_summary(items)}
 
 
 @router.get("/connect")
@@ -339,6 +315,7 @@ async def sync_ringcentral_call_log(
     for record in records:
         if await upsert_call_log_record(db, connection, record):
             synced += 1
+    connection.last_synced_at = datetime.now(timezone.utc)
     await db.commit()
     return {"synced": synced, "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
 
@@ -405,6 +382,17 @@ async def ringcentral_callback(
     employee_id = verify_oauth_state(state)
     token_payload = await exchange_authorization_code(code)
     profile = await get_extension_profile(str(token_payload.get("access_token") or ""))
+    account_id = str((profile.get("account") or {}).get("id") or "").strip()
+    extension_id = str(profile.get("id") or "").strip()
+    if not account_id or not extension_id:
+        return RedirectResponse(url="/sales-workbench?ringcentral=failed", status_code=302)
+    duplicate = (await db.execute(select(RingCentralConnections.id).where(
+        RingCentralConnections.ringcentral_account_id == account_id,
+        RingCentralConnections.ringcentral_extension_id == extension_id,
+        RingCentralConnections.employee_id != employee_id,
+    ))).first()
+    if duplicate:
+        return RedirectResponse(url="/sales-workbench?ringcentral=binding_conflict", status_code=302)
     connection = (
         await db.execute(select(RingCentralConnections).where(RingCentralConnections.employee_id == employee_id))
     ).scalar_one_or_none()
@@ -419,8 +407,14 @@ async def ringcentral_callback(
     connection.employee_name = crm_employee_name or " ".join(
         part for part in [contact.get("firstName"), contact.get("lastName")] if part
     ) or None
-    connection.ringcentral_account_id = str((profile.get("account") or {}).get("id") or "") or None
-    connection.ringcentral_extension_id = str(profile.get("id") or "") or None
+    if (connection.ringcentral_account_id, connection.ringcentral_extension_id) != (account_id, extension_id):
+        connection.last_synced_at = None
+        connection.last_event_at = None
+        connection.webhook_subscription_id = None
+        connection.webhook_subscription_status = None
+        connection.webhook_expires_at = None
+    connection.ringcentral_account_id = account_id
+    connection.ringcentral_extension_id = extension_id
     connection.extension_number = str(profile.get("extensionNumber") or "") or None
     connection.access_token_encrypted = encrypt_token(str(token_payload.get("access_token") or "")) or ""
     connection.refresh_token_encrypted = encrypt_token(token_payload.get("refresh_token"))
@@ -428,7 +422,19 @@ async def ringcentral_callback(
     connection.scopes = str(token_payload.get("scope") or "")
     connection.is_active = True
     connection.last_error = None
-    connection.last_synced_at = datetime.now(timezone.utc)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        # The DB identity constraint closes the race between concurrent OAuth
+        # callbacks that both passed the friendly duplicate preflight above.
+        reason = str(exc.orig).lower()
+        if "uq_ringcentral_connection_provider_identity" in reason or (
+            "ringcentral_connections.ringcentral_account_id" in reason
+            and "ringcentral_connections.ringcentral_extension_id" in reason
+        ):
+            return RedirectResponse(url="/sales-workbench?ringcentral=binding_conflict", status_code=302)
+        raise
     if connection.ringcentral_account_id and connection.ringcentral_extension_id:
         try:
             subscription = await create_telephony_subscription(

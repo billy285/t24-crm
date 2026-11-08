@@ -1,16 +1,19 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func, Index
 
 
 class RingCentralCallRecords(Base):
     """Provider-verified RingCentral call facts kept separate from sales outcomes."""
 
     __tablename__ = "ringcentral_call_records"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("uq_ringcentral_call_provider_identity", "ringcentral_account_id", "ringcentral_extension_id", "ringcentral_call_id", unique=True),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     provider_key = Column(String(255), nullable=False, unique=True, index=True)
-    ringcentral_call_id = Column(String, nullable=True, unique=True, index=True)
+    ringcentral_call_id = Column(String, nullable=True, index=True)
     ringcentral_session_id = Column(String, nullable=True, index=True)
     telephony_session_id = Column(String, nullable=True, index=True)
     ringcentral_account_id = Column(String, nullable=True, index=True)

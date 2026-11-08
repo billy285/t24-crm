@@ -1,0 +1,29 @@
+.sales-phone-connections{margin:14px 0;border:1px solid #dce5f1;border-radius:12px;background:#fff;color:#334155;font-size:13px;min-width:0}
+.sales-phone-connections summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;cursor:pointer;list-style:none}
+.sales-phone-connections summary::-webkit-details-marker{display:none}
+.sales-phone-connections summary>span{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px}
+.sales-phone-connections summary strong{color:#183153;font-size:14px}
+.sales-phone-connections summary small{font-size:12px;color:#64748b}
+.sales-phone-connections details[open] summary>svg{transform:rotate(180deg)}
+.sales-phone-body{padding:0 16px 16px;border-top:1px solid #eef2f6}
+.sales-phone-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:14px 0}
+.sales-phone-actions p{line-height:1.6;color:#64748b}
+.sales-phone-actions button{flex-shrink:0;gap:6px}
+.sales-phone-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}
+.sales-phone-grid article{border:1px solid #e2e8f0;border-radius:10px;padding:14px;min-width:0}
+.sales-phone-person{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
+.sales-phone-person strong{color:#183153;overflow-wrap:anywhere}
+.sales-phone-person small{font-weight:400}
+.sales-phone-person>span{border-radius:6px;padding:3px 7px;white-space:nowrap;font-size:11px}
+.sales-phone-person .ready{background:#ecfdf5;color:#047857}
+.sales-phone-person .attention{background:#fff7ed;color:#9a3412}
+.sales-phone-grid p{line-height:1.6;margin:5px 0;font-size:12px;overflow-wrap:anywhere}
+.sales-phone-grid .sales-phone-error{color:#9a3412}
+.sales-phone-grid .sales-phone-help{color:#64748b}
+.sales-phone-grid button{margin-top:8px}
+.sales-phone-footnote{font-size:12px;color:#64748b;line-height:1.7;margin-top:14px}
+.sales-phone-summary-warning,.sales-phone-warning{color:#92400e;background:#fffbeb;padding:10px 16px;font-size:12px;line-height:1.7}
+.sales-phone-summary-warning{border-radius:0 0 12px 12px}
+.sales-phone-warning{display:flex;gap:7px;margin-bottom:12px;border-radius:8px}
+.sales-phone-warning svg{flex-shrink:0;margin-top:3px}
+@media(max-width:640px){.sales-phone-connections summary>span{align-items:flex-start;flex-direction:column;gap:4px}.sales-phone-actions{align-items:flex-start;flex-direction:column}.sales-phone-body{padding:0 12px 12px}.sales-phone-grid{grid-template-columns:1fr}}

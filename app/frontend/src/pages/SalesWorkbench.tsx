@@ -17,6 +17,7 @@ import { useSalesLeadEnrichment, enrichmentError } from '@/lib/use-sales-lead-en
 import { validateEnrichmentUpdate, enrichmentWarningText } from '@/lib/sales-lead-enrichment';
 import { getCustomerDialValidation } from '@/lib/phone-dial';
 import SalesRecentHistory from '@/components/SalesRecentHistory';
+import SalesPhoneConnections from '@/components/SalesPhoneConnections';
 import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
 import { SalesTeamToday } from '@/components/SalesTeamPerformance';
 import '@/components/sales-center.css';
@@ -52,7 +53,7 @@ type HistoryItem = { id: number; outcome: string; outcome_label: string; notes?:
 type Analysis = { available: boolean; message?: string; analysis?: { warning?: string; cards: { title: string; content: string; kind: string; sources: { label: string; value?: string | number; updated_at?: string }[] }[] } };
 type RecoveryAlert = { lead_id: number; business_name: string; state: 'watch' | 'recoverable'; message: string; deadline?: string; extension_request?: { reason?: string } | null };
 type PersonalPerformance = { rank: number; score: number; confidence: string; score_breakdown: { execution: number; discipline: number; opportunity: number; results: number; documentation: number }; metrics: { completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
-type RingCentralStatus = { configured: boolean; connected: boolean; degraded?: boolean; needs_reconnect?: boolean; realtime_sync_enabled?: boolean; sync_health?: 'enabled' | 'attention' | 'pending' | 'disconnected'; authorization_status?: 'connected' | 'reconnect_required' | 'not_connected'; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string; webhook_status?: string; webhook_expires_at?: string; last_event_at?: string };
+type RingCentralStatus = { employee_id?: number; employee_name?: string; binding_conflict?: boolean; configured: boolean; connected: boolean; degraded?: boolean; needs_reconnect?: boolean; realtime_sync_enabled?: boolean; sync_health?: 'enabled' | 'attention' | 'pending' | 'disconnected'; authorization_status?: 'connected' | 'reconnect_required' | 'not_connected'; extension_number?: string; last_synced_at?: string; last_error?: string; message?: string; webhook_status?: string; webhook_expires_at?: string; last_event_at?: string };
 type RingCentralCallStatus = { available: boolean; sync_status: 'waiting' | 'event_received' | 'awaiting_call_log' | 'verified'; provider_status?: string; provider_result?: string; connected?: boolean; duration_seconds?: number; sales_employee_name?: string };
 type WorkbenchReturnContext = { filter?: string; selectedSalesId?: string; date?: string; leadId?: number; scrollY?: number };
 type SavedCallReceipt = { leadId: number; name: string; action?: 'quote' | 'followup'; nextFollowUpAt?: string };
@@ -470,7 +471,6 @@ function SalesWorkspace() {
     return () => { workbenchRequestRef.current += 1; };
   }, [selectedSalesId, date, canManage, role, teamView, assigneesLoaded, assigneeLoadError]);
   useEffect(() => {
-    if (teamView) return;
     void loadRingCentral();
     const url = new URL(window.location.href);
     const result = url.searchParams.get('ringcentral');
@@ -490,6 +490,7 @@ function SalesWorkspace() {
     if (result === 'connected') toast.success('RingCentral 已连接，已返回刚才的工作位置。');
     if (result === 'failed') toast.error('RingCentral 连接失败，已返回刚才的工作位置。');
     if (result === 'cancelled') toast.message('已取消 RingCentral 授权，已返回刚才的工作位置。');
+    if (result === 'binding_conflict') toast.error('该RingCentral分机已绑定其他员工，未更改原绑定。请使用分配给自己的账号连接。');
     if (!context.leadId && typeof context.scrollY === 'number') {
       window.requestAnimationFrame(() => window.scrollTo({ top: context.scrollY, behavior: 'smooth' }));
     }
@@ -760,7 +761,7 @@ function SalesWorkspace() {
     {canManage ? <label className="sc-date-control"><span className={isMobile ? '' : 'sr-only'}>当前销售</span><NativeSelect value={teamView ? '' : selectedSalesId} onChange={value => { if (value) openSalesTasks(Number(value)); else setTeamView(true); }} disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} options={[{ value: '', label: teamView ? '全部销售' : '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label> : <span className="sw-salesperson">{employee?.name}</span>}
   </>;
   const managerModes = canManage && <nav className="sw-mode-switch" aria-label="主管任务视角"><button type="button" aria-pressed={teamView} disabled={saving} onClick={() => setTeamView(true)}>团队</button><button type="button" aria-pressed={!teamView} disabled={saving} onClick={() => setTeamView(false)}>客户任务</button></nav>;
-  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => navigate('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem>{!teamView && <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>;
+  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => navigate('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
   const currentSalesName = canManage ? teamView ? isAdmin ? '全部销售' : '直属销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
   const viewingScope = teamView
     ? isAdmin ? '全部销售的团队任务' : '直属销售的团队任务'
@@ -782,6 +783,7 @@ function SalesWorkspace() {
       {!isMobile && <details className="sw-review"><summary>今日复盘</summary><div><span>有意向 <strong>{workbench?.performance.interested ?? '—'}</strong></span><span>已预约 <strong>{workbench?.performance.appointments ?? '—'}</strong></span><span>逾期 <strong>{overdueFollowUpCount}</strong></span></div></details>}
     </section>}
     </div>
+    <SalesPhoneConnections onConnectMine={() => void connectRingCentral()} />
     {!teamView && savedReceipt && <section className="sw-save-receipt" role="status" aria-label="上次保存结果"><CheckCircle2 size={17} /><span>已保存 · <strong>{savedReceipt.name}</strong>{savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}</span>{savedReceipt.action && <Button variant="outline" onClick={() => savedReceipt.action === 'quote' ? setDealLeadId(savedReceipt.leadId) : navigate(`/sales-leads?lead_id=${savedReceipt.leadId}&action=followup&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{savedReceipt.action === 'quote' ? '登记成交' : '查看跟进'}</Button>}</section>}
     {assigneeLoadError && <div className="sales-v3-alert" role="alert">销售人员暂时无法读取<Button size="sm" variant="outline" onClick={() => void loadAssignees()}>重新加载</Button></div>}
     {!teamView && auxiliaryErrors.length > 0 && <div className="sales-v3-alert" role="status">{auxiliaryErrors.join('、')}暂时无法更新，已保留最近读取的数据。<Button size="sm" variant="outline" onClick={() => void Promise.all([loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()])}>重试更新</Button></div>}
@@ -812,7 +814,7 @@ function SalesWorkspace() {
             {!enrichment.draft && enrichment.value?.warnings.length ? <p className="sw-enrichment-warning" role="status">{enrichmentWarningText(enrichment.value.warnings)}</p> : null}
             {focusedTask.lead.contact_protection?.can_contact === false && <div className="sw-enrichment-notice" role="status">{focusedTask.lead.contact_protection.reason}<Button size="sm" variant="ghost" onClick={() => setDossierId(focusedTask.lead.id)}>查看档案与交接</Button></div>}<SalesLocalTime {...contactWindow} /><SalesRecentHistory compact key={focusedTask.lead.id} leadId={focusedTask.lead.id} lastContactAt={focusedTask.lead.last_contact_at} onOpenAll={() => void openHistory(focusedTask)} formatDate={formatDate} />
           </section>
-          <SalesCallRecord key={draftKey} draftKey={draftKey} legacyDraftKey={legacyDraftKey} options={outcomeOptions} suggestedFollowUp={suggestedFollowUpValue} timezone={contactWindow.timezone} saving={saving} disabledReason={disabledReason} providerCall={null} onOpenKnowledge={() => setKnowledgeExpanded(true)} onSave={values => submitResult(focusedTask, values)} />
+          <SalesCallRecord key={draftKey} draftKey={draftKey} legacyDraftKey={legacyDraftKey} options={outcomeOptions} suggestedFollowUp={suggestedFollowUpValue} timezone={contactWindow.timezone} saving={saving} disabledReason={disabledReason} providerCall={currentProvider?.available ? currentProvider : null} onOpenKnowledge={() => setKnowledgeExpanded(true)} onSave={values => submitResult(focusedTask, values)} />
         </>}
       </div>
     </div>
@@ -824,7 +826,7 @@ function SalesWorkspace() {
 </CrmFormDialogContent></Dialog>
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
 <CrmFormDialogHeader><DialogTitle>拨号与任务设置</DialogTitle></CrmFormDialogHeader>
-<CrmFormDialogBody className="crm-sales-dialog-body"><div className="space-y-4"><div><h3>RingCentral</h3><p className="mt-2 text-sm text-slate-500">{ringCentral?.realtime_sync_enabled ? '实时通话同步已启用' : ringCentral?.last_error || ringCentral?.message || '官方通话状态待同步'}</p>{ringCentral?.configured && <Button className="mt-3" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</div>{canManage && <div><h3>每日任务配额</h3><div className="mt-3 flex gap-2"><Input aria-label="每日任务数量" className="w-24" type="number" min="1" max="300" value={quotaInput} onChange={event => setQuotaInput(event.target.value)} /><Button disabled={!selectedSalesId} onClick={() => void updateQuota()}>保存数量</Button></div></div>}</div></CrmFormDialogBody>
+<CrmFormDialogBody className="crm-sales-dialog-body"><div className="space-y-4"><div><h3>我的RingCentral连接</h3><p className="mt-2 text-sm text-slate-600">当前登录：{employee?.name}。连接只绑定当前登录员工，切换查看销售不会替该销售授权。每位销售应登录自己的CRM账号完成连接。</p>{ringCentral?.extension_number && <p className="mt-2 text-sm">已绑定分机：{ringCentral.extension_number}</p>}<p className="mt-2 text-sm text-slate-500">{ringCentral?.realtime_sync_enabled ? '实时通话同步已启用' : ringCentral?.last_error || ringCentral?.message || '官方通话状态待同步'}</p>{ringCentral?.configured && <Button className="mt-3" variant="outline" onClick={() => void connectRingCentral()}>{ringCentral.connected ? '检查 / 重连' : '连接 RingCentral'}</Button>}</div>{canManage && <div><h3>每日任务配额</h3><div className="mt-3 flex gap-2"><Input aria-label="每日任务数量" className="w-24" type="number" min="1" max="300" value={quotaInput} onChange={event => setQuotaInput(event.target.value)} /><Button disabled={!selectedSalesId} onClick={() => void updateQuota()}>保存数量</Button></div></div>}</div></CrmFormDialogBody>
 
 </CrmFormDialogContent></Dialog>
     <SalesLeadQuickEdit open={enrichment.open} onOpenChange={open => !saving && enrichment.setOpen(open)} leadId={enrichmentTask?.lead.id || null} value={enrichment.value} draft={enrichment.draft} onDraftChange={enrichment.changeDraft} onSave={enrichment.save} saving={saving} loading={enrichment.loading} error={enrichment.error} catalog={enrichment.catalog} history={enrichment.history} onLoadHistory={enrichment.loadHistory} onReload={enrichment.reload} draftNotice={enrichment.notice} />

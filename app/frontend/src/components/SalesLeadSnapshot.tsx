@@ -3,14 +3,14 @@ import { outcomeLabels, salesDate, type LeadInsight } from '@/lib/sales-intellig
 
 export function SalesLeadPulse({ stats, report, days, onCalls, loading }: {
   stats: { total: number; assigned: number; unassigned: number };
-  report: { summary: { provider_calls: number; connected: number; crm_records: number; interested: number; appointments: number }; period: { start_date: string; end_date: string } } | null;
+  report: { source?: { data_complete?: boolean }; summary: { provider_calls: number; connected: number; crm_records: number; interested: number; appointments: number }; period: { start_date: string; end_date: string } } | null;
   days: number; onCalls: () => void; loading: boolean;
 }) {
   const period = days === 1 ? '今日' : `近 ${days} 天`;
   return <section className="sl-pulse" aria-label="销售数据一览" aria-busy={loading}>
     <article><div><Users size={15} />线索总量<span>当前范围</span></div><strong>{loading ? '…' : stats.total}<small>家</small></strong><p>{loading ? '正在读取线索统计…' : <>已分配 <b>{stats.assigned}</b> 家 · 待分配 <b>{stats.unassigned}</b> 家</>}</p></article>
     <article className={stats.unassigned ? 'sl-pulse-attention' : ''}><div><UserRound size={15} />待分配线索<span>当前存量</span></div><strong>{loading ? '…' : stats.unassigned}<small>家</small></strong><p>{loading ? '正在读取分配情况…' : stats.unassigned ? '分配负责人后进入销售跟进' : '当前线索均已安排负责人'}</p></article>
-    <button type="button" onClick={onCalls} title={report ? `${report.period.start_date} 至 ${report.period.end_date}，点击查看通话明细` : '查看通话报告'}><div><PhoneCall size={15} />真实拨打<span>{period}</span><ArrowUpRight size={14} /></div><strong>{report ? report.summary.provider_calls : '—'}<small>次</small></strong><p>{report ? <>官方接通 <b>{report.summary.connected}</b> 次{report.summary.provider_calls > 0 && <> · 接通率 <b>{Math.round(report.summary.connected / report.summary.provider_calls * 100)}%</b></>}</> : '通话报告暂不可用'}</p></button>
+    <button type="button" onClick={onCalls} title={report ? `${report.period.start_date} 至 ${report.period.end_date}，点击查看通话明细` : '查看通话报告'}><div><PhoneCall size={15} />已同步拨打<span>{period}</span><ArrowUpRight size={14} /></div><strong>{report ? report.summary.provider_calls : '—'}<small>次</small></strong><p>{report ? <>官方接通 <b>{report.summary.connected}</b> 次{report.source?.data_complete !== true && <> · 覆盖待核验</>}{report.summary.provider_calls > 0 && <> · 接通率 <b>{Math.round(report.summary.connected / report.summary.provider_calls * 100)}%</b></>}</> : '通话报告暂不可用'}</p></button>
     <button type="button" onClick={onCalls}><div><MessagesSquare size={15} />跟进记录<span>{period}</span><ArrowUpRight size={14} /></div><strong>{report ? report.summary.crm_records : '—'}<small>条</small></strong><p>{report ? <>意向 <b>{report.summary.interested}</b> · 预约 <b>{report.summary.appointments}</b><span className="sl-record-unit"> 条结果</span></> : '跟进报告暂不可用'}</p></button>
   </section>;
 }

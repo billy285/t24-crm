@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -67,24 +68,36 @@ def _recording_uri(record: dict[str, Any]) -> str | None:
 
 async def _connection_for_event(db: AsyncSession, payload: dict[str, Any]) -> RingCentralConnections | None:
     body = payload.get("body") or {}
+    # Account+extension are the identity. A short extension number or a first
+    # matching row is insufficient in a multi-account sales team.
+    event_path = str(payload.get("event") or "")
+    account_match = re.search(r"/account/([^/?]+)", event_path)
+    extension_match = re.search(r"/extension/([^/?]+)", event_path)
+    accounts = {str(value).strip() for value in [payload.get("accountId"), body.get("accountId"),
+                account_match.group(1) if account_match else None] if value and str(value).strip() != "~"}
+    if len(accounts) > 1:
+        return None
+    account_id = next(iter(accounts), None)
+    path_extension = extension_match.group(1) if extension_match and extension_match.group(1) != "~" else None
     owner_id = str(payload.get("ownerId") or body.get("ownerId") or "").strip()
-    extension_ids = {owner_id}
-    for party in body.get("parties") or []:
-        extension_ids.add(str(party.get("extensionId") or "").strip())
-        extension_ids.add(str((party.get("extension") or {}).get("id") or "").strip())
+    extension_ids = {path_extension} if path_extension else {owner_id}
+    if not path_extension:
+        for party in body.get("parties") or []:
+            extension_ids.add(str(party.get("extensionId") or "").strip())
+            extension_ids.add(str((party.get("extension") or {}).get("id") or "").strip())
     extension_ids.discard("")
-    if extension_ids:
-        connection = (
-            await db.execute(
-                select(RingCentralConnections).where(
-                    RingCentralConnections.ringcentral_extension_id.in_(extension_ids),
-                    RingCentralConnections.is_active.is_(True),
-                )
-            )
-        ).scalars().first()
-        if connection:
-            return connection
-    return None
+    extension_ids.discard(None)
+    if not extension_ids:
+        return None
+    query = select(RingCentralConnections).where(RingCentralConnections.ringcentral_extension_id.in_(extension_ids))
+    if account_id:
+        query = query.where(RingCentralConnections.ringcentral_account_id == account_id)
+    candidates = (await db.execute(query)).scalars().all()
+    # Include inactive rows when checking ambiguity. Silently reusing a former
+    # colleague's extension must never reassign a provider event to a new owner.
+    if len(candidates) != 1 or not candidates[0].is_active:
+        return None
+    return candidates[0]
 
 
 async def _match_lead_and_task(
@@ -303,7 +316,7 @@ async def process_telephony_event(
         return None, False
     event_time = _parse_datetime(body.get("eventTime") or payload.get("timestamp")) or datetime.now(timezone.utc)
     started_at = _parse_datetime(body.get("startTime")) or event_time
-    provider_key = f"event:{connection.employee_id}:{key}"
+    provider_key = f"event:{connection.employee_id}:{connection.ringcentral_account_id}:{connection.ringcentral_extension_id}:{key}"
     item = (
         await db.execute(select(RingCentralCallRecords).where(RingCentralCallRecords.provider_key == provider_key))
     ).scalar_one_or_none()
@@ -350,6 +363,14 @@ async def upsert_call_log_record(
     connection: RingCentralConnections,
     record: dict[str, Any],
 ) -> RingCentralCallRecords | None:
+    if connection.ringcentral_account_id and connection.ringcentral_extension_id:
+        bindings = (await db.execute(select(RingCentralConnections.employee_id).where(
+            RingCentralConnections.ringcentral_account_id == connection.ringcentral_account_id,
+            RingCentralConnections.ringcentral_extension_id == connection.ringcentral_extension_id,
+        ))).scalars().all()
+        if len(bindings) > 1:
+            connection.last_error = "分机绑定冲突，已暂停自动归属，请联系管理员核对"
+            return None
     call_id = str(record.get("id") or "").strip()
     telephony_session_id = str(record.get("telephonySessionId") or "").strip()
     session_id = str(record.get("sessionId") or "").strip()
@@ -362,7 +383,11 @@ async def upsert_call_log_record(
     item = None
     if call_id:
         item = (
-            await db.execute(select(RingCentralCallRecords).where(RingCentralCallRecords.ringcentral_call_id == call_id))
+            await db.execute(select(RingCentralCallRecords).where(
+                RingCentralCallRecords.ringcentral_call_id == call_id,
+                RingCentralCallRecords.sales_employee_id == connection.employee_id,
+                RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
+                RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id))
         ).scalar_one_or_none()
     if not item and telephony_session_id:
         item = (
@@ -370,6 +395,8 @@ async def upsert_call_log_record(
                 select(RingCentralCallRecords).where(
                     RingCentralCallRecords.sales_employee_id == connection.employee_id,
                     RingCentralCallRecords.telephony_session_id == telephony_session_id,
+                    RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
+                    RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id,
                 ).order_by(RingCentralCallRecords.id.desc())
             )
         ).scalars().first()
@@ -381,7 +408,7 @@ async def upsert_call_log_record(
     if not item:
         lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone, started_at)
         item = RingCentralCallRecords(
-            provider_key=f"log:{connection.employee_id}:{key}",
+            provider_key=f"log:{connection.employee_id}:{connection.ringcentral_account_id}:{connection.ringcentral_extension_id}:{key}",
             sales_employee_id=connection.employee_id,
             sales_employee_name=employee_name,
             lead_id=lead.id if lead else None,

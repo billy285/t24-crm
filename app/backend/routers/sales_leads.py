@@ -36,6 +36,7 @@ from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import sync_pending_daily_tasks
+from services.ringcentral_team import team_connection_statuses
 from services.sales_workflow_locks import lock_sales_workflow
 from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_contact_protection import (
@@ -1833,7 +1834,10 @@ async def sales_call_report(
     if not salesperson_ids:
         return {
             "period": {"days": days, "start_date": start_date, "end_date": today},
-            "source": {"status": "no_salespeople", "label": "暂无可统计销售", "provider": "RingCentral"},
+            "source": {"status": "no_salespeople", "label": "暂无可统计销售", "provider": "RingCentral",
+                       "data_complete": False, "coverage_status": "unknown", "counts_observed": True,
+                       "message": "当前范围暂无可统计销售。"},
+            "connection_health": {"total": 0, "ready": 0, "attention": 0, "not_connected": 0, "needs_attention": 0, "never_synced": 0, "binding_conflicts": 0},
             "summary": {
                 "provider_calls": 0, "connected": 0, "not_connected": 0, "connection_rate": 0,
                 "total_talk_seconds": 0, "average_talk_seconds": 0, "crm_records": 0,
@@ -1847,6 +1851,17 @@ async def sales_call_report(
         select(Employees).where(Employees.id.in_(salesperson_ids))
     )).scalars().all()
     names = {employee.id: employee.name for employee in employees}
+    connection_items = await team_connection_statuses(db, salesperson_ids)
+    connections_by_sales = {item["employee_id"]: item for item in connection_items}
+    connection_health = {
+        "total": len(salesperson_ids),
+        "ready": sum(item["sync_health"] == "enabled" and bool(item.get("last_synced_at")) for item in connection_items),
+        "attention": sum(bool(item["connected"]) and (item["sync_health"] != "enabled" or not item.get("last_synced_at")) for item in connection_items),
+        "not_connected": sum(not item["connected"] for item in connection_items),
+        "never_synced": sum(not item.get("last_synced_at") for item in connection_items),
+        "binding_conflicts": sum(bool(item.get("binding_conflict")) for item in connection_items),
+    }
+    connection_health["needs_attention"] = connection_health["total"] - connection_health["ready"]
 
     provider_rows = (await db.execute(
         select(RingCentralCallRecords).where(
@@ -1913,8 +1928,16 @@ async def sales_call_report(
         linked_records = sum(bool(row.activity_id) for row in employee_provider)
         assigned = len(employee_tasks)
         completed = sum(row.status == "completed" for row in employee_tasks)
+        connection_status = connections_by_sales.get(sales_id, {})
         employee_items.append({
             "sales_employee_id": sales_id,
+            "connection_status": connection_status.get("sync_health", "disconnected"),
+            "extension_number": connection_status.get("extension_number"),
+            "last_synced_at": connection_status.get("last_synced_at"),
+            "needs_attention": connection_status.get("sync_health") != "enabled" or not connection_status.get("last_synced_at"),
+            "connection_message": connection_status.get("message", "请销售登录自己的账号连接 RingCentral。"),
+            "data_complete": False,
+            "coverage_status": "unknown",
             "salesperson": names.get(sales_id) or next((row.sales_employee_name for row in employee_provider if row.sales_employee_name), "未命名销售"),
             "provider_calls": len(employee_provider),
             "connected": connected,
@@ -1952,7 +1975,19 @@ async def sales_call_report(
             "status": "verified" if provider_calls else "waiting_provider_data",
             "label": "RingCentral 官方通话记录" if provider_calls else "统计期内暂无 RingCentral 官方通话记录",
             "provider": "RingCentral",
+            # Current authorization or an active webhook cannot prove historical
+            # coverage of the selected period. Until completed sync windows are
+            # persisted, these are observed records rather than a complete total.
+            "data_complete": False,
+            "coverage_status": "unknown",
+            "counts_observed": True,
+            "message": (
+                f"{connection_health['needs_attention']} 位销售未连接、尚未同步或连接需处理；当前数字仅为已同步的官方记录，不能据此判断实际拨打总量。"
+                if connection_health["needs_attention"]
+                else "当前连接可用；所选时段的完整同步覆盖尚未核验，当前数字仅为已同步的官方记录。"
+            ),
         },
+        "connection_health": connection_health,
         "summary": {
             "provider_calls": provider_calls,
             "connected": connected,

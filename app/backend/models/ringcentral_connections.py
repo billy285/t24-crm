@@ -1,12 +1,15 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func, Index
 
 
 class RingCentralConnections(Base):
     """Per-employee RingCentral OAuth connection kept separate from CRM records."""
 
     __tablename__ = "ringcentral_connections"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("uq_ringcentral_connection_provider_identity", "ringcentral_account_id", "ringcentral_extension_id", unique=True),
+        {"extend_existing": True},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     employee_id = Column(Integer, nullable=False, unique=True, index=True)
