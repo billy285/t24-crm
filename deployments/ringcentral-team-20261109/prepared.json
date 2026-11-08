@@ -1,0 +1,11 @@
+{
+  "candidate_image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+  "fallback_image": "sha256:f85e920e12c5eed9edc78ec8f67d8d9962548108f4f2c883bf02d725b7b2720d",
+  "manifest_sha256": "2201b8bdc780f751a3ef9f917eaa4d1a49e03070ab6fe54135030c8d40e5cd88",
+  "offline_candidate_ready": true,
+  "offline_fallback_ready": true,
+  "offline_row_preservation": true,
+  "public_root": "/var/www/t24-crm-public/ringcentral-team-18240e28774a-20261109",
+  "source_sha": "18240e28774a1ce6043d06d1f7f913af2e9a369e",
+  "stage": "PREPARED"
+}

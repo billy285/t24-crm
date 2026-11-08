@@ -1,0 +1,38 @@
+{
+  "status": "PASSED_FOR_THIS_SCOPE",
+  "date": "2026-11-09",
+  "timezone": "Asia/Shanghai",
+  "source_sha": "18240e28774a1ce6043d06d1f7f913af2e9a369e",
+  "frontend_version": "744d96d03ab6",
+  "backend_tests": 73,
+  "deployment_helper_tests": 7,
+  "production_clone_migration_and_startup": true,
+  "all_original_rows_preserved_in_production_migration": true,
+  "unrelated_schema_and_runtime_environment_preserved": true,
+  "desktop": {
+    "team_connection_panel": true,
+    "sales_extension_and_expired_state": true,
+    "settings_identifies_logged_in_employee": true,
+    "official_and_crm_report_separated": true,
+    "incomplete_sync_warning": true,
+    "zero_observed_calls_connection_rate_unknown": true
+  },
+  "mobile": {
+    "viewport_width": 390,
+    "document_scroll_width": 390,
+    "team_panel_expands": true,
+    "report_layout": true
+  },
+  "console_errors_observed": 0,
+  "limits": [
+    "Only existing owner session used for live UI; role isolation covered by synthetic backend tests.",
+    "No real RingCentral authorization or phone call performed; current sales connection requires reauthorization.",
+    "Historical coverage remains unverified until completed synchronization windows can be evidenced.",
+    "Unchanged Finance.tsx:5778 TS2322 remains in full typecheck; production frontend build succeeds."
+  ],
+  "transient_deployment_check": {
+    "initial_activate_check": "PUBLIC_FRONTEND_VERSION_MISMATCH after nginx reload",
+    "resolution": "Exact candidate and schema were healthy; separate finalizer revalidated all boundaries and observed three matching fresh/default frontend versions. No second migration or restart required."
+  },
+  "screenshots": "Retained only in local task outputs, not repository."
+}

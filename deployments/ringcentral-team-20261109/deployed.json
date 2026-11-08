@@ -1,0 +1,23 @@
+{
+  "environment_preserved": true,
+  "frontend_version": "744d96d03ab6",
+  "original_rows_preserved_during_migration": true,
+  "private_services_preserved": true,
+  "public_root": "/var/www/t24-crm-public/ringcentral-team-18240e28774a-20261109",
+  "receipt_finalized_after_fresh_public_checks": true,
+  "retained_original": "t24-crm-before-ringcentral-18240e28774a",
+  "runtime": {
+    "config": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+    "id": "e9bbff96bcdf37636e4c8d25d8ecc0eb9db15a1bb6623075b91ec81795f8f9b2",
+    "image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+    "started": "2026-11-08T17:16:10.128244244Z"
+  },
+  "schema_revision": "j65bc789b025",
+  "source_sha": "18240e28774a1ce6043d06d1f7f913af2e9a369e",
+  "stable_public_versions": [
+    "744d96d03ab6",
+    "744d96d03ab6",
+    "744d96d03ab6"
+  ],
+  "stage": "DEPLOYED"
+}

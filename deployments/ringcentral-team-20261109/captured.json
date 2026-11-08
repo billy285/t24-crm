@@ -1,0 +1,15 @@
+{
+  "backend_files": 430,
+  "baseline_sha256": "b7e9b24d08973e035b8e469f8b1f56750cd5e91e5b2ea2f331f6276e291c9dae",
+  "private_services_preserved": true,
+  "public_root": "/var/www/t24-crm-public/media-ops-ui-refined-835be7a06d61-20261102",
+  "runtime": {
+    "config": "e910c0852b1a2dbe12474ed55040544feb85dc3dfd037ef603c94d86bea5b84a",
+    "id": "6f826ade371a37fbf405c2e90ee405abb4e7d5ad5c9344139cb65a46596e5757",
+    "image": "sha256:1b6caabf90c809def8e180811336ebdc12e49305ad0f11bf4126730790d09bee",
+    "started": "2026-11-02T07:13:16.110095163Z"
+  },
+  "schema_objects": 591,
+  "schema_revision": "i54af678a914",
+  "stage": "CAPTURED"
+}

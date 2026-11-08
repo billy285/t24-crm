@@ -1,0 +1,9 @@
+RingCentral team deployment completed 2026-11-09 Asia/Shanghai.
+Application source:18240e28774a1ce6043d06d1f7f913af2e9a369e
+Carrier:f0d6da33c6b5a6038fd396f68d82d98ca90b34ba
+Schema:j65bc789b025
+Frontend:744d96d03ab6
+73 backend tests and7 release-helper tests passed. Production clone migration/full app startup and row preservation passed; active runtime/env/private services and desktop/mobile UI verified.
+The first activation frontend check observed an nginx reload transition; finalize.py performed exact read-only boundary validation plus stable default/cachebusted version checks before writing deployed.json. No repeated activation or database restore.
+No provider authorization/call was initiated. Each salesperson must connect their own assigned RingCentral account through their CRM login, then validate real call flow.
+Runtime uses an immutable candidate image cloned from the original configuration. Host source directory and Compose image defaults were not rewritten; use the active image/source in deployed.json for future deployments. Retained original+forward-compatible fallback and private DB backup remain on the server. Do not restart the old image against the new schema or downgrade/delete call evidence.
