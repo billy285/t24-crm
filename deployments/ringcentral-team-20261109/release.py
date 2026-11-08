@@ -8,7 +8,7 @@ import argparse, copy, fcntl, hashlib, http.client, io, json, os, re, shutil, so
 from pathlib import Path
 
 HOST = 'iZj6c4cj7edgnhdimts4l7Z'
-SOURCE = '3b2c9419c45bb28ac175a4257086414c43adc601'
+SOURCE = '18240e28774a1ce6043d06d1f7f913af2e9a369e'
 OLD = 'i54af678a914'
 NEW = 'j65bc789b025'
 DB = Path('/opt/t24-crm/app/data/crm_prod.db')
@@ -77,7 +77,7 @@ def revision(path):
   rows=c.execute('select version_num from alembic_version').fetchall();need(len(rows)==1,'SINGLE_SCHEMA_HEAD_REQUIRED');return rows[0][0]
  finally:c.close()
 
-def snapshot(path):
+def snapshot(path, project_binding_fence=False):
  c=sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True)
  try:
   c.execute('BEGIN')
@@ -87,7 +87,9 @@ def snapshot(path):
    if name=='alembic_version':continue
    q='"'+name.replace('"','""')+'"'
    cols=[v[1] for v in c.execute('PRAGMA table_info('+q+')')]
-   rows=sorted(json.dumps(list(v),ensure_ascii=True,default=lambda b:bytes(b).hex(),separators=(',',':')) for v in c.execute('SELECT * FROM '+q))
+   if project_binding_fence and name=='ringcentral_connections':cols=[col for col in cols if col!='binding_started_at']
+   select=','.join(chr(34)+col.replace(chr(34),chr(34)*2)+chr(34) for col in cols)
+   rows=sorted(json.dumps(list(v),ensure_ascii=True,default=lambda b:bytes(b).hex(),separators=(',',':')) for v in c.execute('SELECT '+select+' FROM '+q))
    result[name]={'columns':cols,'count':len(rows),'rows_sha256':H('\n'.join(rows).encode())}
   return result
  finally:c.close()
@@ -100,14 +102,29 @@ def schema(path):
 def validate_schema(before,after):
  # Only the two RingCentral tables' indexes/possible constraint representation
  # may change. Every unrelated table, index, trigger and view must stay exact.
- allowed={'ringcentral_connections','ringcentral_call_records'}
- a=[v for v in before if v[2] not in allowed]
- b=[v for v in after if v[2] not in allowed]
+ allowed_tables={'ringcentral_connections','ringcentral_call_records'}
+ allowed_indexes={'uq_ringcentral_connection_provider_identity','uq_ringcentral_call_provider_identity','ix_ringcentral_call_records_ringcentral_call_id'}
+ permitted=lambda v:v[0]=='table' and v[2] in allowed_tables or v[0]=='index' and v[1] in allowed_indexes
+ a=[v for v in before if not permitted(v)]
+ b=[v for v in after if not permitted(v)]
  need(a==b,'UNRELATED_SCHEMA_CHANGED')
  rows={v[1]:v for v in after if v[0]=='index'}
  for name in ('uq_ringcentral_connection_provider_identity','uq_ringcentral_call_provider_identity','ix_ringcentral_call_records_ringcentral_call_id'):
   need(name in rows,'EXPECTED_PROVIDER_INDEX_MISSING')
  need('UNIQUE' not in (rows['ix_ringcentral_call_records_ringcentral_call_id'][3] or '').upper(),'OLD_GLOBAL_CALL_ID_UNIQUENESS_REMAINED')
+ binding_sql=rows['uq_ringcentral_connection_provider_identity'][3] or ''
+ need('UNIQUE INDEX' in binding_sql.upper() and re.search(r'WHERE\s+is_active\s*=\s*1\s*$',binding_sql,re.I),'ACTIVE_ONLY_BINDING_UNIQUENESS_REQUIRED')
+ table_sql=next((v[3] or '' for v in after if v[0]=='table' and v[1]=='ringcentral_connections'),'')
+ need(re.search(r'\bbinding_started_at\b',table_sql),'BINDING_FENCE_COLUMN_REQUIRED')
+
+def validate_binding_fence(path):
+ c=sqlite3.connect('file:'+str(path)+'?mode=ro',uri=True)
+ try:
+  fields={v[1]:v for v in c.execute('PRAGMA table_info(ringcentral_connections)')}
+  field=fields.get('binding_started_at')
+  need(field is not None and str(field[2]).upper()=='DATETIME' and field[3]==0 and field[4] is None,'EXACT_NULLABLE_BINDING_FENCE_REQUIRED')
+  need(c.execute('SELECT count(*) FROM ringcentral_connections WHERE binding_started_at IS NOT NULL').fetchone()[0]==0,'HISTORICAL_BINDING_FENCE_MUST_REMAIN_NULL')
+ finally:c.close()
 
 def backup(source,target):
  need(not target.exists(),'FRESH_DB_BACKUP_REQUIRED')
@@ -214,11 +231,14 @@ class Release:
   # Do not silently lose durable state hidden in the writable container layer.
   # Parent directory metadata, bytecode and temporary runtime files are benign;
   # every other live-only file requires explicit review before a new image.
+  mount_metadata=set()
+  for mount in old['Mounts']:
+   target=Path(mount['Destination']);mount_metadata.add(str(target));mount_metadata.update(str(parent) for parent in target.parents)
   forbidden=[]
   for line in overlay:
    need(len(line)>2 and line[0] in 'ACD' and line[1]==' ','DOCKER_DIFF_FORMAT_REJECTED')
    name=line[2:]
-   benign=(name in {'/app','/app/backend','/tmp','/run','/var','/var/tmp','/root','/root/.cache'}
+   benign=(name in mount_metadata or name in {'/app','/app/backend','/tmp','/run','/var','/var/tmp','/root','/root/.cache'}
     or name.startswith(('/tmp/','/var/tmp/','/root/.cache/','/app/backend/logs/','/app/backend/data/'))
     or '/__pycache__' in name or name.endswith('.pyc'))
    if not benign:forbidden.append(name)
@@ -313,7 +333,7 @@ class Release:
   data=self.root/'probe-data';data.mkdir(mode=0o700);(self.root/'probe-logs').mkdir(mode=0o700)
   backup(DB,data/'crm_prod.db');before=snapshot(data/'crm_prod.db');before_schema=schema(data/'crm_prod.db')
   self.migrate(data,candidate,'offline');need(revision(data/'crm_prod.db')==NEW,'OFFLINE_HEAD_MISMATCH')
-  need(snapshot(data/'crm_prod.db')==before,'OFFLINE_MIGRATION_CHANGED_ROWS');after_schema=schema(data/'crm_prod.db');validate_schema(before_schema,after_schema)
+  need(snapshot(data/'crm_prod.db',project_binding_fence=True)==before,'OFFLINE_MIGRATION_CHANGED_ROWS');after_schema=schema(data/'crm_prod.db');validate_schema(before_schema,after_schema);validate_binding_fence(data/'crm_prod.db')
   self.probe(data,candidate,'candidate');self.probe(data,fallback,'fallback')
   self.stage_public();self.boundary()
   v={'stage':'PREPARED','source_sha':SOURCE,'manifest_sha256':self.args.manifest_sha256,'candidate_image':candidate,'fallback_image':fallback,'schema_after':after_schema,'public_root':str(self.public),'offline_row_preservation':True,'offline_candidate_ready':True,'offline_fallback_ready':True}
@@ -338,7 +358,7 @@ class Release:
   backup(DB,self.root/'production-before.db');before=snapshot(DB);before_schema=schema(DB);write(self.root/'production-row-evidence-before.json',before)
   need(before_schema==self.baseline()['schema'] and revision(DB)==OLD,'PRODUCTION_SCHEMA_CHANGED')
   # No app can write until migration has exited and row-preservation is proven.
-  self.migrate(DB.parent,p['candidate_image'],'production');need(revision(DB)==NEW,'PRODUCTION_HEAD_MISMATCH');need(snapshot(DB)==before,'PRODUCTION_MIGRATION_CHANGED_ROWS');need(schema(DB)==p['schema_after'],'PRODUCTION_SCHEMA_DIFFERS_FROM_REHEARSAL')
+  self.migrate(DB.parent,p['candidate_image'],'production');need(revision(DB)==NEW,'PRODUCTION_HEAD_MISMATCH');need(snapshot(DB,project_binding_fence=True)==before,'PRODUCTION_MIGRATION_CHANGED_ROWS');need(schema(DB)==p['schema_after'],'PRODUCTION_SCHEMA_DIFFERS_FROM_REHEARSAL');validate_binding_fence(DB)
   write(self.root/'production-migrated.json',{'schema_revision':NEW,'original_rows_preserved':True,'row_evidence_sha256':digest(before)})
   retained='t24-crm-before-ringcentral-'+SOURCE[:12];run(['docker','rename',old['Id'],retained],'RETAIN_ORIGINAL_FAILED')
   candidate=create('t24-crm',p['candidate_image'],old);write(self.root/'candidate.json',{'id':candidate,'retained':retained});run(['docker','start',candidate],'CANDIDATE_START_FAILED')

@@ -9,13 +9,13 @@
     "services/ringcentral_team.py": null
   },
   "files": {
-    "backend/alembic/versions/j65bc789b025_ringcentral_provider_identity.py": "b3d1b043e2ccd2e3e03a90c821c45f360ba54391a53995f00032e3510c3fdad3",
+    "backend/alembic/versions/j65bc789b025_ringcentral_provider_identity.py": "1eb0933cbb7b614a1af99ef12236feb503cf98aa2abe7ddab67075d345cd16b5",
     "backend/models/ringcentral_call_records.py": "1294303bd21bb2e63f13a6429a0541e8ebc4e69d3b307b151872ab3019f2bde2",
-    "backend/models/ringcentral_connections.py": "7a2955d91cf675a5e69614ed68742123e252c3c52eb69936c7b16ad54d325ddb",
-    "backend/routers/ringcentral.py": "2c3c8b859b8b2a9ebe1495d93036ba3a22faa878857ef308ee728cc4828db4e5",
+    "backend/models/ringcentral_connections.py": "6810558ecf08e5642093b19b1a6ae0f30369ffaf0507a7fe45fc6e1e2d93df3d",
+    "backend/routers/ringcentral.py": "c91386d86fa8841bf626a1592e52b7ddd8ebef7c9e36b5bfc0c4701e53834e54",
     "backend/routers/sales_leads.py": "05b094cb2d5d924fbebdb466a353dafdc483ca9ecf01c40d30ff0d85f4da0950",
-    "backend/services/ringcentral_sync.py": "4e044abec17412ae8e397286517b5296bf7cecdc50b3b4a63c85fbf1a60612c9",
-    "backend/services/ringcentral_team.py": "f82577057207bfb13831fdc0339eb863719a9dcb163536cf55e76a5b4549a3ef",
+    "backend/services/ringcentral_sync.py": "703fc4d49dac9d731d7860084d67652412f5ca1a3cd957133ecfbc11b7b39b99",
+    "backend/services/ringcentral_team.py": "a1783155c515bfd508991869108b83ceb5ff7996fe4844a6c5cb6cb565368f39",
     "static/app-version.json": "74f5114d7d0c275adbb812a2939019e5db274443772551066c2caed6feaa17cf",
     "static/apple-touch-icon.png": "f8738c81ffd4ad03e9f73cc60fa42f0556409e624c40078dd0343003795385fa",
     "static/assets/App-CixfeuUa.css": "f39d69dee40a5ec202b24ba91757bbd7584b779cf453eb1b38270405df7d9caf",
@@ -159,6 +159,6 @@
     "static/t2-marketing-logo.png": "57f3e5e0d7ce6fda1621042957e796bfec4527dba42e0e8eeaacdcbe3efaa2ec"
   },
   "frontend_version": "744d96d03ab6",
-  "payload_sha256": "2530fcd0c19586484a2019010970996a8cfd3e6a50feca901cb9594d70716831",
-  "source_sha": "3b2c9419c45bb28ac175a4257086414c43adc601"
+  "payload_sha256": "ae3e3d6cce90882d3e10f294db5ebfe778221cb4ed2ed59dd933f0e024d00039",
+  "source_sha": "18240e28774a1ce6043d06d1f7f913af2e9a369e"
 }

@@ -7,9 +7,9 @@ spec=importlib.util.spec_from_file_location('r',Path(__file__).with_name('releas
 class ReleaseTests(unittest.TestCase):
  def test_schema_json_roundtrip_and_unrelated_schema(self):
   with tempfile.TemporaryDirectory() as raw:
-   path=Path(raw)/'db.sqlite';c=sqlite3.connect(path);c.executescript('CREATE TABLE employees(id INTEGER PRIMARY KEY,name TEXT);CREATE TABLE ringcentral_call_records(id INTEGER PRIMARY KEY,ringcentral_account_id TEXT,ringcentral_extension_id TEXT,ringcentral_call_id TEXT);CREATE TABLE ringcentral_connections(id INTEGER PRIMARY KEY,ringcentral_account_id TEXT,ringcentral_extension_id TEXT);');c.close()
+   path=Path(raw)/'db.sqlite';c=sqlite3.connect(path);c.executescript('CREATE TABLE employees(id INTEGER PRIMARY KEY,name TEXT);CREATE TABLE ringcentral_call_records(id INTEGER PRIMARY KEY,ringcentral_account_id TEXT,ringcentral_extension_id TEXT,ringcentral_call_id TEXT);CREATE TABLE ringcentral_connections(id INTEGER PRIMARY KEY,ringcentral_account_id TEXT,ringcentral_extension_id TEXT,is_active BOOLEAN);');c.close()
    before=r.schema(path);self.assertEqual(before,json.loads(json.dumps(before)))
-   c=sqlite3.connect(path);c.executescript('CREATE UNIQUE INDEX uq_ringcentral_connection_provider_identity ON ringcentral_connections(ringcentral_account_id,ringcentral_extension_id);CREATE UNIQUE INDEX uq_ringcentral_call_provider_identity ON ringcentral_call_records(ringcentral_account_id,ringcentral_extension_id,ringcentral_call_id);CREATE INDEX ix_ringcentral_call_records_ringcentral_call_id ON ringcentral_call_records(ringcentral_call_id);');c.close();after=r.schema(path)
+   c=sqlite3.connect(path);c.executescript('ALTER TABLE ringcentral_connections ADD COLUMN binding_started_at DATETIME;CREATE UNIQUE INDEX uq_ringcentral_connection_provider_identity ON ringcentral_connections(ringcentral_account_id,ringcentral_extension_id) WHERE is_active = 1;CREATE UNIQUE INDEX uq_ringcentral_call_provider_identity ON ringcentral_call_records(ringcentral_account_id,ringcentral_extension_id,ringcentral_call_id);CREATE INDEX ix_ringcentral_call_records_ringcentral_call_id ON ringcentral_call_records(ringcentral_call_id);');c.close();after=r.schema(path)
    r.validate_schema(before,after)
    c=sqlite3.connect(path);c.execute('CREATE INDEX accidental_employee_change ON employees(name)');c.close()
    with self.assertRaisesRegex(RuntimeError,'UNRELATED_SCHEMA_CHANGED'):r.validate_schema(before,r.schema(path))
@@ -18,6 +18,18 @@ class ReleaseTests(unittest.TestCase):
    path=Path(raw)/'db.sqlite';c=sqlite3.connect(path);c.executescript("CREATE TABLE alembic_version(version_num TEXT);INSERT INTO alembic_version VALUES('old');CREATE TABLE ringcentral_connections(id INTEGER PRIMARY KEY,secret TEXT);INSERT INTO ringcentral_connections VALUES(1,'PRIVATE_TOKEN');");c.close()
    before=r.snapshot(path);self.assertNotIn('PRIVATE_TOKEN',json.dumps(before));c=sqlite3.connect(path);c.execute("UPDATE alembic_version SET version_num='new'");c.commit();c.close();self.assertEqual(before,r.snapshot(path))
    c=sqlite3.connect(path);c.execute("UPDATE ringcentral_connections SET secret='OTHER_PRIVATE_TOKEN'");c.commit();c.close();self.assertNotEqual(before,r.snapshot(path))
+ def test_binding_fence_projection_preserves_every_old_value_and_column(self):
+  with tempfile.TemporaryDirectory() as raw:
+   path=Path(raw)/'db.sqlite';c=sqlite3.connect(path);c.executescript("CREATE TABLE ringcentral_connections(id INTEGER PRIMARY KEY,secret TEXT,is_active BOOLEAN);INSERT INTO ringcentral_connections VALUES(1,'PRIVATE_TOKEN',0);");c.close()
+   before=r.snapshot(path);c=sqlite3.connect(path);c.execute('ALTER TABLE ringcentral_connections ADD COLUMN binding_started_at DATETIME');c.close()
+   self.assertEqual(before,r.snapshot(path,project_binding_fence=True));self.assertNotEqual(before,r.snapshot(path));r.validate_binding_fence(path)
+   c=sqlite3.connect(path);c.execute("UPDATE ringcentral_connections SET binding_started_at='2026-11-09T00:00:00Z'");c.commit();c.close()
+   with self.assertRaisesRegex(RuntimeError,'HISTORICAL_BINDING_FENCE_MUST_REMAIN_NULL'):r.validate_binding_fence(path)
+ def test_binding_fence_projection_does_not_hide_other_column_or_value_changes(self):
+  with tempfile.TemporaryDirectory() as raw:
+   path=Path(raw)/'db.sqlite';c=sqlite3.connect(path);c.executescript("CREATE TABLE ringcentral_connections(id INTEGER PRIMARY KEY,secret TEXT);INSERT INTO ringcentral_connections VALUES(1,'PRIVATE_TOKEN');");c.close()
+   before=r.snapshot(path);c=sqlite3.connect(path);c.execute('ALTER TABLE ringcentral_connections ADD COLUMN binding_started_at DATETIME');c.execute("UPDATE ringcentral_connections SET secret='CHANGED_TOKEN'");c.commit();c.close();self.assertNotEqual(before,r.snapshot(path,project_binding_fence=True))
+   c=sqlite3.connect(path);c.execute("UPDATE ringcentral_connections SET secret='PRIVATE_TOKEN'");c.execute('ALTER TABLE ringcentral_connections ADD COLUMN unexpected INTEGER');c.commit();c.close();self.assertNotEqual(before,r.snapshot(path,project_binding_fence=True))
  def recover_case(self,rev,migration=False):
   temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup);root=Path(temp.name);(root/'activation-started.json').write_text('{}');(root/'prepared.json').write_text(json.dumps({'candidate_image':'candidate-image','fallback_image':'fallback-image'}));(root/'nginx-before.conf').write_bytes(b'OLD_NGINX')
   if migration:(root/'migration-production.json').write_text(json.dumps({'id':'migration'}))
