@@ -168,7 +168,7 @@ async def test_same_number_followup_attempt_ambiguity_never_falls_back_to_origin
 async def test_delayed_provider_log_links_new_attempt_result_not_completed_task_result():
     async with database() as db:
         db.add(Employees(id=11, user_id="11", name="Sales", role="sales", status="active"))
-        connection = RingCentralConnections(employee_id=11, access_token_encrypted="test-only", is_active=True)
+        connection = RingCentralConnections(employee_id=11, ringcentral_account_id="synthetic-account", ringcentral_extension_id="synthetic-extension", access_token_encrypted="test-only", is_active=True)
         db.add(connection)
         lead = await add_lead(db)
         task = await add_task(db, lead, phone=NEW_PHONE)
@@ -330,7 +330,7 @@ async def test_followup_requires_unique_matching_number_and_time_not_latest_note
 async def test_verified_delayed_call_updates_only_original_completed_activity_after_transfer():
     async with database() as db:
         db.add(Employees(id=11, user_id="11", name="Original sales", role="sales", status="active"))
-        connection = RingCentralConnections(employee_id=11, employee_name="Original sales",
+        connection = RingCentralConnections(employee_id=11, ringcentral_account_id="synthetic-account", ringcentral_extension_id="synthetic-extension", employee_name="Original sales",
                                              access_token_encrypted="test-only", is_active=True)
         db.add(connection)
         lead = await add_lead(db, owner=12)
@@ -356,7 +356,7 @@ async def test_verified_delayed_call_updates_only_original_completed_activity_af
 async def test_stale_call_without_task_does_not_overwrite_recent_activity():
     async with database() as db:
         db.add(Employees(id=11, user_id="11", name="Sales", role="sales", status="active"))
-        connection = RingCentralConnections(employee_id=11, access_token_encrypted="test-only", is_active=True)
+        connection = RingCentralConnections(employee_id=11, ringcentral_account_id="synthetic-account", ringcentral_extension_id="synthetic-extension", access_token_encrypted="test-only", is_active=True)
         db.add(connection)
         lead = await add_lead(db, phone=OLD_PHONE)
         recent = await add_activity(db, lead, called_at=CALL_TIME + timedelta(days=2))

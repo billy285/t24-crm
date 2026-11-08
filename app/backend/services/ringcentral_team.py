@@ -42,7 +42,8 @@ def passive_connection_status(connection, *, configured=True, binding_conflict=F
     return dict(configured=configured, connected=active, degraded=health == "attention",
                 needs_reconnect=not active or not identity_complete, realtime_sync_enabled=ready, sync_health=health,
                 authorization_status="connected" if active else "reconnect_required",
-                extension_number=connection.extension_number, connected_at=connection.created_at,
+                extension_number=connection.extension_number, connected_at=connection.binding_started_at or connection.created_at,
+                binding_started_at=connection.binding_started_at,
                 last_synced_at=connection.last_synced_at, last_event_at=connection.last_event_at,
                 last_error=connection.last_error, webhook_status=webhook_status or None,
                 webhook_expires_at=connection.webhook_expires_at, binding_conflict=binding_conflict, message=message)
@@ -54,16 +55,16 @@ async def team_connection_statuses(db: AsyncSession, employee_ids: list[int], *,
         return []
     employees = (await db.execute(select(Employees).where(Employees.id.in_(employee_ids))
                                  .order_by(Employees.name, Employees.id))).scalars().all()
-    # Historical/inactive connections remain reserved until an explicit audited
-    # reassignment exists. Only counts are used; other teams' names never escape.
+    # Inactive authorizations remain historical records, not current owners.
+    # Only active binding counts are used; other teams' names never escape.
     connections = (await db.execute(select(RingCentralConnections))).scalars().all()
     counts = Counter((row.ringcentral_account_id, row.ringcentral_extension_id) for row in connections
-                     if row.ringcentral_account_id and row.ringcentral_extension_id)
+                     if row.is_active and row.ringcentral_account_id and row.ringcentral_extension_id)
     by_employee = {row.employee_id: row for row in connections}
     items = []
     for employee in employees:
         connection = by_employee.get(employee.id)
-        conflict = bool(connection and connection.ringcentral_account_id and connection.ringcentral_extension_id
+        conflict = bool(connection and connection.is_active and connection.ringcentral_account_id and connection.ringcentral_extension_id
                         and counts[(connection.ringcentral_account_id, connection.ringcentral_extension_id)] > 1)
         items.append(dict(employee_id=employee.id, employee_name=employee.name,
                           **passive_connection_status(connection, configured=configured, binding_conflict=conflict)))

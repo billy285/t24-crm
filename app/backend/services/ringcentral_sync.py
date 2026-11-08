@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.employees import Employees
@@ -89,12 +89,14 @@ async def _connection_for_event(db: AsyncSession, payload: dict[str, Any]) -> Ri
     extension_ids.discard(None)
     if not extension_ids:
         return None
-    query = select(RingCentralConnections).where(RingCentralConnections.ringcentral_extension_id.in_(extension_ids))
+    query = select(RingCentralConnections).where(
+        RingCentralConnections.ringcentral_extension_id.in_(extension_ids),
+        RingCentralConnections.is_active.is_(True))
     if account_id:
         query = query.where(RingCentralConnections.ringcentral_account_id == account_id)
     candidates = (await db.execute(query)).scalars().all()
-    # Include inactive rows when checking ambiguity. Silently reusing a former
-    # colleague's extension must never reassign a provider event to a new owner.
+    # Historical inactive authorizations do not own current events. Ambiguous
+    # simultaneous active bindings still fail closed.
     if len(candidates) != 1 or not candidates[0].is_active:
         return None
     return candidates[0]
@@ -290,6 +292,18 @@ def _provider_key(*values: Any) -> str:
     return next((str(value) for value in values if value), "")
 
 
+async def _new_call_within_binding(db, connection, started_at):
+    """Unseen history must have evidence of the current owner's activation."""
+    if connection.binding_started_at:
+        return bool(started_at and _utc(started_at) >= _utc(connection.binding_started_at))
+    previous_owner = (await db.execute(select(RingCentralConnections.id).where(
+        RingCentralConnections.ringcentral_account_id == connection.ringcentral_account_id,
+        RingCentralConnections.ringcentral_extension_id == connection.ringcentral_extension_id,
+        RingCentralConnections.employee_id != connection.employee_id,
+    ))).first()
+    return previous_owner is None
+
+
 async def process_telephony_event(
     db: AsyncSession,
     payload: dict[str, Any],
@@ -314,6 +328,16 @@ async def process_telephony_event(
     key = _provider_key(telephony_session_id, session_id, event_uuid)
     if not key:
         return None, False
+    if telephony_session_id or session_id:
+        existing = (await db.execute(select(RingCentralCallRecords.id).where(
+            RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
+            RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id,
+            RingCentralCallRecords.sales_employee_id != connection.employee_id,
+            or_(RingCentralCallRecords.telephony_session_id == telephony_session_id if telephony_session_id else False,
+                RingCentralCallRecords.ringcentral_session_id == session_id if session_id else False),
+        ))).first()
+        if existing:
+            return None, False
     event_time = _parse_datetime(body.get("eventTime") or payload.get("timestamp")) or datetime.now(timezone.utc)
     started_at = _parse_datetime(body.get("startTime")) or event_time
     provider_key = f"event:{connection.employee_id}:{connection.ringcentral_account_id}:{connection.ringcentral_extension_id}:{key}"
@@ -321,6 +345,8 @@ async def process_telephony_event(
         await db.execute(select(RingCentralCallRecords).where(RingCentralCallRecords.provider_key == provider_key))
     ).scalar_one_or_none()
     if not item:
+        if not await _new_call_within_binding(db, connection, started_at):
+            return None, False
         lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone, started_at)
         item = RingCentralCallRecords(
             provider_key=provider_key,
@@ -367,10 +393,17 @@ async def upsert_call_log_record(
         bindings = (await db.execute(select(RingCentralConnections.employee_id).where(
             RingCentralConnections.ringcentral_account_id == connection.ringcentral_account_id,
             RingCentralConnections.ringcentral_extension_id == connection.ringcentral_extension_id,
+            RingCentralConnections.is_active.is_(True),
         ))).scalars().all()
         if len(bindings) > 1:
             connection.last_error = "分机绑定冲突，已暂停自动归属，请联系管理员核对"
             return None
+        if bindings != [connection.employee_id]:
+            # The provider fetch may have yielded while this authorization was
+            # disconnected/rebound in another request. Recheck DB ownership.
+            return None
+    else:
+        return None
     call_id = str(record.get("id") or "").strip()
     telephony_session_id = str(record.get("telephonySessionId") or "").strip()
     session_id = str(record.get("sessionId") or "").strip()
@@ -385,26 +418,38 @@ async def upsert_call_log_record(
         item = (
             await db.execute(select(RingCentralCallRecords).where(
                 RingCentralCallRecords.ringcentral_call_id == call_id,
-                RingCentralCallRecords.sales_employee_id == connection.employee_id,
                 RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
                 RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id))
         ).scalar_one_or_none()
-    if not item and telephony_session_id:
-        item = (
-            await db.execute(
-                select(RingCentralCallRecords).where(
-                    RingCentralCallRecords.sales_employee_id == connection.employee_id,
-                    RingCentralCallRecords.telephony_session_id == telephony_session_id,
-                    RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
-                    RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id,
-                ).order_by(RingCentralCallRecords.id.desc())
-            )
-        ).scalars().first()
+        if item and item.sales_employee_id != connection.employee_id:
+            # A new active authorization never transfers existing official call
+            # evidence from the historical employee who actually owned it.
+            return None
+    if telephony_session_id or session_id:
+        session_rows = (await db.execute(select(RingCentralCallRecords).where(
+            or_(RingCentralCallRecords.telephony_session_id == telephony_session_id if telephony_session_id else False,
+                RingCentralCallRecords.ringcentral_session_id == session_id if session_id else False),
+            RingCentralCallRecords.ringcentral_account_id == connection.ringcentral_account_id,
+            RingCentralCallRecords.ringcentral_extension_id == connection.ringcentral_extension_id,
+        ).order_by(RingCentralCallRecords.id.desc()))).scalars().all()
+        if any(row.sales_employee_id != connection.employee_id for row in session_rows):
+            return None
+        if not item:
+            # A session can contain distinct official call records/legs.
+            # Merge only an event without its own provider call identity.
+            mergeable = [row for row in session_rows if not row.ringcentral_call_id
+                         or (call_id and row.ringcentral_call_id == call_id)]
+            item = mergeable[0] if mergeable else None
     direction = str(record.get("direction") or "").strip().lower()
     from_phone = _party_phone(record.get("from"))
     to_phone = _party_phone(record.get("to"))
     remote_phone = to_phone if direction == "outbound" else from_phone
     started_at = _parse_datetime(record.get("startTime"))
+    # An unverified event may have arrived after activation while the actual
+    # call began earlier. Its existence must not bypass the official fence.
+    if not item or item.sync_status != "verified":
+        if not await _new_call_within_binding(db, connection, started_at):
+            return None
     if not item:
         lead, task = await _match_lead_and_task(db, connection.employee_id, remote_phone, started_at)
         item = RingCentralCallRecords(

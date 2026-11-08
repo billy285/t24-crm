@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func, Index
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func, Index, text
 
 
 class RingCentralConnections(Base):
@@ -7,7 +7,8 @@ class RingCentralConnections(Base):
 
     __tablename__ = "ringcentral_connections"
     __table_args__ = (
-        Index("uq_ringcentral_connection_provider_identity", "ringcentral_account_id", "ringcentral_extension_id", unique=True),
+        Index("uq_ringcentral_connection_provider_identity", "ringcentral_account_id", "ringcentral_extension_id", unique=True,
+              sqlite_where=text("is_active = 1"), postgresql_where=text("is_active = true")),
         {"extend_existing": True},
     )
 
@@ -22,6 +23,7 @@ class RingCentralConnections(Base):
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
     scopes = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
+    binding_started_at = Column(DateTime(timezone=True), nullable=True)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     webhook_subscription_id = Column(String, nullable=True, index=True)
     webhook_subscription_status = Column(String, nullable=True, index=True)

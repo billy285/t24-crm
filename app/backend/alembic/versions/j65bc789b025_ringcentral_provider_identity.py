@@ -18,19 +18,23 @@ BINDING_INDEX = "uq_ringcentral_connection_provider_identity"
 
 
 def upgrade():
-    # A historical/inactive binding also reserves this identity. Reassignment
-    # needs an explicit audited workflow; never silently delete a former owner.
+    # Inactive authorizations are retained as history. Only simultaneously
+    # active identities conflict; no rows or tokens are rewritten here.
     duplicate = op.get_bind().execute(sa.text(
         "SELECT ringcentral_account_id, ringcentral_extension_id FROM ringcentral_connections "
-        "WHERE ringcentral_account_id IS NOT NULL AND ringcentral_extension_id IS NOT NULL "
+        "WHERE is_active = true AND ringcentral_account_id IS NOT NULL AND ringcentral_extension_id IS NOT NULL "
         "GROUP BY ringcentral_account_id, ringcentral_extension_id HAVING COUNT(*) > 1 LIMIT 1"
     )).first()
     if duplicate:
         raise RuntimeError("Cannot migrate RingCentral bindings: duplicate account/extension ownership; resolve explicitly without deleting historical evidence.")
     inspector = sa.inspect(op.get_bind())
+    if "binding_started_at" not in {row["name"] for row in inspector.get_columns("ringcentral_connections")}:
+        with op.batch_alter_table("ringcentral_connections") as batch:
+            batch.add_column(sa.Column("binding_started_at", sa.DateTime(timezone=True), nullable=True))
     binding_indexes = {row["name"] for row in inspector.get_indexes("ringcentral_connections")}
     if BINDING_INDEX not in binding_indexes:
-        op.create_index(BINDING_INDEX, "ringcentral_connections", ["ringcentral_account_id", "ringcentral_extension_id"], unique=True)
+        op.create_index(BINDING_INDEX, "ringcentral_connections", ["ringcentral_account_id", "ringcentral_extension_id"], unique=True,
+                        sqlite_where=sa.text("is_active = 1"), postgresql_where=sa.text("is_active = true"))
     indexes = {row["name"]: row for row in inspector.get_indexes(TABLE)}
     constraints = inspector.get_unique_constraints(TABLE)
     # Build the stronger provider identity first. Existing evidence stays in
@@ -49,6 +53,9 @@ def upgrade():
 
 
 def downgrade():
+    if "binding_started_at" in {row["name"] for row in sa.inspect(op.get_bind()).get_columns("ringcentral_connections")}:
+        if op.get_bind().execute(sa.text("SELECT id FROM ringcentral_connections WHERE binding_started_at IS NOT NULL LIMIT 1")).first():
+            raise RuntimeError("Cannot downgrade RingCentral identity: retain binding activation timestamps and restore compatible code.")
     # Old code cannot represent two accounts' identically named call IDs. Do
     # not delete evidence to force a rollback into that weaker schema.
     collision = op.get_bind().execute(sa.text(
@@ -66,3 +73,6 @@ def downgrade():
             batch.drop_index(COMPOSITE)
     if BINDING_INDEX in {row["name"] for row in sa.inspect(op.get_bind()).get_indexes("ringcentral_connections")}:
         op.drop_index(BINDING_INDEX, table_name="ringcentral_connections")
+    if "binding_started_at" in {row["name"] for row in sa.inspect(op.get_bind()).get_columns("ringcentral_connections")}:
+        with op.batch_alter_table("ringcentral_connections") as batch:
+            batch.drop_column("binding_started_at")

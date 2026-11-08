@@ -95,7 +95,7 @@ async def test_unconnected_sales_and_expired_webhook_are_not_healthy(db, monkeyp
 @pytest.mark.asyncio
 async def test_conflict_across_team_is_reported_without_other_identity(db,monkeypatch):
     monkeypatch.setattr(ringcentral,"connection_configured",lambda:True)
-    db.add_all([connection(),connection(12,is_active=False)])
+    db.add_all([connection(),connection(12,is_active=True)])
     await db.commit()
     result=await ringcentral.ringcentral_team_status(current_user=user(10,"sales_manager","Manager"),db=db)
     assert len(result["items"])==1
@@ -105,8 +105,8 @@ async def test_conflict_across_team_is_reported_without_other_identity(db,monkey
 
 
 @pytest.mark.asyncio
-async def test_oauth_conflicting_historical_binding_preserves_both_records(db,monkeypatch):
-    db.add_all([connection(),connection(12,"account-b","ext-2",is_active=False)])
+async def test_oauth_conflicting_active_binding_preserves_both_records(db,monkeypatch):
+    db.add_all([connection(),connection(12,"account-b","ext-2",is_active=True)])
     await db.commit()
     monkeypatch.setattr(ringcentral,"verify_oauth_state",lambda _:11)
     async def exchange(_): return {"access_token":"new-token","refresh_token":"new-refresh"}
@@ -117,7 +117,7 @@ async def test_oauth_conflicting_historical_binding_preserves_both_records(db,mo
     assert result.headers["location"]=="/sales-workbench?ringcentral=binding_conflict"
     rows=(await db.execute(select(RingCentralConnections).order_by(RingCentralConnections.employee_id))).scalars().all()
     assert [(row.ringcentral_account_id,row.ringcentral_extension_id,row.is_active) for row in rows]==[
-        ("account-a","ext-1",True),("account-b","ext-2",False)]
+        ("account-a","ext-1",True),("account-b","ext-2",True)]
     assert all(row.access_token_encrypted=="PRIVATE_ACCESS_TOKEN" for row in rows)
 
 
@@ -130,7 +130,7 @@ async def test_events_use_account_scope_and_skip_missing_or_ambiguous_identity(d
     assert (await _connection_for_event(db,{**base,"event":"/restapi/v1.0/account/account-b/extension/ext-1/telephony/sessions"})).employee_id==12
     assert await _connection_for_event(db,{**base,"accountId":"unknown-account"}) is None
     assert await _connection_for_event(db,{**base,"accountId":"account-a","body":{"accountId":"account-b","parties":[{"extensionId":"ext-1"}]}}) is None
-    second.ringcentral_account_id="account-a";second.is_active=False
+    second.ringcentral_account_id="account-a";second.is_active=True
     await db.commit()
     assert await _connection_for_event(db,{**base,"accountId":"account-a"}) is None
 
@@ -154,7 +154,7 @@ async def test_same_provider_call_id_in_different_accounts_remains_separate_and_
 @pytest.mark.asyncio
 async def test_own_status_exposes_identity_and_conflict_after_refresh(db,monkeypatch):
     monkeypatch.setattr(ringcentral,"connection_configured",lambda:True)
-    db.add_all([connection(),connection(12,is_active=False)]);await db.commit()
+    db.add_all([connection(),connection(12,is_active=True)]);await db.commit()
     async def unchanged(employee_id,row,db): return row
     monkeypatch.setattr(ringcentral,"_refresh_connection_if_needed",unchanged)
     result=await ringcentral.ringcentral_status(current_user=user(11,"sales"),db=db)
@@ -224,7 +224,7 @@ def test_provider_identity_migration_preserves_rows_and_refuses_lossy_downgrade(
 
 @pytest.mark.asyncio
 async def test_conflicting_bindings_cannot_import_call_log_even_after_callback_race(db):
-    first,second=connection(),connection(12,is_active=False)
+    first,second=connection(),connection(12,is_active=True)
     db.add_all([first,second]);await db.commit()
     result=await upsert_call_log_record(db,first,{"id":"unattributable","direction":"Outbound"})
     assert result is None
@@ -237,7 +237,7 @@ async def test_database_constraint_handles_concurrent_oauth_binding_conflict(db,
     from sqlalchemy import text
     from types import SimpleNamespace
     db.add_all([connection(),connection(12,"account-b","ext-2")]);await db.commit()
-    await db.execute(text("CREATE UNIQUE INDEX uq_ringcentral_connection_provider_identity ON ringcentral_connections (ringcentral_account_id,ringcentral_extension_id)"));await db.commit()
+    await db.execute(text("CREATE UNIQUE INDEX uq_ringcentral_connection_provider_identity ON ringcentral_connections (ringcentral_account_id,ringcentral_extension_id) WHERE is_active = 1"));await db.commit()
     original_execute=db.execute
     async def miss_preflight(statement,*args,**kwargs):
         # Emulate two callbacks both having observed no competing binding;
@@ -276,7 +276,7 @@ def test_binding_migration_preflight_preserves_existing_conflicts_for_review():
         RingCentralCallRecords.__table__.create(conn)
         conn.execute(sa.text("DROP INDEX uq_ringcentral_connection_provider_identity"))
         for employee_id in (11,12):
-            conn.execute(RingCentralConnections.__table__.insert().values(employee_id=employee_id,ringcentral_account_id="a",ringcentral_extension_id="e",access_token_encrypted="keep-both",is_active=employee_id==11))
+            conn.execute(RingCentralConnections.__table__.insert().values(employee_id=employee_id,ringcentral_account_id="a",ringcentral_extension_id="e",access_token_encrypted="keep-both",is_active=True))
         before=sa.inspect(conn).get_indexes("ringcentral_connections")
         migration.op=Operations(MigrationContext.configure(conn))
         with pytest.raises(RuntimeError,match="duplicate account/extension ownership"):
@@ -284,3 +284,143 @@ def test_binding_migration_preflight_preserves_existing_conflicts_for_review():
         assert conn.execute(sa.text("SELECT employee_id FROM ringcentral_connections ORDER BY employee_id")).scalars().all()==[11,12]
         assert sa.inspect(conn).get_indexes("ringcentral_connections")==before
     engine.dispose()
+
+
+def test_migration_preserves_three_inactive_legacy_bindings_and_enforces_one_active():
+    import importlib.util
+    from pathlib import Path
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy.exc import IntegrityError
+    path=Path(__file__).parents[1]/"alembic/versions/j65bc789b025_ringcentral_provider_identity.py"
+    spec=importlib.util.spec_from_file_location("ringcentral_inactive_migration",path)
+    migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+    engine=sa.create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        RingCentralConnections.__table__.create(conn)
+        RingCentralCallRecords.__table__.create(conn)
+        conn.execute(sa.text("DROP INDEX uq_ringcentral_connection_provider_identity"))
+        # Actual predecessor has no activation column; add nullable without
+        # changing any original value, including encrypted historical tokens.
+        conn.execute(sa.text("ALTER TABLE ringcentral_connections DROP COLUMN binding_started_at"))
+        for employee_id in (1,2,4):
+            conn.execute(sa.text("INSERT INTO ringcentral_connections (employee_id,ringcentral_account_id,ringcentral_extension_id,is_active,access_token_encrypted,refresh_token_encrypted,created_at,updated_at) VALUES (:employee_id,'legacy-account','101',0,:token,:refresh,'2026-07-01 00:00:00','2026-09-01 00:00:00')"),dict(employee_id=employee_id,token=f"encrypted-token-{employee_id}",refresh=f"encrypted-refresh-{employee_id}"))
+        projection="id,employee_id,ringcentral_account_id,ringcentral_extension_id,is_active,access_token_encrypted,refresh_token_encrypted,created_at,updated_at"
+        before=conn.execute(sa.text(f"SELECT {projection} FROM ringcentral_connections ORDER BY employee_id")).all()
+        migration.op=Operations(MigrationContext.configure(conn));migration.upgrade()
+        after=conn.execute(sa.text(f"SELECT {projection} FROM ringcentral_connections ORDER BY employee_id")).all()
+        assert before==after
+        assert conn.execute(sa.text("SELECT binding_started_at FROM ringcentral_connections")).scalars().all()==[None,None,None]
+        conn.execute(sa.text("UPDATE ringcentral_connections SET is_active=1 WHERE employee_id=2"))
+        with pytest.raises(IntegrityError):
+            conn.execute(sa.text("UPDATE ringcentral_connections SET is_active=1 WHERE employee_id=1"))
+        assert conn.execute(sa.text("SELECT employee_id FROM ringcentral_connections WHERE is_active=1")).scalars().all()==[2]
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_inactive_duplicates_are_reconnectable_and_oauth_preserves_other_rows(db,monkeypatch):
+    from services.ringcentral_team import team_connection_statuses
+    first,old=connection(is_active=False),connection(12,is_active=False)
+    db.add_all([first,old]);await db.commit()
+    before={column.name:getattr(old,column.name) for column in old.__table__.columns}
+    statuses=await team_connection_statuses(db,[11,12])
+    assert all(row["needs_reconnect"] and not row["binding_conflict"] for row in statuses)
+    monkeypatch.setattr(ringcentral,"verify_oauth_state",lambda _:11)
+    async def exchange(_): return {"access_token":"new-token","expires_in":3600}
+    async def profile(_): return {"id":"ext-1","account":{"id":"account-a"},"extensionNumber":"101"}
+    async def subscribe(*args,**kwargs): return {"id":"subscription","status":"Active","expirationTime":"2027-01-01T00:00:00Z"}
+    monkeypatch.setattr(ringcentral,"exchange_authorization_code",exchange)
+    monkeypatch.setattr(ringcentral,"get_extension_profile",profile)
+    monkeypatch.setattr(ringcentral,"create_telephony_subscription",subscribe)
+    monkeypatch.setattr(ringcentral,"encrypt_token",lambda _:"synthetic-new-token")
+    response=await ringcentral.ringcentral_callback(code="code",state="state",error=None,db=db)
+    assert response.headers["location"].endswith("ringcentral=connected")
+    assert first.is_active and first.binding_started_at is not None
+    assert {column.name:getattr(old,column.name) for column in old.__table__.columns}==before
+    fence=first.binding_started_at
+    await ringcentral.ringcentral_callback(code="code",state="state",error=None,db=db)
+    assert first.binding_started_at==fence
+
+
+@pytest.mark.asyncio
+async def test_reused_identity_never_reassigns_historical_calls_or_unseen_old_history(db):
+    from services.ringcentral_sync import process_telephony_event
+    fence=datetime(2026,11,9,1,tzinfo=timezone.utc)
+    old,new=connection(is_active=False),connection(12,binding_started_at=fence)
+    db.add_all([old,new])
+    old_call=RingCentralCallRecords(provider_key="old-official",ringcentral_call_id="old-id",telephony_session_id="old-session",ringcentral_account_id="account-a",ringcentral_extension_id="ext-1",sales_employee_id=11,sales_employee_name="Sales A",sync_status="verified",duration_seconds=43)
+    db.add(old_call);await db.commit()
+    before={column.name:getattr(old_call,column.name) for column in old_call.__table__.columns}
+    record=dict(id="old-id",telephonySessionId="old-session",startTime="2026-11-08T01:00:00Z",duration=999,result="Call connected",direction="Outbound")
+    assert await upsert_call_log_record(db,new,record) is None
+    assert await upsert_call_log_record(db,new,{**record,"id":"unseen-old-id","telephonySessionId":"unseen-old-session"}) is None
+    assert await upsert_call_log_record(db,new,{"id":"unknown-time"}) is None
+    event={"event":"/restapi/v1.0/account/account-a/extension/ext-1/telephony/sessions","body":{"telephonySessionId":"old-session","eventTime":"2026-11-09T02:00:00Z","parties":[{"extensionId":"ext-1","status":{"code":"Disconnected"}}]}}
+    assert await process_telephony_event(db,event)==(None,False)
+    assert await process_telephony_event(db,{**event,"body":{**event["body"],"telephonySessionId":"unseen-old-session","startTime":"2026-11-08T01:00:00Z"}})==(None,False)
+    imported=await upsert_call_log_record(db,new,{**record,"id":"new-call","telephonySessionId":"new-session","startTime":"2026-11-09T02:00:00Z"})
+    assert imported.sales_employee_id==12
+    assert {column.name:getattr(old_call,column.name) for column in old_call.__table__.columns}==before
+    assert len((await db.execute(select(RingCentralCallRecords))).scalars().all())==2
+    new.binding_started_at=None
+    assert await upsert_call_log_record(db,new,{**record,"id":"unknown-activation","telephonySessionId":"unknown-activation"}) is None
+
+
+@pytest.mark.asyncio
+async def test_delayed_unknown_event_cannot_verify_old_call_through_session_match(db):
+    from services.ringcentral_sync import process_telephony_event
+    fence=datetime(2026,11,9,1,tzinfo=timezone.utc)
+    old,new=connection(is_active=False),connection(12,binding_started_at=fence)
+    db.add_all([old,new]);await db.commit()
+    event={"event":"/restapi/v1.0/account/account-a/extension/ext-1/telephony/sessions","body":{"telephonySessionId":"delayed-unknown-session","eventTime":"2026-11-09T02:00:00Z","parties":[{"extensionId":"ext-1","status":{"code":"Disconnected"}}]}}
+    pending,_=await process_telephony_event(db,event)
+    assert pending and pending.sync_status=="awaiting_call_log"
+    official=dict(id="old-unseen-call",telephonySessionId="delayed-unknown-session",startTime="2026-11-08T01:00:00Z",result="Call connected",duration=321)
+    assert await upsert_call_log_record(db,new,official) is None
+    assert pending.sync_status!="verified" and pending.ringcentral_call_id is None
+    assert not (await db.execute(select(RingCentralCallRecords).where(RingCentralCallRecords.sync_status=="verified"))).scalars().all()
+
+
+@pytest.mark.asyncio
+async def test_session_id_only_preserves_prior_owner_and_merges_same_owner_event(db):
+    fence=datetime(2026,11,9,1,tzinfo=timezone.utc)
+    db.add_all([connection(is_active=False),connection(12,binding_started_at=fence)])
+    prior=RingCentralCallRecords(provider_key="prior-event",ringcentral_session_id="old-session-only",ringcentral_account_id="account-a",ringcentral_extension_id="ext-1",sales_employee_id=11,sync_status="event_received")
+    same=RingCentralCallRecords(provider_key="current-event",ringcentral_session_id="current-session-only",ringcentral_account_id="account-a",ringcentral_extension_id="ext-1",sales_employee_id=12,sync_status="event_received")
+    db.add_all([prior,same]);await db.commit()
+    current=(await db.execute(select(RingCentralConnections).where(RingCentralConnections.employee_id==12))).scalar_one()
+    record=dict(id="official-session-only",sessionId="old-session-only",startTime="2026-11-09T02:00:00Z",duration=60,result="Call connected")
+    assert await upsert_call_log_record(db,current,record) is None
+    assert prior.sync_status=="event_received" and prior.ringcentral_call_id is None
+    merged=await upsert_call_log_record(db,current,{**record,"sessionId":"current-session-only"})
+    assert merged.id==same.id and merged.sync_status=="verified"
+    assert len((await db.execute(select(RingCentralCallRecords))).scalars().all())==2
+
+
+@pytest.mark.asyncio
+async def test_stale_connection_after_provider_wait_cannot_import_as_former_owner(db):
+    from sqlalchemy import update
+    former,current=connection(),connection(12,is_active=False,binding_started_at=datetime(2026,11,9,1,tzinfo=timezone.utc))
+    db.add_all([former,current]);await db.commit()
+    # Separate SQL writes emulate another request without refreshing the ORM
+    # object retained across the original request's provider network wait.
+    await db.execute(update(RingCentralConnections).where(RingCentralConnections.employee_id==11).values(is_active=False).execution_options(synchronize_session=False))
+    await db.execute(update(RingCentralConnections).where(RingCentralConnections.employee_id==12).values(is_active=True).execution_options(synchronize_session=False))
+    await db.commit()
+    assert former.is_active is True
+    result=await upsert_call_log_record(db,former,dict(id="stale-fetch",startTime="2026-11-09T02:00:00Z",result="Call connected",duration=60))
+    assert result is None
+    assert not (await db.execute(select(RingCentralCallRecords))).scalars().all()
+
+
+@pytest.mark.asyncio
+async def test_distinct_official_ids_sharing_session_do_not_overwrite_one_another(db):
+    current=connection();db.add(current);await db.commit()
+    record=dict(id="first-official",telephonySessionId="shared-session",sessionId="shared-leg",startTime="2026-11-09T02:00:00Z",duration=30,result="Call connected")
+    first=await upsert_call_log_record(db,current,record);await db.commit()
+    second=await upsert_call_log_record(db,current,{**record,"id":"second-official","duration":90});await db.commit()
+    assert first.id!=second.id and first.ringcentral_call_id=="first-official" and first.duration_seconds==30
+    assert second.ringcentral_call_id=="second-official" and second.duration_seconds==90
+    assert len((await db.execute(select(RingCentralCallRecords))).scalars().all())==2

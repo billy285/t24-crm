@@ -97,9 +97,16 @@ async def _hydrate_call_log_later(employee_id: int, telephony_session_id: str | 
                 date_from=datetime.now(timezone.utc) - timedelta(days=1),
                 telephony_session_id=telephony_session_id,
             )
+            previous_synced_at = connection.last_synced_at
+            skipped = 0
             for record in records:
-                await upsert_call_log_record(db, connection, record)
-            connection.last_synced_at = datetime.now(timezone.utc)
+                if not await upsert_call_log_record(db, connection, record):
+                    skipped += 1
+            if skipped:
+                connection.last_synced_at = previous_synced_at
+                connection.last_error = "部分通话未导入，历史销售归属已保留，请核对同步明细"
+            else:
+                connection.last_synced_at = datetime.now(timezone.utc)
             await db.commit()
         except HTTPException as exc:
             connection.last_error = str(exc.detail)
@@ -312,12 +319,20 @@ async def sync_ringcentral_call_log(
         _access_token(connection), date_from=datetime.now(timezone.utc) - timedelta(days=days)
     )
     synced = 0
+    skipped = 0
+    previous_synced_at = connection.last_synced_at
     for record in records:
         if await upsert_call_log_record(db, connection, record):
             synced += 1
-    connection.last_synced_at = datetime.now(timezone.utc)
+        else:
+            skipped += 1
+    if skipped:
+        connection.last_synced_at = previous_synced_at
+        connection.last_error = "部分通话未导入，历史销售归属已保留，请核对同步明细"
+    else:
+        connection.last_synced_at = datetime.now(timezone.utc)
     await db.commit()
-    return {"synced": synced, "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
+    return {"synced": synced, "skipped": skipped, "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
 
 
 @router.get("/calls/recent")
@@ -390,6 +405,7 @@ async def ringcentral_callback(
         RingCentralConnections.ringcentral_account_id == account_id,
         RingCentralConnections.ringcentral_extension_id == extension_id,
         RingCentralConnections.employee_id != employee_id,
+        RingCentralConnections.is_active.is_(True),
     ))).first()
     if duplicate:
         return RedirectResponse(url="/sales-workbench?ringcentral=binding_conflict", status_code=302)
@@ -407,7 +423,8 @@ async def ringcentral_callback(
     connection.employee_name = crm_employee_name or " ".join(
         part for part in [contact.get("firstName"), contact.get("lastName")] if part
     ) or None
-    if (connection.ringcentral_account_id, connection.ringcentral_extension_id) != (account_id, extension_id):
+    if not connection.is_active or (connection.ringcentral_account_id, connection.ringcentral_extension_id) != (account_id, extension_id):
+        connection.binding_started_at = datetime.now(timezone.utc)
         connection.last_synced_at = None
         connection.last_event_at = None
         connection.webhook_subscription_id = None
