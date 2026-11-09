@@ -1,0 +1,23 @@
+{
+  "source_sha": "16faa45c2c97558d228f8d2278f6cde695a3d92a",
+  "frontend_version": "e49b66b8c1d2",
+  "frontend_bytes_unchanged": true,
+  "schema_revision": "j65bc789b025",
+  "database_migration": false,
+  "database_writes_by_release": false,
+  "new_reviewed_city_mappings": 16,
+  "backend_timezone_and_industry_tests_passed": 117,
+  "release_helper_tests_passed": 18,
+  "authenticated_timezone_filters_verified": [
+    "eastern",
+    "central",
+    "mountain",
+    "pacific",
+    "hawaii",
+    "unknown"
+  ],
+  "public_runtime_ready": true,
+  "raw_merchant_dataset_in_release": false,
+  "credentials_in_release": false,
+  "acceptance_date": "2026-11-09"
+}

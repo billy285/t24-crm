@@ -1,0 +1,22 @@
+{
+  "auth_ringcentral_and_unrelated_code_preserved": true,
+  "crm_mount_order_equivalence_verified": true,
+  "database_migration": false,
+  "database_writes_by_release": false,
+  "environment_preserved": true,
+  "frontend_version": "e49b66b8c1d2",
+  "private_mount_order_equivalence_verified": true,
+  "private_services_preserved": true,
+  "public_root": "/var/www/t24-crm-public/nationwide-beauty-timezones-16faa45c2c97-20261109",
+  "retained_original": "t24-crm-before-nationwide-timezone-16faa45c2c97",
+  "runtime": {
+    "config": "ba8815723255b1881980a509ed1e45608953e167436292fdc319541971248a1d",
+    "id": "67b3f331f0ef83f7ecc06eab6d1c5c961ea8f664bfdb6c18c3d642c8d30a287d",
+    "image": "sha256:5a88d23b2ef57122d810dad661b8e8c19e702eabba8a7833a9b6289215583d33",
+    "started": "2026-11-09T11:39:58.641880048Z"
+  },
+  "schema_revision": "j65bc789b025",
+  "schema_unchanged": true,
+  "source_sha": "16faa45c2c97558d228f8d2278f6cde695a3d92a",
+  "stage": "DEPLOYED"
+}
