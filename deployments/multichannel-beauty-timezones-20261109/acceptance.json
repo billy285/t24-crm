@@ -1,7 +1,7 @@
 {
   "source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
   "carrier_sha": "e36b3f4add405af576dbd125cb770c5b0f2bb9cb",
-  "stage": "DEPLOYMENT_RECEIPT_VERIFIED_UI_PENDING",
+  "stage": "DEPLOYMENT_AND_PRODUCTION_UI_VERIFIED",
   "frontend_version": "e49b66b8c1d2",
   "frontend_bytes_unchanged": true,
   "schema_revision": "j65bc789b025",
@@ -11,10 +11,44 @@
   "backend_timezone_and_industry_tests_passed": 130,
   "release_helper_tests_passed": 18,
   "deployment_receipt_matches_prepared_image_and_manifest": true,
-  "authenticated_timezone_filters_verified": [],
-  "production_ui_status": "not_yet_verified",
-  "ui_acceptance_note": "Root agent is still checking final authenticated production UI. No UI pass is asserted in this receipt.",
+  "authenticated_timezone_filters_verified": [
+    "eastern",
+    "central",
+    "mountain",
+    "pacific"
+  ],
+  "production_ui_status": "verified",
+  "ui_acceptance_note": "Authenticated production UI was reloaded and checked by the parent agent using CUA. Counts and persistence are recorded in the contact-free summary; raw merchant evidence and screenshots remain local.",
   "raw_merchant_dataset_in_release": false,
   "credentials_in_release": false,
-  "acceptance_date": "2026-11-09"
+  "acceptance_date": "2026-11-09",
+  "production_ui_summary_file": "production-ui-acceptance-summary.json",
+  "production_ui_summary_sha256": "c6a2d75a46377a02ded08ccdf47b9bd8806842ccac9fb811c689fad0a3656e82",
+  "private_ui_evidence_sha256": "87251e88dc88718c047c8e887c3428426e47a5af34bec34381f331c7a0570dc2",
+  "private_screenshot_sha256": "c219ef5f5f10aea0e35ff7f7617b77010106ef370b5ea6d9e93b71c74fb26487",
+  "production_import_batch_id": "1c258d7d-5b47-44a8-b748-e57967910795",
+  "new_imported_merchants": 153,
+  "new_merchants_unassigned": true,
+  "new_timezone_counts": {
+    "eastern": 73,
+    "central": 15,
+    "mountain": 3,
+    "pacific": 62
+  },
+  "global_pending": 1429,
+  "global_converted": 205,
+  "global_nonarchived_total": 1634,
+  "global_timezone_counts": {
+    "eastern": 495,
+    "central": 100,
+    "mountain": 42,
+    "pacific": 791,
+    "hawaii": 1,
+    "unknown": 0
+  },
+  "global_unclassified": 0,
+  "after_reload_persisted": true,
+  "public_source_leads_only": true,
+  "phone_called": false,
+  "business_ownership_independently_verified": false
 }

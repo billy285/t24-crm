@@ -1,0 +1,34 @@
+{
+  "stage": "PRODUCTION_UI_VERIFIED",
+  "source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+  "frontend_version": "e49b66b8c1d2",
+  "batch_id": "1c258d7d-5b47-44a8-b748-e57967910795",
+  "imported": 153,
+  "unassigned": true,
+  "industry": "美业",
+  "new_timezone_counts": {
+    "eastern": 73,
+    "central": 15,
+    "mountain": 3,
+    "pacific": 62
+  },
+  "global_pending": 1429,
+  "global_converted": 205,
+  "global_nonarchived_total": 1634,
+  "global_timezone_counts": {
+    "eastern": 495,
+    "central": 100,
+    "mountain": 42,
+    "pacific": 791
+  },
+  "global_hawaii": 1,
+  "global_unknown": 0,
+  "global_unclassified": 0,
+  "after_reload_persisted": true,
+  "phone_called": false,
+  "business_ownership_independently_verified": false,
+  "public_source_leads_only": true,
+  "dataset_published_to_git": false,
+  "ui_evidence_sha256": "87251e88dc88718c047c8e887c3428426e47a5af34bec34381f331c7a0570dc2",
+  "screenshot_sha256": "c219ef5f5f10aea0e35ff7f7617b77010106ef370b5ea6d9e93b71c74fb26487"
+}
