@@ -14,6 +14,7 @@ BASE_SOURCE='18240e28774a1ce6043d06d1f7f913af2e9a369e'
 BASE_ID='e9bbff96bcdf37636e4c8d25d8ecc0eb9db15a1bb6623075b91ec81795f8f9b2'
 BASE_IMAGE='sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d'
 SCHEMA='j65bc789b025'
+BASE_CONFIG_SHA='5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420'
 RUNTIME_PATHS={'services/emp_auth.py','routers/emp_auth.py','routers/employees.py','dependencies/auth.py'}
 H=lambda body:hashlib.sha256(body).hexdigest()
 
@@ -64,6 +65,32 @@ def install_private_order_guard(m,root,source):
   return actual
  m.private_runtimes=private_runtimes
 
+def install_crm_mount_order_guard(m,root,source):
+ original=m.runtime
+ def runtime(info):
+  candidate_path=root/'candidate.json'
+  candidate_id=m.read(candidate_path)['id'] if candidate_path.exists() else None
+  if info['Id'] not in (BASE_ID,candidate_id):return original(info)
+  need(len(info['Mounts'])==3,'CRM_MOUNT_COUNT_DRIFT')
+  normalized={**info,'Mounts':sorted(info['Mounts'],key=m.canonical)}
+  value=original(normalized)
+  if info['Id']==BASE_ID:
+   # All three observed permutations canonicalize to this exact frozen hash.
+   # Preserve actual ID/image/StartedAt, so existing call-site guards still
+   # reject identity/restart drift and allow the retained stopped original.
+   need(value['config']==BASE_CONFIG_SHA,'CRM_CONFIGURATION_DRIFT')
+   baseline_path=root/'baseline.json'
+   if baseline_path.exists():
+    baseline_raw=baseline_path.read_bytes();baseline=json.loads(baseline_raw)
+    need(baseline['runtime']['id']==BASE_ID and baseline['runtime']['config']==BASE_CONFIG_SHA,'CRM_FROZEN_BASELINE_MISMATCH')
+    receipt=root/'crm-runtime-mount-order-equivalence.json'
+    if receipt.exists():
+     saved=m.read(receipt);need(saved['source_sha']==source and saved['baseline_sha256']==H(baseline_raw) and saved['baseline_config_sha256']==BASE_CONFIG_SHA and saved['raw_baseline_preserved'] is True,'CRM_ORDER_EQUIVALENCE_RECEIPT_DRIFT')
+    else:
+     m.write(receipt,{'source_sha':source,'baseline_sha256':H(baseline_raw),'baseline_config_sha256':BASE_CONFIG_SHA,'observed_config_sha256':original(info)['config'],'canonical_config_sha256':value['config'],'method':'complete_three_mount_dictionary_sort_equals_frozen_hash','raw_baseline_preserved':True})
+  return value
+ m.runtime=runtime
+
 def make_release(m,args):
  # Rebind only the isolated imported module's scope variables. The retained
  # helper and prior deployment state on disk are never modified.
@@ -72,6 +99,7 @@ def make_release(m,args):
  need(bool(re.fullmatch('[a-f0-9]{40}',source)) and source!=BASE_SOURCE,'NEW_SOURCE_IDENTITY_REQUIRED')
  m.SOURCE=source;m.OLD=SCHEMA;m.NEW=SCHEMA;m.RUNTIME_PATHS=set(RUNTIME_PATHS)
  m.ERROR_LOG=args.release/'diagnostics-private.log'
+ install_crm_mount_order_guard(m,args.release,source)
  install_private_order_guard(m,args.release,source)
 
  class Release(m.Release):
@@ -118,7 +146,7 @@ def make_release(m,args):
    self.probe(data,image,'candidate')
    need(m.snapshot(data/'crm_prod.db')==before and m.schema(data/'crm_prod.db')==shape,'OFFLINE_DATA_OR_SCHEMA_CHANGED')
    self.stage_public();self.boundary()
-   value={'stage':'PREPARED','source_sha':source,'manifest_sha256':args.manifest_sha256,'candidate_image':image,'original_image':old['Image'],'public_root':str(self.public),'schema_revision':SCHEMA,'offline_candidate_ready':True,'offline_rows_and_schema_unchanged':True,'private_mount_order_equivalence_verified':True,'database_migration':False}
+   value={'stage':'PREPARED','source_sha':source,'manifest_sha256':args.manifest_sha256,'candidate_image':image,'original_image':old['Image'],'public_root':str(self.public),'schema_revision':SCHEMA,'offline_candidate_ready':True,'offline_rows_and_schema_unchanged':True,'private_mount_order_equivalence_verified':True,'crm_mount_order_equivalence_verified':True,'database_migration':False}
    m.write(self.root/'prepared.json',value);return value
   def prepared(self):
    p=m.read(self.root/'prepared.json')
@@ -156,7 +184,7 @@ def make_release(m,args):
   def finish(self):
    live=self.candidate_boundary();self.public_retry()
    need(m.runtime(m.inspect('t24-crm'))==m.runtime(live),'CANDIDATE_CHANGED_DURING_CHECKS')
-   result={'stage':'DEPLOYED','source_sha':source,'frontend_version':manifest['frontend_version'],'schema_revision':SCHEMA,'runtime':m.runtime(live),'public_root':str(self.public),'retained_original':m.read(self.root/'candidate.json')['retained'],'database_migration':False,'database_writes_by_release':False,'schema_unchanged':True,'environment_preserved':True,'ringcentral_and_unrelated_code_preserved':True,'private_services_preserved':True,'private_mount_order_equivalence_verified':True}
+   result={'stage':'DEPLOYED','source_sha':source,'frontend_version':manifest['frontend_version'],'schema_revision':SCHEMA,'runtime':m.runtime(live),'public_root':str(self.public),'retained_original':m.read(self.root/'candidate.json')['retained'],'database_migration':False,'database_writes_by_release':False,'schema_unchanged':True,'environment_preserved':True,'ringcentral_and_unrelated_code_preserved':True,'private_services_preserved':True,'private_mount_order_equivalence_verified':True,'crm_mount_order_equivalence_verified':True}
    if (self.root/'deployed.json').exists():
     need(m.read(self.root/'deployed.json')==result,'EXISTING_DEPLOYED_RECEIPT_MISMATCH');return result
    m.write(self.root/'deployed.json',result);return result

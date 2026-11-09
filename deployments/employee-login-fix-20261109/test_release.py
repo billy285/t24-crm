@@ -90,4 +90,39 @@ class PrivateOrderTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as raw:
    m.private_runtimes=lambda:{'legacy':'raw'};adapter.install_private_order_guard(m,Path(raw),'a'*40);self.assertEqual(m.private_runtimes(),{'legacy':'raw'})
 
+class CrmOrderTests(unittest.TestCase):
+ def fixture(self):
+  m=module('crm_order_'+str(id(self)),LOCAL_HELPER)
+  info={'Id':adapter.BASE_ID,'Image':'synthetic-image','Config':{'Env':['SYNTHETIC=value']},'HostConfig':{'ReadonlyRootfs':False},'Mounts':[{'Type':'bind','Source':'/synthetic/data','Destination':'/data','RW':True},{'Type':'bind','Source':'/synthetic/key','Destination':'/key','RW':False},{'Type':'bind','Source':'/synthetic/logs','Destination':'/logs','RW':True}],'NetworkSettings':{'Networks':{'synthetic':{'Aliases':['crm']}}},'State':{'Running':True,'StartedAt':'2026-11-01T00:00:00Z'}}
+  expected=m.runtime({**info,'Mounts':sorted(info['Mounts'],key=m.canonical)})
+  tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);root=Path(tmp.name);(root/'baseline.json').write_text(json.dumps({'runtime':expected}));return m,info,expected,root
+ def test_main_three_mounts_sort_matches_frozen_hash_and_preserves_baseline(self):
+  m,info,expected,root=self.fixture();before=(root/'baseline.json').read_bytes();info['Mounts'].reverse()
+  with patch.object(adapter,'BASE_CONFIG_SHA',expected['config']):adapter.install_crm_mount_order_guard(m,root,'a'*40);self.assertEqual(m.runtime(info),expected)
+  self.assertEqual((root/'baseline.json').read_bytes(),before);self.assertTrue(json.loads((root/'crm-runtime-mount-order-equivalence.json').read_bytes())['raw_baseline_preserved'])
+ def test_actual_start_image_and_unknown_id_remain_visible_to_caller(self):
+  for target in ('started','image','id'):
+   with self.subTest(target=target):
+    m,info,expected,root=self.fixture();raw_runtime=m.runtime
+    if target=='started':info['State']['StartedAt']='new-start'
+    elif target=='image':info['Image']='new-image'
+    else:info['Id']='unknown-id'
+    with patch.object(adapter,'BASE_CONFIG_SHA',expected['config']):adapter.install_crm_mount_order_guard(m,root,'a'*40);actual=m.runtime(info)
+    self.assertNotEqual(actual,expected)
+    if target=='id':self.assertEqual(actual,raw_runtime(info))
+ def test_stopped_original_is_valid_but_real_configuration_drift_fails(self):
+  m,info,expected,root=self.fixture();info['State']['Running']=False
+  with patch.object(adapter,'BASE_CONFIG_SHA',expected['config']):
+   adapter.install_crm_mount_order_guard(m,root,'a'*40);self.assertEqual(m.runtime(info),expected)
+   info['Config']['Env']=['SYNTHETIC=changed']
+   with self.assertRaisesRegex(RuntimeError,'CRM_CONFIGURATION_DRIFT'):m.runtime(info)
+ def test_candidate_runtime_is_deterministic_across_later_status_receipt(self):
+  m,info,expected,root=self.fixture();info['Id']='candidate-id';(root/'candidate.json').write_text(json.dumps({'id':'candidate-id'}))
+  adapter.install_crm_mount_order_guard(m,root,'a'*40);first=m.runtime(info);(root/'deployed.json').write_text(json.dumps({'runtime':first}))
+  second_module=module('fresh_crm_status',LOCAL_HELPER);info['Mounts'].reverse();adapter.install_crm_mount_order_guard(second_module,root,'a'*40);later=second_module.runtime(info)
+  self.assertEqual(later,json.loads((root/'deployed.json').read_bytes())['runtime'])
+  info['HostConfig']['ReadonlyRootfs']=True;self.assertNotEqual(second_module.runtime(info),first)
+ def test_private_unknown_runtime_is_not_sorted(self):
+  m,info,expected,root=self.fixture();info['Id']='private-api-id';info['Mounts'].reverse();raw=m.runtime(info);adapter.install_crm_mount_order_guard(m,root,'a'*40);self.assertEqual(m.runtime(info),raw)
+
 if __name__=='__main__':unittest.main()
