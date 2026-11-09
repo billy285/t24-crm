@@ -1,0 +1,98 @@
+{
+  "actual_runtime_changes": [
+    "services/sales_timezones.py"
+  ],
+  "authenticated_preflight_sha256": "10ed4d38aea284ff4d885a42b764e63b733476877113528a0f941e343312d5af",
+  "backend_after": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "52bbd3931dfb65d060fdb64eab1f7edda0a1cfba1687f4b666c063a230806cfc"
+  },
+  "backend_before": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "65109c1e7abd58682a97e6d8665784d8706eeb529c7ee9a6c5d5b77df8fee3e6"
+  },
+  "baseline_source_sha": "16faa45c2c97558d228f8d2278f6cde695a3d92a",
+  "city_delta": [
+    {
+      "city": "Altamonte Springs",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Lady Lake",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Lakewood Ranch",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Port Orange",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Wellington",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Windermere",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Berkley",
+      "state": "MI",
+      "timezone": "America/Detroit"
+    },
+    {
+      "city": "Troy",
+      "state": "MI",
+      "timezone": "America/Detroit"
+    },
+    {
+      "city": "Jackson",
+      "state": "TN",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "The Colony",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    }
+  ],
+  "frontend_bytes_unchanged": true,
+  "frontend_source_unchanged": true,
+  "frontend_version": "e49b66b8c1d2",
+  "helper_sha256": "481388071b4361bafedf84b1f72af0c08e0a469eb393956ef7f22d06a4924628",
+  "helper_size_bytes": 19337,
+  "manifest_sha256": "81a3916afdf70125d230a86234dcc1611c2a43585cfb2097637bfb8cc417f650",
+  "no_raw_merchant_dataset_in_artifacts": true,
+  "payload_sha256": "8fc5b8bca797d4c56e6ba47f04ab0101fd8a7e1ac67e1ff5e6f776b212001031",
+  "payload_size_bytes": 2316961,
+  "release_helper_tests": 18,
+  "runtime_paths": [
+    "routers/merchant_pool.py",
+    "services/sales_intelligence.py",
+    "services/sales_timezones.py"
+  ],
+  "source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+  "validation": {
+    "all_channel_group_mismatches": 0,
+    "all_channel_python_sql_consistent": true,
+    "all_channel_rows_tested": 167,
+    "all_channel_unknown_after": 0,
+    "backend_timezone_tests": 130,
+    "backend_timezone_tests_passed": true,
+    "baseline_head": "7cfb420",
+    "git_diff_check_passed": true,
+    "release_helper_tests": 18,
+    "scope": "10 actual channel city additions only; no state defaults or resolver logic changes",
+    "test_command": "PYTHONPATH=app:app/backend /Users/billyli/Documents/Codex/2026-10-07/sites-plugin-sites-openai-curated-remote-3/work/standardization/backend-venv/bin/python -m pytest app/backend/tests/test_sales_timezones.py app/backend/tests/test_merchant_industries.py -q"
+  }
+}
