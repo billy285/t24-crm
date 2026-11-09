@@ -4,7 +4,7 @@ Manifest: source_sha, frontend_version, backend_before{4 relative paths: sha},
 files{backend/<relative> or static/<dist-relative>: sha}, payload_sha256.
 No credentials are persisted; neither activation nor recovery writes the DB.
 """
-import argparse, copy, fcntl, hashlib, json, os, re, socket, subprocess, time, types, urllib.parse
+import argparse, copy, fcntl, hashlib, itertools, json, os, re, socket, subprocess, time, types, urllib.parse
 from pathlib import Path
 
 HOST='iZj6c4cj7edgnhdimts4l7Z'
@@ -28,6 +28,42 @@ def load_helper():
  need(m.SOURCE==BASE_SOURCE and m.NEW==SCHEMA,'EXPECTED_RINGCENTRAL_BASE_REQUIRED')
  return m
 
+def equivalent_private_runtime(m,info,expected):
+ # Docker may return the same Mounts array in a different order. Nothing else
+ # is normalized: recover the exact frozen configuration hash by permuting
+ # complete mount dictionaries, never by deleting security/configuration fields.
+ actual=m.runtime(info)
+ need(info['State']['Running'] is True,'PRIVATE_SERVICE_NOT_RUNNING')
+ need(all(actual[key]==expected[key] for key in ('id','image','started')),'PRIVATE_RUNTIME_IDENTITY_DRIFT')
+ mounts=info['Mounts'];need(len(mounts)==2,'PRIVATE_MOUNT_COUNT_DRIFT')
+ parts={'Config':info['Config'],'HostConfig':info['HostConfig'],'Mounts':mounts,'networks':m.networks(info)}
+ for order in itertools.permutations(range(len(mounts))):
+  candidate={**parts,'Mounts':[mounts[index] for index in order]}
+  if m.digest(candidate)==expected['config']:
+   return {**actual,'config':expected['config']},{'observed_config_sha256':actual['config'],'baseline_config_sha256':expected['config'],'mount_order':list(order),'exact_configuration_equivalence':True}
+ raise RuntimeError('PRIVATE_RUNTIME_CONFIGURATION_DRIFT')
+
+def install_private_order_guard(m,root,source):
+ original=m.private_runtimes
+ def private_runtimes():
+  path=root/'baseline.json'
+  if not path.exists():return original()
+  baseline_raw=path.read_bytes();expected=json.loads(baseline_raw)['private_runtimes'];actual={};proof={}
+  for name in ('t24-private-api','t24-private-worker'):
+   info=m.optional(name)
+   if info is None:continue
+   need(name in expected,'UNEXPECTED_PRIVATE_SERVICE')
+   actual[name],proof[name]=equivalent_private_runtime(m,info,expected[name])
+  need(set(actual)==set(expected),'PRIVATE_SERVICE_SET_DRIFT')
+  receipt=root/'private-runtime-mount-order-equivalence.json'
+  if receipt.exists():
+   saved=m.read(receipt)
+   need(saved['source_sha']==source and saved['baseline_sha256']==H(baseline_raw) and saved['expected_private_runtimes']==expected and saved['raw_baseline_preserved'] is True,'PRIVATE_ORDER_EQUIVALENCE_RECEIPT_DRIFT')
+  else:
+   m.write(receipt,{'source_sha':source,'baseline_sha256':H(baseline_raw),'expected_private_runtimes':expected,'first_observed_equivalence':proof,'method':'exact_frozen_hash_by_complete_mount_array_permutation','raw_baseline_preserved':True})
+  return actual
+ m.private_runtimes=private_runtimes
+
 def make_release(m,args):
  # Rebind only the isolated imported module's scope variables. The retained
  # helper and prior deployment state on disk are never modified.
@@ -36,6 +72,7 @@ def make_release(m,args):
  need(bool(re.fullmatch('[a-f0-9]{40}',source)) and source!=BASE_SOURCE,'NEW_SOURCE_IDENTITY_REQUIRED')
  m.SOURCE=source;m.OLD=SCHEMA;m.NEW=SCHEMA;m.RUNTIME_PATHS=set(RUNTIME_PATHS)
  m.ERROR_LOG=args.release/'diagnostics-private.log'
+ install_private_order_guard(m,args.release,source)
 
  class Release(m.Release):
   def __init__(self):
@@ -81,7 +118,7 @@ def make_release(m,args):
    self.probe(data,image,'candidate')
    need(m.snapshot(data/'crm_prod.db')==before and m.schema(data/'crm_prod.db')==shape,'OFFLINE_DATA_OR_SCHEMA_CHANGED')
    self.stage_public();self.boundary()
-   value={'stage':'PREPARED','source_sha':source,'manifest_sha256':args.manifest_sha256,'candidate_image':image,'original_image':old['Image'],'public_root':str(self.public),'schema_revision':SCHEMA,'offline_candidate_ready':True,'offline_rows_and_schema_unchanged':True,'database_migration':False}
+   value={'stage':'PREPARED','source_sha':source,'manifest_sha256':args.manifest_sha256,'candidate_image':image,'original_image':old['Image'],'public_root':str(self.public),'schema_revision':SCHEMA,'offline_candidate_ready':True,'offline_rows_and_schema_unchanged':True,'private_mount_order_equivalence_verified':True,'database_migration':False}
    m.write(self.root/'prepared.json',value);return value
   def prepared(self):
    p=m.read(self.root/'prepared.json')
@@ -119,7 +156,7 @@ def make_release(m,args):
   def finish(self):
    live=self.candidate_boundary();self.public_retry()
    need(m.runtime(m.inspect('t24-crm'))==m.runtime(live),'CANDIDATE_CHANGED_DURING_CHECKS')
-   result={'stage':'DEPLOYED','source_sha':source,'frontend_version':manifest['frontend_version'],'schema_revision':SCHEMA,'runtime':m.runtime(live),'public_root':str(self.public),'retained_original':m.read(self.root/'candidate.json')['retained'],'database_migration':False,'database_writes_by_release':False,'schema_unchanged':True,'environment_preserved':True,'ringcentral_and_unrelated_code_preserved':True,'private_services_preserved':True}
+   result={'stage':'DEPLOYED','source_sha':source,'frontend_version':manifest['frontend_version'],'schema_revision':SCHEMA,'runtime':m.runtime(live),'public_root':str(self.public),'retained_original':m.read(self.root/'candidate.json')['retained'],'database_migration':False,'database_writes_by_release':False,'schema_unchanged':True,'environment_preserved':True,'ringcentral_and_unrelated_code_preserved':True,'private_services_preserved':True,'private_mount_order_equivalence_verified':True}
    if (self.root/'deployed.json').exists():
     need(m.read(self.root/'deployed.json')==result,'EXISTING_DEPLOYED_RECEIPT_MISMATCH');return result
    m.write(self.root/'deployed.json',result);return result
