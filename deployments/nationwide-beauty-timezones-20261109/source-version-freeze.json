@@ -1,0 +1,123 @@
+{
+  "actual_runtime_changes": [
+    "services/sales_timezones.py"
+  ],
+  "authenticated_preflight_sha256": "65971bb1e8988060fd4fdc0d060cf9857f03f59411b352df832a26c2d889fcf4",
+  "backend_after": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "65109c1e7abd58682a97e6d8665784d8706eeb529c7ee9a6c5d5b77df8fee3e6"
+  },
+  "backend_before": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "7da0a5240735a25bfbfef6da93ba9341921d8ef00160df9600a937c32686dc73"
+  },
+  "baseline_source_sha": "b587b5f6b43dc40391e0b1fa544b0c3dacec0b6a",
+  "city_delta": [
+    {
+      "city": "Boca Raton",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Cooper City",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Coral Springs",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Davie",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Hernando",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Miami Lakes",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "North Miami Beach",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Pembroke Pines",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Sunrise",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Madison Heights",
+      "state": "MI",
+      "timezone": "America/Detroit"
+    },
+    {
+      "city": "West Bloomfield Township",
+      "state": "MI",
+      "timezone": "America/Detroit"
+    },
+    {
+      "city": "Allen",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Garland",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Lewisville",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "McKinney",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Richmond",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    }
+  ],
+  "frontend_bytes_unchanged": true,
+  "frontend_source_unchanged": true,
+  "frontend_version": "e49b66b8c1d2",
+  "helper_sha256": "03fb079882379d6e1f46b42ea4e73b151ec8bd2e6372eac8265b5fe2c4bc9662",
+  "helper_size_bytes": 19314,
+  "manifest_sha256": "b3a19f1a6e6e04120cf828293171bb387a5e00178a0e07cd914ef9f320ee39e2",
+  "no_raw_merchant_dataset_in_artifacts": true,
+  "payload_sha256": "ccc545e18fcfae49fdd31f83dec5b34642951ee3bd655d5f38d0c74cdc400994",
+  "payload_size_bytes": 2316893,
+  "release_helper_tests": 18,
+  "runtime_paths": [
+    "routers/merchant_pool.py",
+    "services/sales_intelligence.py",
+    "services/sales_timezones.py"
+  ],
+  "source_sha": "16faa45c2c97558d228f8d2278f6cde695a3d92a",
+  "validation": {
+    "backend_timezone_tests": 117,
+    "backend_timezone_tests_passed": true,
+    "baseline_head": "b9cb422",
+    "git_diff_check_passed": true,
+    "scope": "16 reviewed city additions only, no change to state defaults or resolver logic",
+    "test_command": "PYTHONPATH=app:app/backend backend-venv/bin/python -m pytest app/backend/tests/test_sales_timezones.py app/backend/tests/test_merchant_industries.py -q"
+  }
+}
