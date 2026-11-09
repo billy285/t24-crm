@@ -5,6 +5,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
+from services.sales_timezones import resolve_contact_timezone
+
 TZ = ZoneInfo("Asia/Shanghai")
 POSITIVE = {"interested", "appointment"}
 NEGATIVE = {"not_interested", "not_now", "existing_provider"}
@@ -393,6 +395,11 @@ def summarize_lead(
         "no_next_step": no_next,
         "turned_positive": turned,
         "profile": p,
+        "contact_timezone": resolve_contact_timezone(
+            country=getattr(lead, "country", None), state=getattr(lead, "state", None),
+            city=getattr(lead, "city", None), address=getattr(lead, "address", None),
+            profile_timezone=p.get("timezone"),
+        ),
         "revision": profile.revision if profile else 0,
         "timeline": timeline,
         "contributors": list(per_rep.values()),

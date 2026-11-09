@@ -1,4 +1,5 @@
 import { invokeWithAuth } from "@/lib/tokenStore";
+import type { ContactTimezone } from '@/lib/contact-timezone';
 export const potentialOptions = [
   { value: "priority", label: "优先推进" },
   { value: "nurture", label: "持续培育" },
@@ -93,6 +94,7 @@ export type LeadInsight = {
   industry: string;
   city?: string;
   state?: string;
+  contact_timezone?: ContactTimezone;
   merchant_pool_id?: number;
   converted_customer_id?: number;
   potential: string;

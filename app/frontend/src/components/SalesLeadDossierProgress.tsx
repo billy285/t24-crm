@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { salesApi, salesError, potentialOptions, type LeadInsight, type Profile } from '@/lib/sales-intelligence';
+import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 
 /** Existing sales-stage editing stays restricted to the original scoped actors. */
 export default function SalesLeadDossierProgress({ data, onSaved, onDirtyChange, canonicalNeed }: { data: LeadInsight; onSaved: () => void; onDirtyChange: (dirty:boolean) => void; canonicalNeed: string }) {
@@ -21,7 +22,7 @@ export default function SalesLeadDossierProgress({ data, onSaved, onDirtyChange,
   setSaving(true);
   try {
    await salesApi(`/leads/${data.id}`, 'PUT', { revision: data.revision, pipeline_key: form.pipeline_key || '', stage_key: form.stage_key || '', evidence: form.evidence || '', next_step: form.next_step || '', next_step_date: form.next_step_date || null, need_summary: form.need_summary || '', decision_maker: form.decision_maker || '', timezone: form.timezone || '', custom_fields: Object.fromEntries(data.config.custom_fields.map(f => [f.key, form.custom_fields?.[f.key] || ''])), potential_override: form.potential_override || '', override_reason: form.override_reason || '' });
-   toast.success('商机复核已保存'); onSaved();
+   toast.success('商机复核已保存'); requestBusinessDataRefresh('manual'); onSaved();
   } catch(error) { toast.error(salesError(error)); }
   finally { setSaving(false); }
  };
@@ -123,6 +124,7 @@ export default function SalesLeadDossierProgress({ data, onSaved, onDirtyChange,
                           "America/Denver",
                           "America/Los_Angeles",
                           "America/Phoenix",
+                          "America/Anchorage",
                           "Pacific/Honolulu",
                           "Asia/Shanghai",
                         ].map((v) => ({ value: v, label: v })),

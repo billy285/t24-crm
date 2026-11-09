@@ -114,7 +114,7 @@ test('列表使用商家电话、州缩写与统一行业，点击名称保留�
       await expect(table.getByRole('columnheader', { name: '商家电话', exact: true })).toBeVisible();
       await expect(table.getByRole('columnheader', { name: '行业', exact: true })).toBeVisible();
       const firstRow = table.locator('tbody tr').first();
-      await expect(firstRow.locator('.mp-region-column')).toHaveText('CA');
+      await expect(firstRow.locator('.mp-region-code')).toHaveText('CA');
       await expect(firstRow.locator('.mp-industry-column')).toHaveText('餐厅');
       await expect(firstRow).not.toContainText('Los Angeles');
     } else {
@@ -158,7 +158,7 @@ test('行业总数覆盖分页数据，同业跨页选择保留，切换行业�
   await expect(batch).toHaveCount(0);
   await expect.poll(() => listQueries.at(-1)?.get('industry')).toBe('美业');
   await expect.poll(() => listQueries.at(-1)?.get('skip')).toBe('0');
-  await expect(page.getByTestId('merchant-pool-desktop-table').locator('tbody tr').first().locator('.mp-region-column')).toHaveText('NY');
+  await expect(page.getByTestId('merchant-pool-desktop-table').locator('tbody tr').first().locator('.mp-region-code')).toHaveText('NY');
   await expect(page.getByTestId('merchant-pool-desktop-table').locator('tbody tr').first().locator('.mp-industry-column')).toHaveText('美业');
 
   await facets.getByRole('button', { name: /^待分类\s*1$/ }).click();

@@ -192,9 +192,9 @@ test('桌面视图与搜索各占一行，独立地区和行分隔清楚，电�
       expect(phoneStyle.scrollWidth).toBeLessThanOrEqual(phoneStyle.clientWidth + 1);
       if (width >= 1093) {
         await expect(page.getByRole('columnheader', { name: '地区', exact: true })).toBeVisible();
-        await expect(row.locator('.mp-region-column')).toHaveText('CA');
+        await expect(row.locator('.mp-region-code')).toHaveText('CA');
       } else {
-        await expect(row.locator('.mp-region-column')).toHaveText('CA');
+        await expect(row.locator('.mp-region-code')).toHaveText('CA');
       }
     }
     await page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true }).click();

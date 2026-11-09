@@ -3,12 +3,12 @@ import io
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from models.customers import Customers
 from models.merchant_pool import MerchantPool
 from models.merchant_ai_analyses import MerchantAiAnalyses
 from models.sales_leads import SalesLeads
+from models.sales_intelligence import SalesLeadProfiles
 from models.employees import Employees
 from schemas.auth import UserResponse
 from services.phone_numbers import normalize_phone_country, parse_phone_number, phone_match_key
@@ -25,6 +26,7 @@ from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
 from services.sales_contact_protection import ensure_phone_contact_allowed
 from services.sales_workflow_locks import lock_sales_workflow
+from services.sales_timezones import resolve_contact_timezone, sql_contact_timezone, sql_timezone_group
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -190,6 +192,10 @@ class MerchantResponse(BaseModel):
     state: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    timezone: Optional[str] = None
+    timezone_group: str = "unknown"
+    timezone_basis: str = "unknown"
+    timezone_needs_confirmation: bool = True
     website: Optional[str] = None
     rating: Optional[float] = None
     google_business_url: Optional[str] = None
@@ -218,6 +224,15 @@ class MerchantResponse(BaseModel):
     @classmethod
     def normalize_industry(cls, value: Optional[str]) -> Optional[str]:
         return normalize_merchant_industry(value)
+
+    @model_validator(mode="after")
+    def computed_contact_timezone(self):
+        if self.timezone_basis == "unknown":
+            for key, value in resolve_contact_timezone(
+                country=self.country, state=self.state, city=self.city, address=self.address,
+            ).items():
+                setattr(self, key, value)
+        return self
 
     class Config:
         from_attributes = True
@@ -572,6 +587,7 @@ async def list_merchant_pool(
     search: Optional[str] = None,
     pool_status: Optional[str] = None,
     region: Optional[str] = None,
+    timezone_group: Optional[Literal["eastern", "central", "mountain", "pacific", "alaska", "hawaii", "unknown"]] = None,
     industry: Optional[str] = None,
     source: Optional[str] = None,
     batch_id: Optional[str] = Query(None, min_length=1, max_length=36),
@@ -594,6 +610,24 @@ async def list_merchant_pool(
                       "state", "city", "address", "website")
     current = {field: case((SalesLeads.id.is_not(None), getattr(SalesLeads, field)),
                            else_=getattr(MerchantPool, field)) for field in current_fields}
+    # Profiles are joined through the already-authorized current lead. Never
+    # use a historical import's location after the visible lead was updated.
+    profile_join = SalesLeadProfiles.lead_id == SalesLeads.id
+    address_scope = (select(MerchantPool.id.label("merchant_id"),
+                            *(current[field].label(field) for field in ("country", "state", "city", "address")),
+                            SalesLeadProfiles.payload_json.label("profile_payload"))
+                     .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
+                     .outerjoin(SalesLeadProfiles, profile_join).cte("merchant_contact_address"))
+    resolved = sql_contact_timezone({field: address_scope.c[field] for field in ("country", "state", "city", "address")},
+                                    address_scope.c.profile_payload)
+    # Name the expression shape once in SQL before using it for each
+    # facet/count/page. Repeating the full address CASE per group can exceed
+    # SQLite's bound-variable limit even for a single returned merchant.
+    resolved_scope = select(address_scope.c.merchant_id, *(resolved[field].label(field)
+        for field in ("timezone", "timezone_basis", "timezone_needs_confirmation"))).cte("merchant_contact_timezone")
+    contact_timezone = {field: resolved_scope.c[field] for field in ("timezone", "timezone_basis", "timezone_needs_confirmation")}
+    contact_timezone["timezone_group"] = sql_timezone_group(resolved_scope.c.timezone)
+    timezone_join = resolved_scope.c.merchant_id == MerchantPool.id
     conditions = []
     scope = await _manager_scope(db, current_user)
     if scope is not None:
@@ -629,30 +663,37 @@ async def list_merchant_pool(
         conditions.append(MerchantPool.data_source == source)
     if rating_min is not None:
         conditions.append(MerchantPool.rating >= rating_min)
+    if timezone_group:
+        conditions.append(contact_timezone["timezone_group"] == timezone_group)
     if not pool_status:
         conditions.append(MerchantPool.pool_status != ARCHIVED_STATUS)
     # Category counts follow this exact view/search/scope, before applying the
     # selected category. That keeps the other categories discoverable.
     facet_query = (select(current["industry"], func.count(MerchantPool.id))
-                   .select_from(MerchantPool).outerjoin(SalesLeads, join_on).group_by(current["industry"]))
+                   .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
+                   .join(resolved_scope, timezone_join).group_by(current["industry"]))
     if conditions:
         facet_query = facet_query.where(*conditions)
     facets = merchant_industry_facets((await db.execute(facet_query)).all())
     if industry:
         conditions.append(merchant_industry_filter(current["industry"], industry))
-    query = select(MerchantPool, SalesLeads).outerjoin(SalesLeads, join_on)
-    count_query = select(func.count(MerchantPool.id)).select_from(MerchantPool).outerjoin(SalesLeads, join_on)
+    timezone_fields = tuple(contact_timezone)
+    query = (select(MerchantPool, SalesLeads, *(contact_timezone[key].label(key) for key in timezone_fields))
+             .outerjoin(SalesLeads, join_on).join(resolved_scope, timezone_join))
+    count_query = (select(func.count(MerchantPool.id)).select_from(MerchantPool).outerjoin(SalesLeads, join_on)
+                   .join(resolved_scope, timezone_join))
     if conditions:
         query = query.where(*conditions)
         count_query = count_query.where(*conditions)
     total = (await db.execute(count_query)).scalar() or 0
     rows = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).all()
     items = []
-    for original, lead in rows:
+    for original, lead, *zone_values in rows:
         item = MerchantResponse.model_validate(original).model_dump()
         if lead is not None:
             item.update({field: getattr(lead, field) for field in current_fields})
             item["updated_at"] = lead.updated_at
+        item.update(dict(zip(timezone_fields, zone_values)))
         items.append(item)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
             "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets)}

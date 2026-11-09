@@ -1,0 +1,34 @@
+/* Merchant pool contact zones: address-derived, independently filtered. */
+.t24-system .merchant-pool-refined-page .mp-timezone-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  padding-top: 8px; border-top: 1px solid #edf1f7;
+}
+.t24-system .merchant-pool-refined-page .mp-timezone-caption,
+.t24-system .merchant-pool-refined-page .mp-timezone-hint { color: #8190a6; font-size: 12px; }
+.t24-system .merchant-pool-refined-page .mp-timezone-filters { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.t24-system .merchant-pool-refined-page .mp-timezone-filters > button {
+  min-height: 32px; padding: 4px 11px; border: 1px solid #dfe6f0; border-radius: 6px;
+  background: white; color: #526681; font-size: 12px; line-height: 20px;
+}
+.t24-system .merchant-pool-refined-page .mp-timezone-filters > button[aria-pressed='true'] { color: #245de8; border-color: #bfd1ff; background: #eef4ff; }
+.t24-system .merchant-pool-refined-page .mp-timezone-toolbar > .relative { width: 140px; min-width: 0; }
+.t24-system .merchant-pool-refined-page .mp-contact-time { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; color: #526681; font-size: 11px; line-height: 17px; }
+.t24-system .merchant-pool-refined-page .mp-zone-label { font-size: 11px; color: #48617f; }
+.t24-system .merchant-pool-refined-page .mp-contact-time time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.t24-system .merchant-pool-refined-page .mp-contact-time small { font-size: inherit; color: #8190a6; }
+.t24-system .merchant-pool-refined-page .mp-contact-time.is-unknown .mp-zone-label { color: #a16207; }
+.t24-system .merchant-pool-refined-page .mp-region-code { display: inline; margin-right: 6px; }
+.t24-system .merchant-pool-refined-page .mp-region-column .mp-contact-time { display: inline; }
+.t24-system .merchant-pool-refined-page .mp-region-column .mp-contact-time time { display: block; }
+.t24-system .merchant-pool-refined-page .mp-review-time { margin: 12px 0; padding: 10px 12px; background: #f5f8fc; border-radius: 8px; }
+.t24-system .merchant-pool-refined-page .mp-review-time .mp-contact-time { font-size: 13px; }
+.t24-system .merchant-pool-refined-page .mp-review-time p { margin: 4px 0 0; font-size: 12px; color: #8190a6; overflow-wrap: anywhere; }
+@media (min-width: 768px) {
+  .t24-system.app-shell .merchant-pool-refined-page.crm-sales-compact .mp-queue-table :is(th,td).mp-region-column { width: 144px; }
+}
+@media (max-width: 767px) {
+  .t24-system .merchant-pool-refined-page .mp-timezone-caption { width: 100%; }
+  .t24-system .merchant-pool-refined-page .mp-timezone-filters > button { min-height: 44px; }
+  .t24-system .merchant-pool-refined-page .mp-timezone-hint { flex: 1 1 140px; font-size: 11px; }
+  .t24-system .merchant-pool-refined-page .mp-merchant-card > .mp-contact-time { grid-column: 1; justify-self: start; }
+}
