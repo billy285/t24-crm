@@ -1,0 +1,101 @@
+{
+  "t24-crm": {
+    "config_section_stable": true,
+    "every_sample_can_match_baseline_by_mount_permutation": true,
+    "hostconfig_section_stable": true,
+    "networks_section_stable": true,
+    "samples": [
+      {
+        "baseline_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "baseline_matching_mount_orders": [
+          [
+            0,
+            1,
+            2
+          ]
+        ],
+        "mount_count": 3,
+        "oom_killed": false,
+        "permutations_tested": 6,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+          "id": "e9bbff96bcdf37636e4c8d25d8ecc0eb9db15a1bb6623075b91ec81795f8f9b2",
+          "image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+          "started": "2026-11-08T17:16:10.128244244Z"
+        },
+        "sample": 0,
+        "section_hashes": {
+          "Config": "9ad627017cfbb797f900970407419891f921daa4ed9128b75b94336bd918f66f",
+          "HostConfig": "fcc4890a2947332efd60cd101db59bf5f7096c0479982ec32a30bc358b1809ba",
+          "Mounts": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f",
+          "networks": "5afa382da641a6f6669ce8242086d30737b7a865b8276ad650818e9516a23d0d"
+        },
+        "sorted_mounts_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "sorted_mounts_only_sha256": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f"
+      },
+      {
+        "baseline_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "baseline_matching_mount_orders": [
+          [
+            1,
+            2,
+            0
+          ]
+        ],
+        "mount_count": 3,
+        "oom_killed": false,
+        "permutations_tested": 6,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "5352974d6bd7eba187b853f47b26fef152d534414f978ef96e8e2f9e6a07a7f0",
+          "id": "e9bbff96bcdf37636e4c8d25d8ecc0eb9db15a1bb6623075b91ec81795f8f9b2",
+          "image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+          "started": "2026-11-08T17:16:10.128244244Z"
+        },
+        "sample": 1,
+        "section_hashes": {
+          "Config": "9ad627017cfbb797f900970407419891f921daa4ed9128b75b94336bd918f66f",
+          "HostConfig": "fcc4890a2947332efd60cd101db59bf5f7096c0479982ec32a30bc358b1809ba",
+          "Mounts": "054dcc0daf501a3e1d2e2a4761d072bf7c5ce89ca5037d73736f7e3414668900",
+          "networks": "5afa382da641a6f6669ce8242086d30737b7a865b8276ad650818e9516a23d0d"
+        },
+        "sorted_mounts_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "sorted_mounts_only_sha256": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f"
+      },
+      {
+        "baseline_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "baseline_matching_mount_orders": [
+          [
+            0,
+            1,
+            2
+          ]
+        ],
+        "mount_count": 3,
+        "oom_killed": false,
+        "permutations_tested": 6,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+          "id": "e9bbff96bcdf37636e4c8d25d8ecc0eb9db15a1bb6623075b91ec81795f8f9b2",
+          "image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+          "started": "2026-11-08T17:16:10.128244244Z"
+        },
+        "sample": 2,
+        "section_hashes": {
+          "Config": "9ad627017cfbb797f900970407419891f921daa4ed9128b75b94336bd918f66f",
+          "HostConfig": "fcc4890a2947332efd60cd101db59bf5f7096c0479982ec32a30bc358b1809ba",
+          "Mounts": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f",
+          "networks": "5afa382da641a6f6669ce8242086d30737b7a865b8276ad650818e9516a23d0d"
+        },
+        "sorted_mounts_config_sha256": "5a91626e3273ed52910bb6080424fde19549402d2f5a6e31ab71bebe23309420",
+        "sorted_mounts_only_sha256": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f"
+      }
+    ],
+    "sorted_mounts_config_stable": true
+  }
+}

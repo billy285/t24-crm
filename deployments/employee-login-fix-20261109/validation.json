@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-09",
+  "username_form_synthetic_test": "passed using actual Login component with synthetic Leo and synthetic password",
+  "frontend_build": "passed",
+  "auth_regression": {
+    "passed": 81,
+    "note": "Includes 16 new username/email and session tests."
+  },
+  "employee_identity_regression": {
+    "passed": 96,
+    "note": "Includes 14 new identity tests; existing session tests overlap auth regression."
+  },
+  "deployment_helper_tests": 14,
+  "actual_employee_password": "Not retrieved or changed; configured bcrypt format confirmed read-only. Actual value remains untested.",
+  "deployment_helper_review": "passed independently; only complete mount array order normalized, frozen configuration retained",
+  "source_sha": "9165113c18696690a268e1d13cb0d6149a281649",
+  "frontend_version": "5521004238f7",
+  "root_cause": "Employee administration accepted login_username but login form and service accepted email only.",
+  "database_migration": false,
+  "production_ui": "Owner session persisted; employee detail reloaded; username Leo and active sales role preserved.",
+  "public_version_verified": "5521004238f7",
+  "actual_password_login": "Requires employee retry with original password; synthetic tests passed."
+}

@@ -1,0 +1,19 @@
+{
+  "carrier": "d968be5e54906d1098fcbba28942aa5202686af6",
+  "source": "9165113c18696690a268e1d13cb0d6149a281649",
+  "release_root": "/opt/t24-crm/releases/employee-login-fix-9165113c1869-20261109",
+  "files": {
+    "release.py": {
+      "sha256": "54a0a5ee0ac4749809049ca1479b273cd925a301a7ea0364f1bcaa322a8b1966",
+      "size": 18132
+    },
+    "manifest.json": {
+      "sha256": "fe0c8ab01920fef603d8fa349674f496a29293a49c1e43cbcf5981ee82e69845",
+      "size": 17016
+    },
+    "payload.tar.gz": {
+      "sha256": "657839408517f88e6680501aa913f588c4f4957e996cb86cd3aa6e866e3b173d",
+      "size": 2311055
+    }
+  }
+}

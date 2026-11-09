@@ -1,0 +1,194 @@
+{
+  "t24-private-api": {
+    "config_section_stable": true,
+    "every_sample_can_match_baseline_by_mount_permutation": true,
+    "hostconfig_section_stable": true,
+    "networks_section_stable": true,
+    "samples": [
+      {
+        "baseline_config_sha256": "251914ed3bf15e591f01c5d8426541b8cc693b7ffe457e5f5899997dc4b238b7",
+        "baseline_matching_mount_orders": [
+          [
+            1,
+            0
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+          "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:43.773320701Z"
+        },
+        "sample": 0,
+        "section_hashes": {
+          "Config": "9cc5391ed47b95d06147b9044bf4fdcd16c6175a00902049ea3d0a71b3a2a028",
+          "HostConfig": "c4b5fdfa521b8b47e4053e454b621dbe2ed00a710521803f5f6454994be0493d",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      },
+      {
+        "baseline_config_sha256": "251914ed3bf15e591f01c5d8426541b8cc693b7ffe457e5f5899997dc4b238b7",
+        "baseline_matching_mount_orders": [
+          [
+            1,
+            0
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+          "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:43.773320701Z"
+        },
+        "sample": 1,
+        "section_hashes": {
+          "Config": "9cc5391ed47b95d06147b9044bf4fdcd16c6175a00902049ea3d0a71b3a2a028",
+          "HostConfig": "c4b5fdfa521b8b47e4053e454b621dbe2ed00a710521803f5f6454994be0493d",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      },
+      {
+        "baseline_config_sha256": "251914ed3bf15e591f01c5d8426541b8cc693b7ffe457e5f5899997dc4b238b7",
+        "baseline_matching_mount_orders": [
+          [
+            1,
+            0
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+          "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:43.773320701Z"
+        },
+        "sample": 2,
+        "section_hashes": {
+          "Config": "9cc5391ed47b95d06147b9044bf4fdcd16c6175a00902049ea3d0a71b3a2a028",
+          "HostConfig": "c4b5fdfa521b8b47e4053e454b621dbe2ed00a710521803f5f6454994be0493d",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      }
+    ],
+    "sorted_mounts_config_stable": true
+  },
+  "t24-private-worker": {
+    "config_section_stable": true,
+    "every_sample_can_match_baseline_by_mount_permutation": true,
+    "hostconfig_section_stable": true,
+    "networks_section_stable": true,
+    "samples": [
+      {
+        "baseline_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "baseline_matching_mount_orders": [
+          [
+            0,
+            1
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+          "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:58.055948866Z"
+        },
+        "sample": 0,
+        "section_hashes": {
+          "Config": "26e2d3bf378eda85e61b44e31baf579f5617e4e7824dff5b358d0041419ce8bf",
+          "HostConfig": "58c4bce7c66095ebcf17d15b41f71dbd1925efa488e346b3311571c9be908977",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      },
+      {
+        "baseline_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "baseline_matching_mount_orders": [
+          [
+            0,
+            1
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+          "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:58.055948866Z"
+        },
+        "sample": 1,
+        "section_hashes": {
+          "Config": "26e2d3bf378eda85e61b44e31baf579f5617e4e7824dff5b358d0041419ce8bf",
+          "HostConfig": "58c4bce7c66095ebcf17d15b41f71dbd1925efa488e346b3311571c9be908977",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      },
+      {
+        "baseline_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "baseline_matching_mount_orders": [
+          [
+            0,
+            1
+          ]
+        ],
+        "mount_count": 2,
+        "oom_killed": false,
+        "permutations_tested": 2,
+        "restart_count": 0,
+        "running": true,
+        "runtime": {
+          "config": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+          "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+          "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+          "started": "2026-10-11T23:58:58.055948866Z"
+        },
+        "sample": 2,
+        "section_hashes": {
+          "Config": "26e2d3bf378eda85e61b44e31baf579f5617e4e7824dff5b358d0041419ce8bf",
+          "HostConfig": "58c4bce7c66095ebcf17d15b41f71dbd1925efa488e346b3311571c9be908977",
+          "Mounts": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+          "networks": "5fb37c989bf71bb4de3632fc0b648bfc3aea583813cdae9a3dc16008e572dbcc"
+        },
+        "sorted_mounts_config_sha256": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+        "sorted_mounts_only_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962"
+      }
+    ],
+    "sorted_mounts_config_stable": true
+  }
+}

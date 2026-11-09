@@ -1,0 +1,22 @@
+{
+  "crm_mount_order_equivalence_verified": true,
+  "database_migration": false,
+  "database_writes_by_release": false,
+  "environment_preserved": true,
+  "frontend_version": "5521004238f7",
+  "private_mount_order_equivalence_verified": true,
+  "private_services_preserved": true,
+  "public_root": "/var/www/t24-crm-public/employee-login-fix-9165113c1869-20261109",
+  "retained_original": "t24-crm-before-employee-login-9165113c1869",
+  "ringcentral_and_unrelated_code_preserved": true,
+  "runtime": {
+    "config": "433e7beb52eb408749f21cfea59898d4b4df358a09fe4068509e3e578bba2390",
+    "id": "eebf5abed64e133f377e1b7c9d94d07589fbb742c86061887881bffcb4f7b0a5",
+    "image": "sha256:42bb8f1372b5275240df163173fe70382ec79eba1d071eb8c3e189221bbb8fb7",
+    "started": "2026-11-09T03:01:19.586881394Z"
+  },
+  "schema_revision": "j65bc789b025",
+  "schema_unchanged": true,
+  "source_sha": "9165113c18696690a268e1d13cb0d6149a281649",
+  "stage": "DEPLOYED"
+}

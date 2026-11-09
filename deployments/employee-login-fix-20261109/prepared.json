@@ -1,0 +1,14 @@
+{
+  "candidate_image": "sha256:42bb8f1372b5275240df163173fe70382ec79eba1d071eb8c3e189221bbb8fb7",
+  "crm_mount_order_equivalence_verified": true,
+  "database_migration": false,
+  "manifest_sha256": "fe0c8ab01920fef603d8fa349674f496a29293a49c1e43cbcf5981ee82e69845",
+  "offline_candidate_ready": true,
+  "offline_rows_and_schema_unchanged": true,
+  "original_image": "sha256:e3fb07cc9013b340f57780b9014867543c881ad9d27edfceb493ceea240cef7d",
+  "private_mount_order_equivalence_verified": true,
+  "public_root": "/var/www/t24-crm-public/employee-login-fix-9165113c1869-20261109",
+  "schema_revision": "j65bc789b025",
+  "source_sha": "9165113c18696690a268e1d13cb0d6149a281649",
+  "stage": "PREPARED"
+}

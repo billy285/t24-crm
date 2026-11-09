@@ -1,0 +1,15 @@
+{
+  "app-version.json": {
+    "status": 200,
+    "body": {
+      "version": "5521004238f7"
+    }
+  },
+  "ready": {
+    "status": 200,
+    "body": {
+      "status": "ready",
+      "service": "t24-crm"
+    }
+  }
+}
