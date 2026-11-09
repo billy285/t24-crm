@@ -1,0 +1,39 @@
+{
+  "backend_after": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "7da0a5240735a25bfbfef6da93ba9341921d8ef00160df9600a937c32686dc73"
+  },
+  "backend_before": {
+    "routers/merchant_pool.py": "aeb9a2eaebd3f995a88ce0b0098bd728a42fc637baff2a0b1b25e64983e05596",
+    "services/sales_intelligence.py": "f63adf2c1516d771c08cb47ba354705b558c2795f565cb83afc4893eb4685a16",
+    "services/sales_timezones.py": null
+  },
+  "baseline_source_sha": "5b194e8d954b31f7d4ddd5ecb1f337fe80b640f6",
+  "frontend_source_git_tree": "2ee850bbb82b52033b965b1140dc673ade3aafd1",
+  "frontend_version": "e49b66b8c1d2",
+  "helper_sha256": "34897e743dadb670054351f9b2fdb8593e814286d813ed54f91223f31c9ae2ab",
+  "helper_size_bytes": 18343,
+  "manifest_sha256": "2e11eba5999ee006f1d436f419c5981c48819a76ec2b9dcf36e7a98085845404",
+  "no_raw_merchant_dataset_in_artifacts": true,
+  "payload_sha256": "0b1d6a52eb4afbdc41ee37e7ff65e99ef2deae9eaf72b1be256b08e00b7eed71",
+  "payload_size_bytes": 2316765,
+  "runtime_paths": [
+    "routers/merchant_pool.py",
+    "services/sales_intelligence.py",
+    "services/sales_timezones.py"
+  ],
+  "source_sha": "b587b5f6b43dc40391e0b1fa544b0c3dacec0b6a",
+  "static_file_count": 141,
+  "static_total_bytes": 6529444,
+  "validation": {
+    "backend_tests": 109,
+    "clock_hook_tests": 5,
+    "existing_workbench_test": 1,
+    "frontend_build": "passed",
+    "merchant_ui_tests": 16,
+    "release_helper_tests": 14,
+    "reported_by": "root task",
+    "server_actions_by_packager": false
+  }
+}
