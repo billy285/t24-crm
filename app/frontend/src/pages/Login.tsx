@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, LogIn, Loader2, ShieldCheck } from 'lucide-react';
+import { UserRound, Lock, Eye, EyeOff, LogIn, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,7 @@ interface LoginProps {
 }
 
 export default function Login({ onLoginSuccess }: LoginProps) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -20,8 +20,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      toast.error('请输入邮箱');
+    if (!identifier.trim()) {
+      toast.error('请输入用户名或邮箱');
       return;
     }
     if (!password.trim()) {
@@ -38,7 +38,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       const response = await client.apiCall.invoke({
         url: '/api/v1/emp-auth/login',
         method: 'POST',
-        data: { email: email.trim(), username: email.trim(), password },
+        data: { email: identifier.trim(), username: identifier.trim(), password },
       });
 
       if (epoch !== getAuthSessionEpoch()) throw authSessionChangedError();
@@ -106,26 +106,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label className="text-sm font-semibold text-slate-700">邮箱地址</Label>
+              <Label htmlFor="login-identifier" className="text-sm font-semibold text-slate-700">用户名或邮箱</Label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <UserRound className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  type="email"
-                  placeholder="请输入邮箱"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="login-identifier"
+                  type="text"
+                  placeholder="请输入用户名或邮箱"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   className="h-12 rounded-2xl border-slate-200 bg-slate-50 pl-11 text-base text-slate-950 placeholder:text-slate-400 focus:bg-white"
-                  autoComplete="email"
-                  inputMode="email"
+                  autoComplete="username"
+                  inputMode="text"
+                  autoCapitalize="none"
+                  spellCheck={false}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-semibold text-slate-700">密码</Label>
+              <Label htmlFor="login-password" className="text-sm font-semibold text-slate-700">密码</Label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="请输入密码"
                   value={password}

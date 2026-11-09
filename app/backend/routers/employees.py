@@ -68,17 +68,39 @@ async def _lock_employee_identity_mutation(db: AsyncSession) -> None:
         raise HTTPException(status_code=503, detail="当前数据库暂不支持安全修改账号，请联系管理员")
 
 
-async def _validate_employee_emails(db: AsyncSession, emails: Sequence[str | None], *, replaced_ids: Sequence[int] = ()) -> None:
-    requested = [email for email in emails if email]
-    if len(requested) != len(set(requested)):
-        raise HTTPException(status_code=409, detail="登录邮箱不能重复，请为每个员工使用独立邮箱")
+def _employee_login_key(value: str | None) -> str | None:
+    return str(value or "").strip().lower() or None
+
+
+def _normalize_employee_username(value: str | None) -> str | None:
+    # Keep the spelling displayed to the employee while matching case-insensitively.
+    return str(value or "").strip() or None
+
+
+async def _validate_employee_login_identities(
+    db: AsyncSession,
+    identities: Sequence[tuple[str | None, str | None]],
+    *,
+    replaced_ids: Sequence[int] = (),
+) -> None:
+    """A login token may belong to only one employee across either login field."""
+    requested: dict[str, int] = {}
+    for index, (email, username) in enumerate(identities):
+        # The same employee may intentionally use their email as their username.
+        for identity in {_employee_login_key(email), _employee_login_key(username)} - {None}:
+            if identity in requested and requested[identity] != index:
+                raise HTTPException(status_code=409, detail="登录账号不能与其他员工的用户名或邮箱重复")
+            requested[identity] = index
     if not requested:
         return
-    query = select(Employees.id).where(func.lower(func.trim(Employees.email)).in_(requested))
+    query = select(Employees.id).where(or_(
+        func.lower(func.trim(Employees.email)).in_(requested),
+        func.lower(func.trim(Employees.login_username)).in_(requested),
+    ))
     if replaced_ids:
         query = query.where(~Employees.id.in_(replaced_ids))
     if await db.scalar(query.limit(1)) is not None:
-        raise HTTPException(status_code=409, detail="登录邮箱已被其他员工使用")
+        raise HTTPException(status_code=409, detail="登录账号已被其他员工的用户名或邮箱使用")
 
 
 def _validate_employee_phone(payload: dict, existing: Employees | None = None) -> None:
@@ -252,13 +274,20 @@ async def _preflight_employee_updates(
     by_id = await _load_employee_targets(db, [item.id for item in items])
     prepared: list[tuple[Employees, dict, bool]] = []
     continuity_updates: Dict[int, dict] = {}
-    email_updates: Dict[int, str | None] = {}
+    identity_updates: Dict[int, tuple[str | None, str | None]] = {}
     for item in items:
         employee = by_id[item.id]
         update = _employee_update_payload(item.updates)
         if "email" in update:
             update["email"] = normalize_employee_email(update["email"])
-            email_updates[employee.id] = update["email"]
+        if "login_username" in update:
+            update["login_username"] = _normalize_employee_username(update["login_username"])
+        email = update.get("email", employee.email)
+        username = update.get("login_username", employee.login_username)
+        if (_employee_login_key(email), _employee_login_key(username)) != (
+            _employee_login_key(employee.email), _employee_login_key(employee.login_username)
+        ):
+            identity_updates[employee.id] = (email, username)
         _validate_employee_phone(update, employee)
         target_role = update.get("role", employee.role)
         linked_partner = await _linked_external_partner(db, employee.id)
@@ -277,7 +306,7 @@ async def _preflight_employee_updates(
         continuity_updates[employee.id] = update
         prepared.append((employee, update, managed_as_partner or target_role == "sales_partner"))
 
-    await _validate_employee_emails(db, list(email_updates.values()), replaced_ids=list(email_updates))
+    await _validate_employee_login_identities(db, list(identity_updates.values()), replaced_ids=list(identity_updates))
     await _assert_super_admin_continuity(db, updates=continuity_updates)
     return prepared
 
@@ -697,7 +726,8 @@ async def create_employees(
             if linked_partner.status not in {"active", "suspended"}:
                 raise HTTPException(status_code=409, detail="已终止或结清的渠道不能新增账号")
         payload["email"] = normalize_employee_email(payload.get("email"))
-        await _validate_employee_emails(db, [payload["email"]])
+        payload["login_username"] = _normalize_employee_username(payload.get("login_username"))
+        await _validate_employee_login_identities(db, [(payload["email"], payload["login_username"])])
         _validate_employee_phone(payload)
         if not payload.get("user_id"):
             payload["user_id"] = (
@@ -764,8 +794,9 @@ async def create_employeess_batch(
         payloads = [item.model_dump(exclude={"existing_partner_id"}) for item in request.items]
         for payload in payloads:
             payload["email"] = normalize_employee_email(payload.get("email"))
+            payload["login_username"] = _normalize_employee_username(payload.get("login_username"))
             _validate_employee_phone(payload)
-        await _validate_employee_emails(db, [payload["email"] for payload in payloads])
+        await _validate_employee_login_identities(db, [(payload["email"], payload["login_username"]) for payload in payloads])
         for index, payload in enumerate(payloads):
             if not payload.get("user_id"):
                 payload["user_id"] = (

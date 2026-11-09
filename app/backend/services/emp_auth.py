@@ -139,16 +139,17 @@ class EmpAuthService:
         return "CURRENT_TIMESTAMP" if bind and bind.dialect.name == "sqlite" else "NOW()"
 
     async def authenticate(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """Authenticate an employee by email and password. Returns dict with employee data."""
+        """Authenticate one unambiguous email or configured login username."""
         await self.ensure_password_column()
-        normalized_email = normalize_employee_email(email)
-        if not normalized_email:
+        normalized_identity = normalize_employee_email(email)
+        if not normalized_identity:
             return None
-        email_token = _email_log_token(normalized_email)
+        email_token = _email_log_token(normalized_identity)
         try:
             result = await self.db.execute(
-                text("SELECT id, user_id, name, role, phone, email, status, password, updated_at FROM employees WHERE LOWER(TRIM(email)) = :email LIMIT 2"),
-                {"email": normalized_email},
+                text("SELECT id, user_id, name, role, phone, email, status, password, updated_at FROM employees "
+                     "WHERE LOWER(TRIM(email)) = :identity OR LOWER(TRIM(login_username)) = :identity LIMIT 2"),
+                {"identity": normalized_identity},
             )
             rows = result.fetchall()
             if len(rows) > 1:
@@ -182,7 +183,7 @@ class EmpAuthService:
 
             return emp_data
         except Exception as e:
-            logger.error(f"Authentication error: {e}")
+            logger.error("Employee authentication failed type=%s", type(e).__name__)
             return None
 
     async def get_employee_by_id(self, emp_id: int) -> Optional[Dict[str, Any]]:

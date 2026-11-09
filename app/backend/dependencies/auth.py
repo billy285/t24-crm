@@ -112,7 +112,7 @@ async def get_current_user(
 
         return enforce_sales_partner_route(UserResponse(
             id=str(employee_id),
-            email=employee_payload.get("email", ""),
+            email=employee_payload.get("email") or "",
             name=employee_payload.get("name"),
             role=normalize_system_role(employee_payload.get("role")),
             last_login=None,

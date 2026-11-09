@@ -718,7 +718,7 @@ async def test_ambiguous_legacy_email_accounts_never_select_first_identity(sessi
         await db.commit()
     response = await client.post("/api/v1/emp-auth/login", json={"email": "sales-301@example.test", "password": PASSWORD})
     assert response.status_code == 401
-    assert response.json()["detail"] == "邮箱或密码错误"
+    assert response.json()["detail"] == "账号或密码错误"
     async with sessions() as db:
         assert not (await db.scalars(select(EmployeeAuthSession))).all()
 

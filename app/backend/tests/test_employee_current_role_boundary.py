@@ -79,4 +79,4 @@ async def test_invalid_old_header_does_not_prevent_fresh_password_login(current_
     client, _, session_id = current_role_client
     response = await client.post("/api/v1/emp-auth/login",headers=headers("revoked-or-missing","sales"),json={"email":"missing@example.test","password":"not-a-real-password"})
     assert response.status_code == 401
-    assert response.json()["detail"] == "邮箱或密码错误"
+    assert response.json()["detail"] == "账号或密码错误"

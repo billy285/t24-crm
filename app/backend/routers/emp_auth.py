@@ -24,8 +24,23 @@ ACTIVE_EMPLOYEE_STATUSES = {"active", "probation"}
 
 # ---------- Schemas ----------
 class LoginRequest(BaseModel):
-    email: str
+    # Keep the historical email key so existing clients can send either kind of
+    # login identifier through it; new clients may send username instead.
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
+
+    @property
+    def identifier(self) -> str:
+        email = (self.email or "").strip()
+        username = (self.username or "").strip()
+        # Validate here instead of a whole-model validation error: a validation
+        # response must never echo the complete login body containing a password.
+        if not (email or username):
+            raise HTTPException(status_code=400, detail="请输入用户名或邮箱")
+        if email and username and email.lower() != username.lower():
+            raise HTTPException(status_code=400, detail="登录账号参数不一致，请只填写一个登录账号")
+        return username or email
 
 
 class EmployeeInfo(BaseModel):
@@ -82,13 +97,13 @@ async def employee_login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Employee login with email and password."""
+    """Employee login with a configured username or email and password."""
     client_ip = request.client.host if request.client else "unknown"
     if os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {"1", "true", "yes", "on"}:
         forwarded_ip = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
         if forwarded_ip:
             client_ip = forwarded_ip
-    rate_limit_keys = login_rate_limiter.keys(client_ip, data.email)
+    rate_limit_keys = login_rate_limiter.keys(client_ip, data.identifier)
     retry_after = login_rate_limiter.retry_after(rate_limit_keys)
     if retry_after:
         raise HTTPException(
@@ -98,14 +113,14 @@ async def employee_login(
         )
 
     service = EmpAuthService(db)
-    emp = await service.authenticate(data.email, data.password)
+    emp = await service.authenticate(data.identifier, data.password)
 
     if not emp:
         retry_after = login_rate_limiter.record_failure(rate_limit_keys)
         headers = {"Retry-After": str(retry_after)} if retry_after else None
         if retry_after:
             raise HTTPException(status_code=429, detail="登录尝试过多，请稍后再试", headers=headers)
-        raise HTTPException(status_code=401, detail="邮箱或密码错误")
+        raise HTTPException(status_code=401, detail="账号或密码错误")
 
     if emp["status"] not in ("active", "probation"):
         login_rate_limiter.record_failure(rate_limit_keys)
