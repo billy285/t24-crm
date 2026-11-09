@@ -1,0 +1,19 @@
+{
+  "carrier": "9b265d876543be94980cbb477672ad0eba9e3029",
+  "source": "b587b5f6b43dc40391e0b1fa544b0c3dacec0b6a",
+  "release_root": "/opt/t24-crm/releases/western-beauty-timezones-b587b5f6b43d-20261109",
+  "files": {
+    "release.py": {
+      "sha256": "34897e743dadb670054351f9b2fdb8593e814286d813ed54f91223f31c9ae2ab",
+      "size": 18343
+    },
+    "manifest.json": {
+      "sha256": "2e11eba5999ee006f1d436f419c5981c48819a76ec2b9dcf36e7a98085845404",
+      "size": 24557
+    },
+    "payload.tar.gz": {
+      "sha256": "0b1d6a52eb4afbdc41ee37e7ff65e99ef2deae9eaf72b1be256b08e00b7eed71",
+      "size": 2316765
+    }
+  }
+}

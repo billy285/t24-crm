@@ -1,0 +1,14 @@
+{
+  "candidate_image": "sha256:30a40ee4aba0af31a549ddeb2e4d966e7af17edc11aa09cb64dee8be44555c93",
+  "crm_mount_order_equivalence_verified": true,
+  "database_migration": false,
+  "manifest_sha256": "2e11eba5999ee006f1d436f419c5981c48819a76ec2b9dcf36e7a98085845404",
+  "offline_candidate_ready": true,
+  "offline_rows_and_schema_unchanged": true,
+  "original_image": "sha256:42bb8f1372b5275240df163173fe70382ec79eba1d071eb8c3e189221bbb8fb7",
+  "private_mount_order_equivalence_verified": true,
+  "public_root": "/var/www/t24-crm-public/western-beauty-timezones-b587b5f6b43d-20261109",
+  "schema_revision": "j65bc789b025",
+  "source_sha": "b587b5f6b43dc40391e0b1fa544b0c3dacec0b6a",
+  "stage": "PREPARED"
+}

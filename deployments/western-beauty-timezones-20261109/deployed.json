@@ -1,0 +1,22 @@
+{
+  "auth_ringcentral_and_unrelated_code_preserved": true,
+  "crm_mount_order_equivalence_verified": true,
+  "database_migration": false,
+  "database_writes_by_release": false,
+  "environment_preserved": true,
+  "frontend_version": "e49b66b8c1d2",
+  "private_mount_order_equivalence_verified": true,
+  "private_services_preserved": true,
+  "public_root": "/var/www/t24-crm-public/western-beauty-timezones-b587b5f6b43d-20261109",
+  "retained_original": "t24-crm-before-western-timezone-b587b5f6b43d",
+  "runtime": {
+    "config": "10ca0f4eaf3eefec90bb3df39de3b08c8138b39bb461f0b86cc8007c507155fa",
+    "id": "3f7576f481827395414307f8147623b49cd86955bf80a95958450ca874c8575b",
+    "image": "sha256:30a40ee4aba0af31a549ddeb2e4d966e7af17edc11aa09cb64dee8be44555c93",
+    "started": "2026-11-09T05:30:03.450193763Z"
+  },
+  "schema_revision": "j65bc789b025",
+  "schema_unchanged": true,
+  "source_sha": "b587b5f6b43dc40391e0b1fa544b0c3dacec0b6a",
+  "stage": "DEPLOYED"
+}

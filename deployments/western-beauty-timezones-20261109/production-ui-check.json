@@ -1,0 +1,16 @@
+{
+  "batch_id": "1fbdfaf5-a8d5-46ce-b0b5-df15f51c8037",
+  "authenticated_owner_page_reloaded": true,
+  "timezone_filter_counts": {
+    "pacific": 343,
+    "mountain": 37,
+    "hawaii": 1
+  },
+  "sum": 381,
+  "examples": {
+    "UT_with_929_area_code": "America/Denver; mountain clock rendered",
+    "WA_with_818_area_code": "America/Los_Angeles; pacific clock rendered",
+    "HI": "Pacific/Honolulu; independent Hawaii clock rendered"
+  },
+  "source_notice": "Address-derived zone is displayed as inferred; no contact facts are inferred from the telephone area code."
+}
