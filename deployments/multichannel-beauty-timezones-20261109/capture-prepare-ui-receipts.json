@@ -1,0 +1,31 @@
+[
+  {
+    "backend_files": 433,
+    "baseline_sha256": "3ab80da1160b9c7a9be0b618350283bbd6d96106b6de5fa2b4de806e7024544c",
+    "private_services_preserved": true,
+    "public_root": "/var/www/t24-crm-public/nationwide-beauty-timezones-16faa45c2c97-20261109",
+    "runtime": {
+      "config": "ba8815723255b1881980a509ed1e45608953e167436292fdc319541971248a1d",
+      "id": "67b3f331f0ef83f7ecc06eab6d1c5c961ea8f664bfdb6c18c3d642c8d30a287d",
+      "image": "sha256:5a88d23b2ef57122d810dad661b8e8c19e702eabba8a7833a9b6289215583d33",
+      "started": "2026-11-09T11:39:58.641880048Z"
+    },
+    "schema_objects": 593,
+    "schema_revision": "j65bc789b025",
+    "stage": "CAPTURED"
+  },
+  {
+    "candidate_image": "sha256:6ae9f98b7c64fc6cd91838353d46ce7cd9642d2559ccbfb851b60d796cb03b12",
+    "crm_mount_order_equivalence_verified": true,
+    "database_migration": false,
+    "manifest_sha256": "81a3916afdf70125d230a86234dcc1611c2a43585cfb2097637bfb8cc417f650",
+    "offline_candidate_ready": true,
+    "offline_rows_and_schema_unchanged": true,
+    "original_image": "sha256:5a88d23b2ef57122d810dad661b8e8c19e702eabba8a7833a9b6289215583d33",
+    "private_mount_order_equivalence_verified": true,
+    "public_root": "/var/www/t24-crm-public/multichannel-beauty-timezones-26ef27d41fab-20261109",
+    "schema_revision": "j65bc789b025",
+    "source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+    "stage": "PREPARED"
+  }
+]
