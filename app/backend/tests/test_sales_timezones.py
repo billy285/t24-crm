@@ -47,6 +47,15 @@ CASES = [
       ("Boca Raton", "Cooper City", "Coral Springs", "Davie", "Hernando", "Miami Lakes", "North Miami Beach", "Pembroke Pines", "Sunrise")],
     *[({"country": "US", "state": "MI", "city": city}, "America/Detroit", "eastern") for city in
       ("Madison Heights", "West Bloomfield Township")],
+    *[({"country": "US", "state": "FL", "city": city}, "America/New_York", "eastern") for city in
+      ("Altamonte Springs", "Lady Lake", "Lakewood Ranch", "Port Orange", "Wellington", "Windermere")],
+    *[({"country": "US", "state": "MI", "city": city}, "America/Detroit", "eastern") for city in
+      ("Berkley", "Troy")],
+    ({"country": "US", "state": "TN", "city": "Jackson"}, "America/Chicago", "central"),
+    ({"country": "US", "state": "TX", "city": "The Colony"}, "America/Chicago", "central"),
+    ({"country": "US", "state": "TN", "city": "Unreviewed City"}, None, "unknown"),
+    ({"country": "US", "state": "FL", "city": "Unreviewed City"}, None, "unknown"),
+    ({"country": "US", "state": "MI", "city": "Menominee"}, "America/Menominee", "central"),
     ({"country": "US", "state": "IN", "city": "Indianapolis"}, "America/Indiana/Indianapolis", "eastern"),
     ({"country": "US", "state": "CA", "city": "LA", "profile_timezone": " America/New_York "}, "America/New_York", "eastern"),
     ({"country": "CA", "state": "CA", "city": "Los Angeles"}, None, "unknown"),
