@@ -41,6 +41,12 @@ CASES = [
     ({"country": "US", "state": "TX", "city": "Houston"}, "America/Chicago", "central"),
     ({"country": "US", "state": "TX", "city": "El Paso"}, "America/Denver", "mountain"),
     ({"country": "US", "state": "FL", "city": "Pensacola"}, "America/Chicago", "central"),
+    *[({"country": "US", "state": "TX", "city": city}, "America/Chicago", "central") for city in
+      ("Allen", "Garland", "Lewisville", "McKinney", "Richmond")],
+    *[({"country": "US", "state": "FL", "city": city}, "America/New_York", "eastern") for city in
+      ("Boca Raton", "Cooper City", "Coral Springs", "Davie", "Hernando", "Miami Lakes", "North Miami Beach", "Pembroke Pines", "Sunrise")],
+    *[({"country": "US", "state": "MI", "city": city}, "America/Detroit", "eastern") for city in
+      ("Madison Heights", "West Bloomfield Township")],
     ({"country": "US", "state": "IN", "city": "Indianapolis"}, "America/Indiana/Indianapolis", "eastern"),
     ({"country": "US", "state": "CA", "city": "LA", "profile_timezone": " America/New_York "}, "America/New_York", "eastern"),
     ({"country": "CA", "state": "CA", "city": "Los Angeles"}, None, "unknown"),
