@@ -1,0 +1,23 @@
+{
+  "baseline_git_commit": "7fbe28696dcd97528b5781a1190b6ea1c659ecaa",
+  "baseline_source_sha": "34917180e0d811d720e6bbba44355dfb69b6adee",
+  "build_receipt_sha256": "29e907ab36929096099f7968aa8bd2dcab5d7db628f4b4afcfa2b544271733ea",
+  "changed_source_files": {
+    "app/frontend/src/components/CrmThemePicker.tsx": "08369533d2394b4f64396654ad548c3a5b9335e16206120b1ddf400486688e87",
+    "app/frontend/src/components/Layout.tsx": "2510c1f9ecfa1e27b94df886360c4b891863205366449c9cc3f45eec14b3a7d7",
+    "app/frontend/src/components/crm-color-themes.css": "15f8f5ea472f93ea0d37e49469910f2d085ce140c323c0831b8d2b65e677d5b3",
+    "app/frontend/src/components/crm-theme-picker.css": "94861d9b9d024069c6ed3b39aea0b71a3c9dab98ed3d0396574fd9db99e9096d",
+    "app/frontend/src/lib/crm-theme.ts": "80cb254210be2ad399a843166c0ceee39ecd7f49f5b940d6dc0f2ae158ddbcdd",
+    "app/frontend/src/lib/use-crm-theme.ts": "92b539a47fb27ce106a101bdff80bf0c0d10c1d6e59845cd28f5097feda4f7cf",
+    "app/frontend/tests/crm-theme-picker.test.mjs": "c70a435abfcb106d2b97b20597b993b8387b692c0af2f5751f5ccef77079b019",
+    "app/frontend/tests/crm-theme.test.mjs": "6eaa04fab695c64ae6c74e774c7962b01244a087edb8d1520ce4e581cab827cf",
+    "app/frontend/tests/media-layout-navigation.test.mjs": "3145a18c2e8f01e9cdf92d67de45b3d667ec477dab79dcd050474e37fa99e12a"
+  },
+  "dist_inventory_sha256": "7bcdb6a1dbe33aa3aed7d821866b56b25c3d3a9954473d95d8319f876d15b67b",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "21a50c5ef5c5",
+  "source_commit_bytes_verified": true,
+  "source_sha": "00f851323f98c50e484205e380cd4feb78938b1b",
+  "stage": "CRM_THEMES_SOURCE_FREEZE"
+}
