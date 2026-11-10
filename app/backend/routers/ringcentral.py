@@ -2,7 +2,8 @@ import asyncio
 import hmac
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Annotated, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -36,11 +37,13 @@ from services.ringcentral import (
 )
 from services.ringcentral_sync import process_telephony_event, upsert_call_log_record
 from services.ringcentral_team import passive_connection_status, team_connection_statuses, connection_summary
+from services.ringcentral_coverage import binding_key, record_window, utc
 
 
 router = APIRouter(prefix="/api/ringcentral", tags=["ringcentral"])
 SALES_ROLES = {"admin", "super_admin", "sales_manager", "sales"}
 _refresh_locks: dict[int, asyncio.Lock] = {}
+_sync_locks: dict[int, asyncio.Lock] = {}
 HEALTHY_WEBHOOK_STATUSES = {"active"}
 
 
@@ -200,6 +203,7 @@ async def ringcentral_status(
 
 @router.get("/team-status")
 async def ringcentral_team_status(
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -213,7 +217,11 @@ async def ringcentral_team_status(
         if role == "sales_manager":
             query = query.where(Employees.supervisor == (current_user.name or ""))
     employee_ids = list((await db.execute(query)).scalars().all())
-    items = await team_connection_statuses(db, employee_ids, configured=connection_configured())
+    end = datetime.now(timezone.utc)
+    start = (end.astimezone(ZoneInfo("Asia/Shanghai")) - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    items = await team_connection_statuses(db, employee_ids, configured=connection_configured(),
+                                           coverage_start=start, coverage_end=end)
     return {"items": items, "summary": connection_summary(items)}
 
 
@@ -269,6 +277,13 @@ async def ensure_ringcentral_subscription(
         raise HTTPException(status_code=409, detail="请先连接 RingCentral 账号。")
     if not connection.ringcentral_account_id or not connection.ringcentral_extension_id:
         raise HTTPException(status_code=409, detail="RingCentral 账号缺少账户或分机信息，请重新连接。")
+    duplicate = (await db.execute(select(RingCentralConnections.id).where(
+        RingCentralConnections.ringcentral_account_id == connection.ringcentral_account_id,
+        RingCentralConnections.ringcentral_extension_id == connection.ringcentral_extension_id,
+        RingCentralConnections.employee_id != employee_id, RingCentralConnections.is_active.is_(True),
+    ))).first()
+    if duplicate:
+        raise HTTPException(status_code=409, detail="分机绑定冲突，请管理员核对后由销售本人修复。")
     try:
         if connection.webhook_subscription_id:
             try:
@@ -309,30 +324,65 @@ async def sync_ringcentral_call_log(
 ):
     _ensure_sales_access(current_user)
     employee_id = _employee_id(current_user)
-    connection = (
-        await db.execute(select(RingCentralConnections).where(RingCentralConnections.employee_id == employee_id))
-    ).scalar_one_or_none()
-    connection = await _refresh_connection_if_needed(employee_id, connection, db)
-    if not connection or not connection.is_active:
-        raise HTTPException(status_code=409, detail="请先连接 RingCentral 账号。")
-    records = await fetch_extension_call_log(
-        _access_token(connection), date_from=datetime.now(timezone.utc) - timedelta(days=days)
-    )
-    synced = 0
-    skipped = 0
-    previous_synced_at = connection.last_synced_at
-    for record in records:
-        if await upsert_call_log_record(db, connection, record):
-            synced += 1
-        else:
-            skipped += 1
-    if skipped:
-        connection.last_synced_at = previous_synced_at
-        connection.last_error = "部分通话未导入，历史销售归属已保留，请核对同步明细"
-    else:
-        connection.last_synced_at = datetime.now(timezone.utc)
-    await db.commit()
-    return {"synced": synced, "skipped": skipped, "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
+    async with _sync_locks.setdefault(employee_id, asyncio.Lock()):
+        connection = (await db.execute(select(RingCentralConnections).where(
+            RingCentralConnections.employee_id == employee_id))).scalar_one_or_none()
+        connection = await _refresh_connection_if_needed(employee_id, connection, db)
+        if not connection or not connection.is_active or not binding_key(connection):
+            raise HTTPException(status_code=409, detail="请先用本人账号连接 RingCentral 并确认分机。")
+        conflict = (await db.execute(select(RingCentralConnections.id).where(
+            RingCentralConnections.ringcentral_account_id == connection.ringcentral_account_id,
+            RingCentralConnections.ringcentral_extension_id == connection.ringcentral_extension_id,
+            RingCentralConnections.employee_id != employee_id, RingCentralConnections.is_active.is_(True),
+        ))).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="分机绑定冲突，请管理员核对后由销售本人重试。")
+        date_to = datetime.now(timezone.utc)
+        date_from = date_to - timedelta(days=days)
+        if connection.binding_started_at:
+            date_from = max(date_from, utc(connection.binding_started_at))
+        identity = binding_key(connection)
+        previous_synced_at = connection.last_synced_at
+        failure_message = "通话补同步未完成，请缩短期间或稍后重试。"
+        try:
+            records = await fetch_extension_call_log(_access_token(connection), date_from=date_from, date_to=date_to)
+            # An OAuth rebind while the provider request was running must not
+            # attribute the old account's fetched calls to the new binding.
+            await db.refresh(connection)
+            if not connection.is_active or binding_key(connection) != identity:
+                raise HTTPException(status_code=409, detail="电话绑定已变化，本次未归属通话，请重新同步。")
+            synced = skipped = 0
+            for record in records:
+                if await upsert_call_log_record(db, connection, record):
+                    synced += 1
+                else:
+                    skipped += 1
+            window = getattr(records, "window", {})
+            paged = bool(window.get("fully_paginated") and window.get("scope") == "extension"
+                         and window.get("date_from") == date_from and window.get("date_to") == date_to)
+            partial_message = "部分通话未导入，历史销售归属已保留，请核对同步明细"
+            if skipped:
+                connection.last_synced_at = previous_synced_at
+                connection.last_error = partial_message
+            else:
+                connection.last_synced_at = datetime.now(timezone.utc)
+                if connection.last_error in {failure_message, partial_message}:
+                    connection.last_error = None
+            evidence = record_window(db, connection, binding=identity, date_from=date_from, date_to=date_to,
+                                     status="completed" if paged and not skipped else "partial",
+                                     pages=window.get("pages", 0), fetched=len(records), saved=synced,
+                                     skipped=skipped, fully_paginated=paged)
+            await db.commit()
+            return {"synced": synced, "skipped": skipped, "sync_window": evidence,
+                    "last_synced_at": connection.last_synced_at, **_status_payload(connection)}
+        except HTTPException as exc:
+            # Keep a safe failure code, never provider response bodies/tokens.
+            if binding_key(connection) == identity:
+                connection.last_error = failure_message
+            record_window(db, connection, binding=identity, date_from=date_from, date_to=date_to,
+                          status="failed", error_code="binding_changed" if exc.status_code == 409 else "provider_request_failed")
+            await db.commit()
+            raise
 
 
 @router.get("/calls/recent")

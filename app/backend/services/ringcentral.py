@@ -9,7 +9,7 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from fastapi import HTTPException, status
@@ -259,29 +259,72 @@ async def _authorized_json_request(
     return response.json()
 
 
+class CallLogRecords(list):
+    """List-compatible provider records with explicit pagination evidence."""
+
+    def __init__(self, records, *, date_from, date_to, pages, scope):
+        super().__init__(records)
+        self.window = dict(date_from=date_from, date_to=date_to, pages=pages,
+                           fully_paginated=True, scope=scope)
+
+
 async def fetch_extension_call_log(
     access_token: str,
     *,
     date_from: datetime,
+    date_to: datetime | None = None,
     telephony_session_id: str | None = None,
 ) -> list[Dict[str, Any]]:
-    payload = await _authorized_json_request(
-        "GET",
-        "/restapi/v1.0/account/~/extension/~/call-log",
-        access_token,
-        params={
-            "view": "Detailed",
-            "dateFrom": date_from.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "perPage": 100,
-        },
-    )
-    records = list(payload.get("records") or [])
+    # Keep both boundaries fixed while paging. Never send a bearer token to a
+    # nextPage URL: only extract its sequential page number and use our endpoint.
+    date_to = date_to or datetime.now(timezone.utc)
+    params = dict(view="Detailed", dateFrom=date_from.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                  dateTo=date_to.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"), perPage=100)
+    records = []
+    for page in range(1, 101):
+        try:
+            payload = await _authorized_json_request("GET", "/restapi/v1.0/account/~/extension/~/call-log",
+                                                     access_token, params={**params, "page": page})
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail="RingCentral 通话响应无法读取，同步未完成。") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=502, detail="RingCentral 通话响应格式异常，同步未完成。")
+        batch = payload.get("records")
+        if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+            raise HTTPException(status_code=502, detail="RingCentral 通话分页格式异常，同步未完成。")
+        records.extend(batch)
+        navigation = payload.get("navigation") or {}
+        paging = payload.get("paging") or {}
+        if not isinstance(navigation, dict) or not isinstance(paging, dict) or not isinstance(navigation.get("nextPage") or {}, dict):
+            raise HTTPException(status_code=502, detail="RingCentral 通话分页格式异常，同步未完成。")
+        if paging.get("page") is not None and str(paging["page"]) != str(page):
+            raise HTTPException(status_code=502, detail="RingCentral 返回页码不一致，同步未完成。")
+        next_page = (navigation.get("nextPage") or {}).get("uri")
+        if next_page:
+            try:
+                number = int(parse_qs(urlsplit(next_page).query)["page"][0])
+            except (ValueError, TypeError, KeyError, IndexError) as exc:
+                raise HTTPException(status_code=502, detail="RingCentral 后续分页无法核对，同步未完成。") from exc
+            if number != page + 1:
+                raise HTTPException(status_code=502, detail="RingCentral 分页顺序异常，同步未完成。")
+        elif paging.get("totalPages") is not None:
+            try:
+                more = int(paging["totalPages"]) > page
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(status_code=502, detail="RingCentral 分页总数异常，同步未完成。") from exc
+            if not more:
+                break
+        elif "navigation" in payload or len(batch) < 100:
+            break
+    else:
+        raise HTTPException(status_code=502, detail="RingCentral 通话超过单次同步分页上限，请缩短同步期间后重试。")
     if telephony_session_id:
         records = [
             record for record in records
             if str(record.get("telephonySessionId") or "") == str(telephony_session_id)
         ]
-    return records
+    return CallLogRecords(records, date_from=date_from, date_to=date_to, pages=page,
+                          scope="session" if telephony_session_id else "extension")
 
 
 async def create_telephony_subscription(

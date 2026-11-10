@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getToken, invokeWithAuth, refreshToken } from '@/lib/tokenStore';
 import { formatPhoneNumber } from '@/lib/phone-format';
-import { MERCHANT_IMPORT_EXAMPLE, MERCHANT_IMPORT_HEADERS, merchantImportRepairAdvice } from '@/lib/merchant-import';
+import { MERCHANT_IMPORT_EXAMPLE, MERCHANT_IMPORT_EXTENDED_HEADERS, MERCHANT_IMPORT_HEADERS, merchantImportRepairAdvice, type MerchantImportIssueRow } from '@/lib/merchant-import';
 
 const statusNames: Record<string, string> = { preview: '待确认', committed: '已入池', reverted: '已撤销', pending: '未分配', no_phone: '电话待补齐', duplicate: '重复隔离', existing_customer: '正式客户隔离', closed: '停业隔离', error: '不导入' };
-type ImportRow = { row: number; business_name: string; phone: string; phone_country?: string; phone_status?: string; normalized_phone?: string; status: string; reason: string; warnings: string[]; raw: Record<string, string>; merchant_id?: number; duplicate_row?: number };
-type ImportBatch = { id: string; filename: string; status: string; row_count: number; created_at: string; duplicate_upload?: boolean; summary: { pending: number; isolated: number; errors: number; importable: number }; rows?: ImportRow[] };
+type ImportRow = MerchantImportIssueRow & { row: number; business_name: string; phone: string; phone_country?: string; normalized_phone?: string; warnings: string[]; raw: Record<string, string>; merchant_id?: number; source_metadata?: { source_url?: string; source_date?: string; verification_type?: string } };
+type ImportBatch = { id: string; filename: string; status: string; row_count: number; created_at: string; duplicate_upload?: boolean; template_headers?: string[]; import_defaults?: { industry?: string }; summary: { pending: number; isolated: number; errors: number; importable: number }; rows?: ImportRow[] };
 
 function errorMessage(error: unknown): string {
   const e = error as { data?: { detail?: unknown }; response?: { data?: { detail?: unknown } }; message?: string };
@@ -56,6 +56,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
   const [historyError, setHistoryError] = useState(false);
   const [visibleCount, setVisibleCount] = useState(30);
   const [rowFilter, setRowFilter] = useState('all');
+  const [defaultIndustry, setDefaultIndustry] = useState('');
 
   const loadHistory = async () => {
     try {
@@ -76,6 +77,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
     setBusy(true); setError(''); setBatch(null);
     try {
       const data = new FormData(); data.append('file', file);
+      if (defaultIndustry) data.append('default_industry', defaultIndustry);
       const response = await authenticatedFetch('/api/v1/merchant-imports/preview', { method: 'POST', body: data });
       showBatch(await response.json());
       await loadHistory();
@@ -131,34 +133,38 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
           {['选择文件', '预检确认', '入池结果'].map((label, index) => <li key={label} className={`rounded-lg border px-3 py-2 ${index === (!batch ? 0 : previewing ? 1 : 2) ? 'border-blue-200 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-500'}`}>{index + 1}. {label}</li>)}
         </ol>
         <section className="rounded-xl border border-slate-200 p-4">
-          <p className="font-semibold text-slate-900">固定五列，不改变原名单格式</p>
+          <p className="font-semibold text-slate-900">原五列继续适用，可补充来源资料</p>
           <p className="mt-1 text-sm text-slate-600">商家名称、商家电话、商家位置、地区、来源</p>
           <p className="mt-2 text-xs leading-5 text-slate-500">CSV 或 .xlsx · 最多 2000 条 / 10MB · 保留原始资料</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="outline" disabled={busy} onClick={() => downloadBlob(new Blob([`\uFEFF${MERCHANT_IMPORT_HEADERS.join(',')}\r\n`], { type: 'text/csv;charset=utf-8' }), 'T24商家导入固定模板.csv')}><Download className="mr-2 h-4 w-4" />下载固定模板</Button>
+            <Button variant="outline" disabled={busy} onClick={() => downloadBlob(new Blob([`\uFEFF${MERCHANT_IMPORT_EXTENDED_HEADERS.join(',')}\r\n`], { type: 'text/csv;charset=utf-8' }), 'T24商家导入扩展模板.csv')}>下载扩展模板</Button>
             <input ref={fileRef} className="hidden" type="file" accept=".csv,.xlsx" aria-label="商家导入文件" onChange={preview} disabled={busy} />
             <Button disabled={busy} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{busy ? '正在处理…' : batch ? '选择另一个文件' : '选择文件并预检'}</Button>
           </div>
+          <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">文件未填行业时使用<select aria-label="导入默认行业" value={defaultIndustry} disabled={busy} onChange={event => setDefaultIndustry(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2"><option value="">待分类</option><option value="美业">美业</option><option value="餐厅">餐厅</option></select></label>
           <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer font-medium">填写标准与示例</summary><div className="mt-3 space-y-3">
             <dl className="space-y-2"><div><dt className="font-medium text-slate-800">电话</dt><dd>一个单元格只填一个号码，格式设为文本；保留 + 国家码、前导零。分机写为 ext 009，勿加入 **、说明文字或遮罩。</dd></div><div><dt className="font-medium text-slate-800">地区</dt><dd>填写“城市, 州/省, 国家”，例如 New York, NY, US 或 Toronto, ON, CA。国家未知时保留原文；本地号码会待补齐，不默认美国。</dd></div><div><dt className="font-medium text-slate-800">名称与来源</dt><dd>商家名称必填、不超过 200 字；来源填写平台或文件名、不超过 50 字，留空记录为 CSV 导入。</dd></div></dl>
             <div className="overflow-x-auto rounded-lg border border-slate-200"><table aria-label="商家导入填写示例" className="w-full min-w-[560px] text-left text-xs"><thead className="bg-slate-50"><tr>{MERCHANT_IMPORT_HEADERS.map(header => <th key={header} className="p-2 font-medium">{header}</th>)}</tr></thead><tbody><tr>{MERCHANT_IMPORT_EXAMPLE.map((value, index) => <td key={index} className="p-2">{value}</td>)}</tr></tbody></table></div>
-            <p className="text-xs leading-5 text-slate-500">示例不在下载模板中。建议用表格软件保存 CSV，让含逗号的地区、地址仍保持一个单元格；表头顺序和五列不变。</p>
+            <p className="text-xs leading-5 text-slate-500">前五列表头顺序不变；扩展模板可追加行业、来源URL、来源日期、核验类型。来源日期用 YYYY-MM-DD，仅表示资料发布或刷新日；核验类型填写公开商家资料、招聘联系点或待核验。导入后仍需人工核验。</p>
+            <p className="text-xs leading-5 text-slate-500">示例不在下载模板中。建议用表格软件保存 CSV，让含逗号的地区、地址仍保持一个单元格。未知店名或街道可明确填写待核验；这些占位描述不作为同址重复依据。</p>
           </div></details>
           {!batch && <p className="mt-3 text-xs text-blue-700">预检只保存导入草稿，确认前不会写入商家池或分配销售。</p>}
         </section>
         {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
         {batch && <section aria-label="商家导入批次结果" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-words font-semibold text-slate-900">{batch.filename}</p><p className="mt-1 break-all text-xs text-slate-500">批次 {batch.id}</p></div><Badge>{statusNames[batch.status] || '处理中'}</Badge></div>
-          {batch.duplicate_upload && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">这份文件已有导入批次，已打开原结果，避免重复入池。</div>}
+          <p className="text-xs text-slate-600">本批默认行业：{batch.import_defaults?.industry || '待分类'}；行内行业优先。全部记录初始为待核验。</p>
+          {batch.duplicate_upload && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">这份文件已有导入批次，已打开原结果和原行业设置，避免重复入池。</div>}
           <div className="grid grid-cols-3 gap-2">{[['未分配', batch.summary.pending], ['隔离待处理', batch.summary.isolated], ['格式错误不导入', batch.summary.errors]].map(([label, count]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-semibold text-slate-900">{count}</p></div>)}</div>
           <p className="text-sm leading-6 text-slate-600">{previewing ? `确认后将 ${batch.summary.importable} 条记录写入商家池；隔离记录也会保留，格式错误行不会入池。正式客户和财务不会变动。` : batch.status === 'reverted' ? '本批入池记录已撤销，批次原始资料和处理结果仍保留。' : '本批记录已入池。导入后选择销售负责人分配，分配后转为销售线索；隔离记录按问题提示处理。'}</p>
           <div className="flex flex-wrap items-center gap-2"><div aria-label="导入行筛选" className="flex gap-1">{[['all', '全部行'], ['isolated', '隔离行'], ['error', '格式错误']].map(([value, label]) => <Button key={value} size="sm" variant={rowFilter === value ? 'default' : 'outline'} onClick={() => { setRowFilter(value); setVisibleCount(30); }}>{label}</Button>)}</div>{batch.summary.errors + batch.summary.isolated > 0 && <Button size="sm" variant="outline" onClick={() => void downloadIssues()}><Download className="mr-1 h-4 w-4" />下载问题行</Button>}</div>
           <div className="max-h-80 overflow-auto rounded-xl border border-slate-200"><table className="mi-preview-table w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr><th className="p-3">原行号</th><th className="p-3">商家资料</th><th className="p-3">处理结果</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.slice(0, visibleCount).map(row => {
             const advice = merchantImportRepairAdvice(row);
             const serverValidPhone = row.phone_status ? row.phone_status === 'valid' : Boolean(row.normalized_phone);
-            return <tr key={row.row}><td className="p-3 align-top text-slate-500">{row.row}</td><td className="p-3 align-top"><p className="break-words font-medium text-slate-900">{row.business_name || '名称为空'}</p><p className="mt-1 break-words text-slate-600" title={row.phone}>{row.phone ? serverValidPhone ? formatPhoneNumber(row.phone, row.phone_country) : row.phone : '无电话'}</p><p className="mt-1 break-words text-xs text-slate-500">{row.raw['商家位置']} · {row.raw['地区']} · {row.raw['来源'] || 'CSV 导入'}</p></td><td className="p-3 align-top"><Badge className={row.status === 'pending' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-800'}>{statusNames[row.status] || row.status}</Badge><p className="mt-1 text-xs leading-5 text-slate-600">{row.status === 'pending' && row.reason === '待人工核对；尚未分配销售' ? '可选择销售负责人分配' : row.reason}</p>{advice && <p className="mt-2 text-xs leading-5 text-slate-800"><span className="font-medium">{previewing ? '修复建议：' : '下一步：'}</span>{!previewing && row.status === 'no_phone' ? '在商家池补充完整电话与国家，再重新清洗；已入池记录无需重新导入。' : advice}</p>}{row.warnings?.map(warning => <p key={warning} className="mt-1 text-xs text-amber-700">{warning}</p>)}</td></tr>;
+            return <tr key={row.row}><td className="p-3 align-top text-slate-500">{row.row}</td><td className="p-3 align-top"><p className="break-words font-medium text-slate-900">{row.business_name || '名称为空'}</p><p className="mt-1 break-words text-slate-600" title={row.phone}>{row.phone ? serverValidPhone ? formatPhoneNumber(row.phone, row.phone_country) : row.phone : '无电话'}</p><p className="mt-1 break-words text-xs text-slate-500">{row.raw['商家位置']} · {row.raw['地区']} · {row.raw['来源'] || 'CSV 导入'}</p><p className="mt-1 text-xs text-slate-500">行业：{row.raw['行业'] || batch.import_defaults?.industry || '待分类'}</p>{row.source_metadata?.source_url && <a href={row.source_metadata.source_url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-blue-700 underline">原始来源资料</a>}{row.source_metadata?.source_date && <p className="mt-1 text-xs text-slate-500">资料日期：{row.source_metadata.source_date}</p>}{row.source_metadata?.verification_type && <p className="mt-1 text-xs text-slate-500">{({ public_business_profile: '公开商家资料', recruitment_contact: '招聘联系点', unknown: '来源类型待核验' } as Record<string, string>)[row.source_metadata.verification_type] || '来源类型待核验'} · 人工待核验</p>}</td><td className="p-3 align-top"><Badge className={row.status === 'pending' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-800'}>{statusNames[row.status] || row.status}</Badge><p className="mt-1 text-xs leading-5 text-slate-600">{row.status === 'pending' && row.reason === '待人工核对；尚未分配销售' ? '可选择销售负责人分配' : row.reason}</p>{advice && <p className="mt-2 text-xs leading-5 text-slate-800"><span className="font-medium">{previewing ? '修复建议：' : '下一步：'}</span>{!previewing && row.status === 'no_phone' ? '在商家池补充完整电话与国家，再重新清洗；已入池记录无需重新导入。' : advice}</p>}{row.warnings?.map(warning => <p key={warning} className="mt-1 text-xs text-amber-700">{warning}</p>)}</td></tr>;
           })}</tbody></table>{!rows.length && <p className="p-5 text-center text-sm text-slate-500">没有此类记录</p>}</div>
-          {previewing && batch.summary.errors + batch.summary.isolated > 0 && <p className="text-xs leading-5 text-slate-500">按原行号修正原文件后重新预检。问题行下载含结果说明，重新上传时只保留模板五列。</p>}
+          {previewing && batch.summary.errors + batch.summary.isolated > 0 && <p className="text-xs leading-5 text-slate-500">按原行号修正原文件后重新预检。问题行下载含结果说明，重新上传时只保留模板五列及原有扩展列。</p>}
           {rows.length > visibleCount && <Button variant="outline" onClick={() => setVisibleCount(count => count + 100)}>显示更多行（已显示 {visibleCount}/{rows.length}）</Button>}
 
         </section>}

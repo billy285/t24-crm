@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from core.database import Base
 from models.employees import Employees
+from models.operation_logs import Operation_logs
 from models.ringcentral_connections import RingCentralConnections
 from models.ringcentral_call_records import RingCentralCallRecords
 from models.sales_call_activities import SalesCallActivities
@@ -20,7 +21,7 @@ from schemas.auth import UserResponse
 @pytest_asyncio.fixture
 async def report_db():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    tables = [Employees.__table__, RingCentralConnections.__table__, RingCentralCallRecords.__table__,
+    tables = [Operation_logs.__table__, Employees.__table__, RingCentralConnections.__table__, RingCentralCallRecords.__table__,
               SalesCallActivities.__table__, SalesDailyDialTasks.__table__, SalesLeads.__table__,
               SalesLeadConversionLogs.__table__]
     async with engine.begin() as conn:

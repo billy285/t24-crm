@@ -14,7 +14,7 @@ import './crm-sales-compact.css';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
 import SalesLeadDossier from '@/components/SalesLeadDossier';
-import SalesPhoneConnections from '@/components/SalesPhoneConnections';
+import SalesPhoneConnections, { type SyncCoverage } from '@/components/SalesPhoneConnections';
 import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesDealHandoffQueue from '@/components/SalesDealHandoffQueue';
 import SalesSharedDossiers from '@/components/SalesSharedDossiers';
@@ -79,10 +79,11 @@ type SalesCallReport = {
   source: { status: 'verified' | 'waiting_provider_data' | 'no_salespeople'; label: string; provider: string; data_complete?: boolean; coverage_status?: string; message?: string };
   summary: { provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; conversions: number; assigned: number; completed: number; completion_rate: number };
   connection_health?: { total: number; ready: number; needs_attention: number };
+  sync_coverage?: { window_fetched_employees: number; unverified_employees: number; failed_or_partial_employees: number; data_complete: false };
   result_breakdown: { label: string; count: number; rate: number }[];
   daily: { date: string; calls: number; connected: number; talk_seconds: number; connection_rate: number }[];
-  employees: { sales_employee_id: number; salesperson: string; connection_status?: string; extension_number?: string; last_synced_at?: string; needs_attention?: boolean; connection_message?: string; provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; no_answer_records: number; conversions: number; assigned: number; completed: number; completion_rate: number }[];
-  recent_calls: { id: number; salesperson: string; business_name?: string; remote_phone?: string; started_at?: string; connected: boolean; duration_seconds: number; result: string; crm_recorded: boolean }[];
+  employees: { sales_employee_id: number; salesperson: string; connection_status?: string; extension_number?: string; last_synced_at?: string; needs_attention?: boolean; connection_message?: string; sync_coverage?: SyncCoverage; provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; no_answer_records: number; conversions: number; assigned: number; completed: number; completion_rate: number }[];
+  recent_calls: { id: number; lead_id?: number; salesperson: string; business_name?: string; remote_phone?: string; started_at?: string; connected: boolean; duration_seconds: number; result: string; crm_recorded: boolean }[];
 };
 type CallHistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
 const statusOptions = [
@@ -194,6 +195,7 @@ function SalesLeadWorkspace() {
   const [performanceDashboard, setPerformanceDashboard] = useState<PerformanceDashboard | null>(null);
   const [callReportDays, setCallReportDays] = useState(7);
   const [callReport, setCallReport] = useState<SalesCallReport | null>(null);
+  const [missingCRMOnly, setMissingCRMOnly] = useState(false);
   const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const historyRequestRef = useRef(0);
@@ -620,7 +622,7 @@ function SalesLeadWorkspace() {
       {view === 'intelligence' && <SalesIntelligenceCenter />}
       {view === 'shared' && <SalesSharedDossiers onOpen={setDossierId} />}
       {view === 'handoffs' && <SalesDealHandoffQueue key={handoffQueueVersion} onOpenLead={setDealLeadId} />}
-      {view === 'calls' && <SalesPhoneConnections />}
+      {view === 'calls' && <SalesPhoneConnections periodDays={callReportDays} onSyncComplete={() => void loadData({ background: true })} />}
       {view === 'calls' && !callReport && <div className="sc-panel sc-empty">通话数据暂不可用，请刷新后重试。</div>}
       {view === 'performance' && !dashboard && !performanceDashboard && <div className="sc-panel sc-empty">跟进参考暂不可用，请刷新后重试。</div>}
       {view === 'calls' && callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
@@ -640,6 +642,7 @@ function SalesLeadWorkspace() {
               </div>
             </div>
             <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs leading-5" role="status">{callReport.source.message || '以下为已同步的官方记录，历史覆盖尚未核验。未同步数据不能视为零拨打。'}</p>
+            {callReport.sync_coverage && <p className="mt-2 text-xs leading-5 text-blue-100">同步期间核对：{callReport.sync_coverage.window_fetched_employees} 位所选期间已有分页拉取记录，{callReport.sync_coverage.unverified_employees} 位仍有未核验区间，{callReport.sync_coverage.failed_or_partial_employees} 位最近补同步未完成。展开上方电话接入可查看区间并由本人处理；分页记录不证明历史完整。</p>}
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               {[
                 { label: '已同步拨出', value: callReport.summary.provider_calls, helper: 'RingCentral', icon: PhoneCall },
@@ -684,8 +687,8 @@ function SalesLeadWorkspace() {
             </section>
 
             <section>
-              <div><h4 className="font-semibold text-slate-900">最近官方通话</h4><p className="mt-1 text-xs text-slate-500">用于逐条核对销售、商家、接通结果、时长和CRM记录。</p></div>
-              <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">{callReport.recent_calls.slice(0, 12).map(call => <div key={call.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_140px_100px_100px] sm:items-center"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{call.business_name || (call.remote_phone ? formatPhoneNumber(call.remote_phone) : '未匹配商家')}</p><p className="mt-1 truncate text-xs text-slate-500">{call.salesperson} · {formatDate(call.started_at)}</p></div><Badge className={call.connected ? 'w-fit bg-emerald-100 text-emerald-700' : 'w-fit bg-rose-100 text-rose-700'}>{call.result}</Badge><p className="text-xs text-slate-600">{formatDuration(call.duration_seconds)}</p><p className={`text-xs font-medium ${call.crm_recorded ? 'text-blue-700' : 'text-amber-700'}`}>{call.crm_recorded ? '已记录结果' : '待补CRM结果'}</p></div>)}{callReport.recent_calls.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-400">统计期内暂无RingCentral官方通话记录</p>}</div>
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-semibold text-slate-900">最近官方通话</h4><p className="mt-1 text-xs text-slate-500">仅筛选最近载入的 {callReport.recent_calls.length} 条；补录CRM结果不会改变官方接通事实。</p></div><Button size="sm" variant="outline" aria-pressed={missingCRMOnly} onClick={() => setMissingCRMOnly(value => !value)}>{missingCRMOnly ? '查看全部最近记录' : '只看待补CRM结果'}</Button></div>
+              <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">{callReport.recent_calls.filter(call => !missingCRMOnly || !call.crm_recorded).slice(0, 12).map(call => <div key={call.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_140px_100px_140px] sm:items-center"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{call.business_name || (call.remote_phone ? formatPhoneNumber(call.remote_phone) : '未匹配商家')}</p><p className="mt-1 truncate text-xs text-slate-500">{call.salesperson} · {formatDate(call.started_at)}</p></div><Badge className={call.connected ? 'w-fit bg-emerald-100 text-emerald-700' : 'w-fit bg-rose-100 text-rose-700'}>{call.result}</Badge><p className="text-xs text-slate-600">{formatDuration(call.duration_seconds)}</p><div className={`text-xs font-medium ${call.crm_recorded ? 'text-blue-700' : 'text-amber-700'}`}><p>{call.crm_recorded ? '已记录结果' : '待补CRM结果'}</p>{!call.crm_recorded && (call.lead_id ? <Button size="sm" variant="outline" className="mt-1" onClick={() => setDossierId(call.lead_id!)}>打开档案补录</Button> : <p className="mt-1 font-normal text-slate-500">未匹配商家，请核对号码及当前分配</p>)}</div></div>)}{callReport.recent_calls.filter(call => !missingCRMOnly || !call.crm_recorded).length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-400">{missingCRMOnly ? '最近载入记录中没有待补CRM结果' : '统计期内暂无RingCentral官方通话记录'}</p>}</div>
             </section>
           </div>
         </CardContent>

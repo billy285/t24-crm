@@ -24,6 +24,8 @@ from schemas.auth import UserResponse
 from services.phone_numbers import normalize_phone_country, parse_phone_number, phone_match_key
 from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
+from services.merchant_identity import has_concrete_name_and_address
+from services.prospect_verification import inherit_pool_quality, quality_for, quality_for_many, quality_status_expression, source_metadata_from_raw
 from services.sales_contact_protection import ensure_phone_contact_allowed
 from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_timezones import STATE_CODES, STATE_NAMES, resolve_contact_timezone, sql_contact_timezone, sql_timezone_group
@@ -123,6 +125,7 @@ class MerchantRecord(BaseModel):
 
 class MerchantImportRequest(BaseModel):
     data_source: str = Field(default="api", min_length=1, max_length=50)
+    default_industry: Optional[str] = Field(default=None, max_length=100)
     # Keep the original keys so later enrichment can inspect imported evidence.
     records: list[dict[str, Any]] = Field(min_length=1, max_length=2000)
 
@@ -219,6 +222,8 @@ class MerchantResponse(BaseModel):
     converted_lead_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    prospect_source: dict = Field(default_factory=dict)
+    prospect_quality: dict = Field(default_factory=dict)
 
     @field_validator("industry")
     @classmethod
@@ -251,6 +256,7 @@ class MerchantListResponse(BaseModel):
     limit: int
     industry_facets: list[MerchantIndustryFacet] = Field(default_factory=list)
     facet_total: int = 0
+    quality_facets: dict[str, int] = Field(default_factory=dict)
 
 
 CSV_HEADERS = {
@@ -283,19 +289,22 @@ HEADER_LOOKUP = {_normalize_header(header): field for header, field in CSV_HEADE
 
 IMPORT_TEMPLATE_HEADERS = ("商家名称", "商家电话", "商家位置", "地区", "来源")
 IMPORT_TEMPLATE_FIELDS = ("business_name", "phone", "address", "region", "data_source")
+IMPORT_OPTIONAL_HEADERS = {"行业": "industry", "来源URL": "source_url", "来源日期": "source_date", "核验类型": "verification_type"}
 
 
-def _validate_import_template_headers(headers: list[Any]) -> None:
+def _validate_import_template_headers(headers: list[Any]) -> list[str]:
     normalized = [str(value or "").strip() for value in headers]
     while normalized and not normalized[-1]:
         normalized.pop()
-    if normalized != list(IMPORT_TEMPLATE_HEADERS):
+    extra = normalized[len(IMPORT_TEMPLATE_HEADERS):]
+    if normalized[:len(IMPORT_TEMPLATE_HEADERS)] != list(IMPORT_TEMPLATE_HEADERS) or len(extra) != len(set(extra)) or any(value not in IMPORT_OPTIONAL_HEADERS for value in extra):
         expected = "、".join(IMPORT_TEMPLATE_HEADERS)
         actual = "、".join(value or "空列" for value in normalized) or "未读取到表头"
         raise HTTPException(
             status_code=400,
-            detail=f"导入模板不符合要求。第一行必须依次为：{expected}。当前为：{actual}。请下载固定模板后重新填写。",
+            detail=f"导入模板不符合要求。第一行必须依次为：{expected}（前五列固定）；可追加行业、来源URL、来源日期、核验类型。当前为：{actual}。请下载模板后重新填写。",
         )
+    return normalized
 
 
 def _map_import_row(row: dict[Any, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -422,6 +431,9 @@ async def _create_sales_lead_from_merchant(
 ) -> SalesLeads:
     await lock_sales_workflow(db)
     from services.sales_dossiers import next_sales_lead_id
+    quality = await quality_for(db, "pool", merchant.id)
+    if quality["status"] in {"invalid_phone", "not_target", "closed"}:
+        raise HTTPException(status_code=409, detail="该记录已核验为号码无效、非目标或停业，不能分配；请先由有权限的人员重新核验")
     # Importing or assigning a fresh pool record must not bypass a previous
     # merchant request to stop contact, even if the old lead was deleted.
     await ensure_phone_contact_allowed(db, merchant.phone, merchant.country)
@@ -454,6 +466,7 @@ async def _create_sales_lead_from_merchant(
         lead.analysis_snapshot = latest_analysis.analysis_json
     db.add(lead)
     await db.flush()
+    await inherit_pool_quality(db, merchant, lead, user)
     merchant.pool_status = "converted"
     merchant.converted_lead_id = lead.id
     merchant.isolation_reason = "已人工确认并转入独立电话销售线索库"
@@ -471,7 +484,7 @@ async def _match_customer(db: AsyncSession, record: MerchantRecord) -> tuple[Opt
             return customer.id, "电话已存在于正式客户"
         if website and website == _normalize_website(customer.website):
             return customer.id, "网站已存在于正式客户"
-        if name and address and name == _normalize_text(customer.business_name) and address == _normalize_text(customer.address):
+        if has_concrete_name_and_address(record) and has_concrete_name_and_address(customer) and name == _normalize_text(customer.business_name) and address == _normalize_text(customer.address):
             return customer.id, "商家名称和地址已存在于正式客户"
     return None, None
 
@@ -500,7 +513,7 @@ async def _match_pool_duplicate(
             return duplicate_id, f"电话与商家池历史记录重复{status_hint}"
         if website and website == _normalize_website(row.website):
             return duplicate_id, f"网站与商家池历史记录重复{status_hint}"
-        if name and address and name == _normalize_text(row.business_name) and address == _normalize_text(row.address):
+        if has_concrete_name_and_address(record) and has_concrete_name_and_address(row) and name == _normalize_text(row.business_name) and address == _normalize_text(row.address):
             return duplicate_id, f"商家名称和地址与商家池历史记录重复{status_hint}"
     return None, None
 
@@ -549,6 +562,12 @@ async def _store_record(
     user: UserResponse,
     raw_record: Optional[dict[str, Any]] = None,
 ) -> MerchantPool:
+    from services.merchant_imports import import_source_metadata
+    from services.prospect_verification import initial_prospect_quality
+    raw = dict(raw_record or record.model_dump(mode="json"))
+    metadata_values = {field: raw.get(field) or raw.get(header) for header, field in IMPORT_OPTIONAL_HEADERS.items()}
+    raw["prospect_source"] = import_source_metadata(metadata_values)
+    raw["prospect_quality"] = initial_prospect_quality()
     pool_status, reason, duplicate_id, customer_id = await _classify_record_with_reference_lock(db, record)
     collected_at = record.collected_at or datetime.now(timezone.utc)
     merchant = MerchantPool(
@@ -559,7 +578,7 @@ async def _store_record(
         isolation_reason=reason,
         duplicate_of_id=duplicate_id,
         existing_customer_id=customer_id,
-        raw_payload=json.dumps(raw_record or record.model_dump(mode="json"), ensure_ascii=False, default=str),
+        raw_payload=json.dumps(raw, ensure_ascii=False, default=str),
         created_by_id=_employee_id(user),
         created_by_name=user.name,
     )
@@ -597,6 +616,7 @@ async def list_merchant_pool(
     timezone_group: Optional[Literal["eastern", "central", "mountain", "pacific", "alaska", "hawaii", "unknown"]] = None,
     industry: Optional[str] = None,
     source: Optional[str] = None,
+    quality_status: Optional[Literal["pending", "valid", "invalid_phone", "not_target", "closed"]] = None,
     batch_id: Optional[str] = Query(None, min_length=1, max_length=36),
     rating_min: Optional[float] = Query(None, ge=0, le=5),
     skip: int = Query(0, ge=0),
@@ -681,9 +701,23 @@ async def list_merchant_pool(
                    .join(resolved_scope, timezone_join).group_by(current["industry"]))
     if conditions:
         facet_query = facet_query.where(*conditions)
+    quality_expression = quality_status_expression("pool", MerchantPool.id, db.get_bind().dialect.name)
+    if quality_status:
+        facet_query = facet_query.where(quality_expression == quality_status)
     facets = merchant_industry_facets((await db.execute(facet_query)).all())
     if industry:
         conditions.append(merchant_industry_filter(current["industry"], industry))
+    quality_query = (select(quality_expression.label("quality_status"), func.count(MerchantPool.id))
+                     .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
+                     .join(resolved_scope, timezone_join).group_by(quality_expression))
+    if conditions:
+        quality_query = quality_query.where(*conditions)
+    quality_facets = dict.fromkeys(("pending", "valid", "invalid_phone", "not_target", "closed"), 0)
+    for status, count in (await db.execute(quality_query)).all():
+        if status in quality_facets:
+            quality_facets[status] = int(count)
+    if quality_status:
+        conditions.append(quality_expression == quality_status)
     timezone_fields = tuple(contact_timezone)
     query = (select(MerchantPool, SalesLeads, *(contact_timezone[key].label(key) for key in timezone_fields))
              .outerjoin(SalesLeads, join_on).join(resolved_scope, timezone_join))
@@ -694,6 +728,7 @@ async def list_merchant_pool(
         count_query = count_query.where(*conditions)
     total = (await db.execute(count_query)).scalar() or 0
     rows = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).all()
+    quality_by_id = await quality_for_many(db, "pool", [row[0].id for row in rows])
     items = []
     for original, lead, *zone_values in rows:
         item = MerchantResponse.model_validate(original).model_dump()
@@ -701,9 +736,12 @@ async def list_merchant_pool(
             item.update({field: getattr(lead, field) for field in current_fields})
             item["updated_at"] = lead.updated_at
         item.update(dict(zip(timezone_fields, zone_values)))
+        item["prospect_source"] = source_metadata_from_raw(original.raw_payload, record=original)
+        item["prospect_quality"] = quality_by_id[original.id]
         items.append(item)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
-            "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets)}
+            "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets),
+            "quality_facets": quality_facets}
 
 
 @router.post("/import")
@@ -718,7 +756,12 @@ async def import_merchant_records(
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
     for index, raw_record in enumerate(payload.records, start=1):
         try:
-            record = MerchantRecord.model_validate(_parse_import_values(dict(raw_record)))
+            from services.merchant_imports import import_source_metadata
+            import_source_metadata(raw_record)
+            mapped = dict(raw_record)
+            if not mapped.get("industry") and payload.default_industry:
+                mapped["industry"] = payload.default_industry
+            record = MerchantRecord.model_validate(_parse_import_values(mapped))
         except (ValidationError, TypeError, ValueError) as exc:
             if isinstance(exc, ValidationError):
                 detail = exc.errors()[0]
@@ -745,6 +788,7 @@ async def import_merchant_records(
 async def import_merchant_csv(
     file: UploadFile = File(...),
     data_source: str = Query("csv"),
+    default_industry: Optional[str] = Query(None, max_length=100),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -777,26 +821,29 @@ async def import_merchant_csv(
             raise HTTPException(status_code=400, detail="CSV 文件没有可导入的数据")
         headers = rows[0]
         data_rows = [values for values in rows[1:] if any(str(value or "").strip() for value in values)]
-    _validate_import_template_headers(headers)
+    headers = _validate_import_template_headers(headers)
+    fields = [*IMPORT_TEMPLATE_FIELDS, *(IMPORT_OPTIONAL_HEADERS[header] for header in headers[5:])]
     if len(data_rows) > 2000:
         raise HTTPException(status_code=400, detail="单次最多导入 2000 条商家记录")
     created = []
     errors = []
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
     for index, values in enumerate(data_rows, start=2):
-        if len(values) != len(IMPORT_TEMPLATE_HEADERS):
-            errors.append({"row": index, "reason": f"必须正好填写 {len(IMPORT_TEMPLATE_HEADERS)} 列"})
+        if len(values) != len(headers):
+            errors.append({"row": index, "reason": f"必须正好填写 {len(headers)} 列"})
             continue
-        row = dict(zip(IMPORT_TEMPLATE_HEADERS, values))
+        row = dict(zip(headers, values))
         mapped = {
             field: str(value).strip()
-            for field, value in zip(IMPORT_TEMPLATE_FIELDS, values)
+            for field, value in zip(fields, values)
             if value is not None and str(value).strip()
         }
         row_source = str(mapped.pop("data_source", "")).strip() or data_source
         try:
             if len(row_source) > 50:
                 raise ValueError("来源最多填写 50 个字符")
+            if not mapped.get("industry") and default_industry:
+                mapped["industry"] = default_industry
             record = MerchantRecord.model_validate(_parse_import_values(mapped))
             merchant = await _store_record(db, record, row_source, current_user, raw_record=row)
             created.append(merchant)
@@ -814,7 +861,7 @@ async def import_merchant_csv(
     await db.commit()
     return {
         "total": len(created), "counts": counts, "errors": errors,
-        "template_headers": list(IMPORT_TEMPLATE_HEADERS),
+        "template_headers": headers,
     }
 
 
@@ -892,11 +939,14 @@ async def delete_merchant_pool_record(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_admin_role(current_user)
+    await lock_merchant_rows(db, [merchant_id])
     merchant = (await db.execute(select(MerchantPool).where(MerchantPool.id == merchant_id))).scalar_one_or_none()
     if not merchant:
         raise HTTPException(status_code=404, detail="商家池记录不存在")
     if merchant.pool_status == "converted" or merchant.converted_lead_id:
         raise HTTPException(status_code=409, detail="已转入电话销售线索的商家不能永久删除")
+    from services.prospect_verification import ensure_quality_history_retained
+    await ensure_quality_history_retained(db, 'pool', [merchant_id])
 
     await db.delete(merchant)
     await db.commit()
@@ -961,6 +1011,11 @@ async def bulk_convert_to_sales_leads(
             status_code=400,
             detail=f"有 {len(invalid)} 条记录不是待清洗可用状态，无法重复分配",
         )
+    quality_by_id = await quality_for_many(db, "pool", merchant_ids)
+    blocked_ids = [merchant_id for merchant_id in merchant_ids
+                   if quality_by_id[merchant_id]["status"] in {"invalid_phone", "not_target", "closed"}]
+    if blocked_ids:
+        raise HTTPException(status_code=409, detail=f"有 {len(blocked_ids)} 条记录已核验为号码无效、非目标或停业，整批未分配；请先重新核验")
 
     leads = []
     for merchant_id in merchant_ids:
@@ -1021,6 +1076,7 @@ async def bulk_delete_merchant_pool_records(
     """Permanently remove selected pool records without touching leads or customers."""
     _ensure_admin_role(current_user)
     merchant_ids = list(dict.fromkeys(payload.merchant_ids))
+    await lock_merchant_rows(db, merchant_ids)
     merchants = (await db.execute(
         select(MerchantPool).where(MerchantPool.id.in_(merchant_ids))
     )).scalars().all()
@@ -1032,6 +1088,8 @@ async def bulk_delete_merchant_pool_records(
     locked = [merchant for merchant in merchants if merchant.pool_status == "converted" or merchant.converted_lead_id]
     if locked:
         raise HTTPException(status_code=409, detail="已转入电话销售线索的记录不能批量永久删除")
+    from services.prospect_verification import ensure_quality_history_retained
+    await ensure_quality_history_retained(db, 'pool', merchant_ids)
 
     for merchant in merchants:
         await db.delete(merchant)

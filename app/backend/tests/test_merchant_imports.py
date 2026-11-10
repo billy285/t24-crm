@@ -40,6 +40,14 @@ def csv_file(rows):
 GOOD = ["Sample Cafe", "+1 212-555-0123", "1 Main St", "New York, NY, US", "Google Maps"]
 
 
+def source_csv(rows, optional_headers=("行业", "来源URL", "来源日期", "核验类型")):
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow([*HEADERS, *optional_headers])
+    writer.writerows(rows)
+    return output.getvalue().encode("utf-8-sig")
+
+
 @pytest_asyncio.fixture
 async def imports_client():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
@@ -530,3 +538,231 @@ async def test_two_connection_sqlite_undo_reference_race_never_orphans_or_rewrit
         all_ids = set((await session.execute(select(MerchantPool.id))).scalars().all())
         assert not (set((await session.execute(select(MerchantPool.duplicate_of_id).where(MerchantPool.duplicate_of_id.isnot(None)))).scalars().all()) - all_ids)
         assert await session.scalar(select(func.count()).select_from(SalesLeads)) == 0
+
+
+@pytest.mark.asyncio
+async def test_extended_source_metadata_and_industry_survive_atomic_import_and_undo(imports_client):
+    client, maker = imports_client
+    content = source_csv([[*GOOD, 'nail salon', 'https://example.com/business/123', '2026-11-01', '招聘联系点']])
+    response = await client.post('/api/v1/merchant-imports/preview', headers=auth(), data={'default_industry': '餐厅'}, files={'file': ('source.csv', content, 'text/csv')})
+    assert response.status_code == 200, response.text
+    batch = response.json()
+    assert batch['template_headers'] == [*HEADERS, '行业', '来源URL', '来源日期', '核验类型']
+    assert batch['import_defaults'] == {'industry': '餐厅'}
+    assert batch['rows'][0]['source_metadata'] == {'source_url': 'https://example.com/business/123', 'source_date': '2026-11-01', 'verification_type': 'recruitment_contact'}
+    assert await count(maker, MerchantPool) == 0
+    result = await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())
+    assert result.status_code == 200, result.text
+    async with maker() as session:
+        row = (await session.execute(select(MerchantPool))).scalar_one()
+        assert row.industry == '美业'
+        raw = json.loads(row.raw_payload)
+        assert raw['来源日期'] == '2026-11-01'
+        assert raw['prospect_source'] == batch['rows'][0]['source_metadata']
+        assert raw['prospect_quality']['status'] == 'pending'
+    listing = await client.get('/api/v1/merchant-pool?quality_status=pending', headers=auth())
+    assert listing.status_code == 200, listing.text
+    assert listing.json()['total'] == 1
+    assert listing.json()['items'][0]['prospect_quality']['status'] == 'pending'
+    assert listing.json()['items'][0]['prospect_source']['source_url'] == 'https://example.com/business/123'
+    assert (await client.get('/api/v1/merchant-pool?quality_status=valid', headers=auth())).json()['total'] == 0
+    assert (await client.post(f"/api/v1/merchant-imports/{batch['id']}/revert", headers=auth())).status_code == 200
+    assert await count(maker, MerchantPool) == 0
+
+
+@pytest.mark.asyncio
+async def test_default_industry_is_frozen_on_duplicate_upload_and_confirm(imports_client):
+    client, maker = imports_client
+    async def with_industry(value):
+        return await client.post('/api/v1/merchant-imports/preview', headers=auth(), data={'default_industry': value}, files={'file': ('old-five.csv', csv_file([GOOD]), 'text/csv')})
+    first = (await with_industry('美业')).json()
+    repeated = (await with_industry('餐厅')).json()
+    assert repeated['id'] == first['id'] and repeated['duplicate_upload']
+    assert repeated['import_defaults'] == {'industry': '美业'}
+    assert (await client.post(f"/api/v1/merchant-imports/{first['id']}/confirm", headers=auth(), json={'default_industry': '餐厅'})).status_code == 200
+    async with maker() as session:
+        assert (await session.execute(select(MerchantPool))).scalar_one().industry == '美业'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extras,reason', [
+    (['美业', 'javascript:alert(1)', '2026-11-01', '公开商家资料'], '来源URL'),
+    (['美业', 'https://example.com/a', '2026-02-30', '公开商家资料'], '来源日期'),
+    (['美业', 'https://example.com/a', '2026-11-01', 'valid'], '不能声明人工已核实'),
+])
+async def test_extended_import_rejects_invalid_provenance_or_claimed_human_verification(imports_client, extras, reason):
+    client, maker = imports_client
+    response = await client.post('/api/v1/merchant-imports/preview', headers=auth(), files={'file': ('invalid.csv', source_csv([[*GOOD, *extras]]), 'text/csv')})
+    assert response.status_code == 200, response.text
+    batch = response.json()
+    assert batch['rows'][0]['status'] == 'error'
+    assert reason in batch['rows'][0]['reason']
+    assert (await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())).status_code == 400
+    assert await count(maker, MerchantPool) == 0
+
+
+@pytest.mark.asyncio
+async def test_placeholder_names_and_addresses_do_not_collide_but_real_phones_still_do(imports_client):
+    client, maker = imports_client
+    rows = [
+        ['店名待核验｜NY美甲招聘联系点', '+12125550123', '街道地址待核验；2026-11-01', 'NY, US', '中文招聘'],
+        ['店名待核验｜NY美甲招聘联系点', '+14155550123', '街道地址待核验；2026-11-01', 'NY, US', '中文招聘'],
+        ['另一个联系点', '+1 (212) 555-0123 ext 9', '地址待确认', 'NY, US', '中文招聘'],
+    ]
+    batch = await preview(client, rows)
+    assert [r['status'] for r in batch['rows']] == ['pending', 'pending', 'duplicate']
+    basis = batch['rows'][2]['match_basis']
+    assert basis == {'type': 'phone', 'scope': 'file', 'value': '+12125550123', 'matched_row': 2}
+    assert '匹配依据：电话' in batch['rows'][2]['reason']
+    assert (await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())).status_code == 200
+    next_batch = await preview(client, [[*rows[0][:1], '+13105550123', *rows[0][2:]]])
+    assert next_batch['rows'][0]['status'] == 'pending'
+    concrete = await preview(client, [GOOD, ['Sample Cafe', '+13055550123', GOOD[2], GOOD[3], 'Maps']])
+    assert concrete['rows'][1]['match_basis']['type'] == 'name_address'
+
+
+@pytest.mark.asyncio
+async def test_legacy_json_placeholder_location_does_not_bypass_phone_or_website_duplicate(imports_client):
+    client, maker = imports_client
+    rows = [
+        {'business_name': '店名待核验', 'address': '街道地址待核验', 'country': 'US', 'phone': '+12125550123', 'website': 'https://actual-shop.example.com'},
+        {'business_name': '店名待核验', 'address': '街道地址待核验', 'country': 'US', 'phone': '+14155550123'},
+        {'business_name': '店名待核验', 'address': '街道地址待核验', 'country': 'US', 'phone': '+13055550123', 'website': 'https://actual-shop.example.com/'},
+    ]
+    result = await client.post('/api/v1/merchant-pool/import', headers=auth(), json={'records': rows})
+    assert result.status_code == 200, result.text
+    assert result.json()['counts']['pending'] == 2 and result.json()['counts']['duplicate'] == 1
+    assert '网站' in result.json()['items'][2]['isolation_reason']
+
+
+@pytest.mark.asyncio
+async def test_extended_issue_download_preserves_extra_source_columns(imports_client):
+    client, _ = imports_client
+    content = source_csv([['No Phone', '123', '地址待核验', 'NY, US', '原目录', 'https://example.com/ad', '2026-11-01']], optional_headers=('来源URL', '来源日期'))
+    result = await client.post('/api/v1/merchant-imports/preview', headers=auth(), files={'file': ('extended.csv', content, 'text/csv')})
+    batch = result.json()
+    downloaded = await client.get(f"/api/v1/merchant-imports/{batch['id']}/errors.csv", headers=auth())
+    rows = list(csv.reader(io.StringIO(downloaded.content.decode('utf-8-sig'))))
+    assert rows[0] == ['原始行号', *HEADERS, '来源URL', '来源日期', '处理结果', '原因']
+    assert rows[1][6:8] == ['https://example.com/ad', '2026-11-01']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('blocked_status', ['invalid_phone', 'not_target', 'closed'])
+async def test_quality_blocks_single_and_atomic_bulk_assignment_until_reverified(imports_client, monkeypatch, blocked_status):
+    from models.employees import Employees
+    from routers import merchant_pool
+    client, maker = imports_client
+    async with maker() as session:
+        session.add(Employees(id=11, user_id='sales-quality-test', name='Sales', role='sales', status='active', supervisor='Manager 10'))
+        session.add_all([MerchantPool(id=101, business_name='Pending A', phone='+12125550123', country='US', data_source='test', pool_status='pending', created_by_id=10), MerchantPool(id=102, business_name='Pending B', phone='+14155550123', country='US', data_source='test', pool_status='pending', created_by_id=10)])
+        await session.commit()
+    status = blocked_status
+    async def quality_one(db, kind, entity_id):
+        return {'status': status if entity_id == 102 else 'pending'}
+    async def quality_many(db, kind, ids):
+        return {i: await quality_one(db, kind, i) for i in ids}
+    monkeypatch.setattr(merchant_pool, 'quality_for', quality_one)
+    monkeypatch.setattr(merchant_pool, 'quality_for_many', quality_many)
+    blocked = await client.post('/api/v1/merchant-pool/102/convert-to-lead', headers=auth(), json={})
+    assert blocked.status_code == 409, blocked.text
+    bulk = await client.post('/api/v1/merchant-pool/bulk-convert-to-lead', headers=auth(), json={'merchant_ids': [101, 102], 'assigned_sales_id': 11})
+    assert bulk.status_code == 409, bulk.text
+    assert await count(maker, SalesLeads) == 0
+    status = 'valid'
+    allowed = await client.post('/api/v1/merchant-pool/bulk-convert-to-lead', headers=auth(), json={'merchant_ids': [101, 102], 'assigned_sales_id': 11})
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()['converted_count'] == 2
+    assert await count(maker, SalesLeads) == 2
+
+
+@pytest.mark.asyncio
+async def test_json_import_cannot_supply_a_verified_quality_status(imports_client):
+    client, maker = imports_client
+    response = await client.post('/api/v1/merchant-pool/import', headers=auth(), json={'default_industry': '美业', 'records': [{'business_name': 'Source Only', 'phone': '+12125550123', 'country': 'US', 'prospect_quality': {'status': 'valid', 'verified_by_name': 'Forged'}, 'source_url': 'https://example.com/merchant', 'source_date': '2026-11-01', 'verification_type': 'public_business_profile'}]})
+    assert response.status_code == 200, response.text
+    async with maker() as session:
+        row = (await session.execute(select(MerchantPool))).scalar_one()
+        raw = json.loads(row.raw_payload)
+        assert row.industry == '美业'
+        assert raw['prospect_quality']['status'] == 'pending'
+        assert raw['prospect_source']['source_url'] == 'https://example.com/merchant'
+        assert raw['prospect_quality'].get('verified_by_name') != 'Forged'
+
+
+@pytest.mark.asyncio
+async def test_authoritative_verification_revision_prevents_undo_even_without_record_edits(imports_client):
+    from models.operation_logs import Operation_logs
+    from services.prospect_verification import initial_prospect_quality
+    client, maker = imports_client
+    batch = await preview(client, [GOOD])
+    committed = (await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())).json()
+    merchant_id = committed['rows'][0]['merchant_id']
+    after = initial_prospect_quality()
+    after.update(revision=1, status='valid')
+    async with maker() as session:
+        session.add(Operation_logs(user_id='10', action_type=f'prospect_quality:pool:{merchant_id}', action_detail=json.dumps({'entity_kind': 'pool', 'entity_id': merchant_id, 'after': after})))
+        await session.commit()
+    undone = await client.post(f"/api/v1/merchant-imports/{batch['id']}/revert", headers=auth())
+    assert undone.status_code == 409, undone.text
+    assert '核验' in undone.json()['detail']['message']
+    assert await count(maker, MerchantPool) == 1
+    assert (await client.get(f"/api/v1/merchant-imports/{batch['id']}", headers=auth())).json()['status'] == 'committed'
+
+
+@pytest.mark.asyncio
+async def test_quality_facets_use_visible_industry_scope_before_selected_quality(imports_client):
+    from models.operation_logs import Operation_logs
+    from services.prospect_verification import initial_prospect_quality
+    client, maker = imports_client
+    async with maker() as session:
+        for row_id, owner, industry in [(200, 10, '美业'), (201, 10, '美业'), (202, 20, '美业'), (203, 10, '餐厅')]:
+            session.add(MerchantPool(id=row_id, business_name=f'Contact {row_id}', phone=f'+12125550{row_id}', country='US', state='NY', industry=industry, data_source='sourceA', pool_status='pending', created_by_id=owner))
+        for row_id in [201, 202]:
+            quality = initial_prospect_quality()
+            quality.update(revision=1, status='valid')
+            session.add(Operation_logs(user_id='10', action_type=f'prospect_quality:pool:{row_id}', action_detail=json.dumps({'entity_kind': 'pool', 'entity_id': row_id, 'after': quality})))
+        await session.commit()
+    response = await client.get('/api/v1/merchant-pool?pool_status=pending&industry=美业&source=sourceA&quality_status=valid', headers=auth())
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result['total'] == 1 and result['items'][0]['id'] == 201
+    assert result['items'][0]['prospect_quality']['revision'] == 1
+    assert result['quality_facets'] == {'pending': 1, 'valid': 1, 'invalid_phone': 0, 'not_target': 0, 'closed': 0}
+
+
+@pytest.mark.asyncio
+async def test_assigned_lead_inherits_pool_quality_source_and_original_verifier(imports_client):
+    from models.employees import Employees
+    from schemas.prospect_verification import ProspectVerificationUpdate
+    from services.prospect_verification import quality_for, save_verification, verification_view
+    client, maker = imports_client
+    async with maker() as session:
+        session.add_all([
+            Employees(id=10, user_id='manager-quality', name='Manager 10', role='sales_manager', status='active'),
+            Employees(id=11, user_id='assigned-quality-sales', name='Sales', role='sales', status='active', supervisor='Manager 10'),
+            Employees(id=20, user_id='original-quality-admin', name='Original Verifier', role='admin', status='active'),
+        ])
+        await session.commit()
+    content = source_csv([[*GOOD, '美业', 'https://example.com/original-profile', '2026-11-01', '公开商家资料']])
+    batch = (await client.post('/api/v1/merchant-imports/preview', headers=auth(), files={'file': ('verified-source.csv', content, 'text/csv')})).json()
+    receipt = (await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())).json()
+    merchant_id = receipt['rows'][0]['merchant_id']
+    async with maker() as session:
+        original = await save_verification(session, 'pool', merchant_id, UserResponse(id='20', email='verifier@example.com', role='admin', name='Original Verifier'), ProspectVerificationUpdate(expected_revision=0, status='valid', method='call', notes='Reached store and confirmed business details', corrected_fields={'chinese_service': 'yes'}))
+        await session.commit()
+    assigned = await client.post('/api/v1/merchant-pool/bulk-convert-to-lead', headers=auth(), json={'merchant_ids': [merchant_id], 'assigned_sales_id': 11})
+    assert assigned.status_code == 200, assigned.text
+    lead_id = assigned.json()['lead_ids'][0]
+    async with maker() as session:
+        quality = await quality_for(session, 'lead', lead_id)
+        assert quality['status'] == 'valid' and quality['revision'] == 1
+        assert quality['verified_by_id'] == original['verified_by_id'] == 20
+        assert quality['verified_by_name'] == original['verified_by_name'] == 'Original Verifier'
+        assert quality['verified_at'] == original['verified_at']
+        assert quality['origin'] == {'entity_kind': 'pool', 'entity_id': merchant_id, 'revision': original['revision']}
+        view = await verification_view(session, 'lead', lead_id, UserResponse(id='10', email='10@example.com', role='sales_manager', name='Manager 10'))
+        assert view['prospect_source']['source_url'] == 'https://example.com/original-profile'
+        assert view['prospect_source']['source_date'] == '2026-11-01'
+        assert view['prospect_source']['verification_type'] == 'public_business_profile'
+        assert (await quality_for(session, 'pool', merchant_id)) == original

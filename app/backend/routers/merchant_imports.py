@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +16,12 @@ router = APIRouter(prefix="/api/v1/merchant-imports", tags=["merchant-imports"])
 
 
 @router.post("/preview")
-async def preview(file: UploadFile = File(...), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def preview(file: UploadFile = File(...), default_industry: str | None = Form(None, max_length=100), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     batch_scope(user)
     content = await file.read(MAX_FILE_BYTES + 1)
     if len(content) > MAX_FILE_BYTES:
         raise HTTPException(400, "文件超过 10MB，请拆分后上传")
-    return await preview_import(db, user, file.filename or "", content)
+    return await preview_import(db, user, file.filename or "", content, default_industry=default_industry)
 
 
 @router.get("")

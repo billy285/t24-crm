@@ -7,6 +7,7 @@ from starlette.requests import Request
 
 from core.database import Base
 from models.employees import Employees
+from models.operation_logs import Operation_logs
 from models.ringcentral_call_records import RingCentralCallRecords
 from models.ringcentral_connections import RingCentralConnections
 from models.sales_call_activities import SalesCallActivities
@@ -237,7 +238,7 @@ async def test_event_and_call_log_are_idempotent_and_match_employee_lead_task():
 @pytest.mark.asyncio
 async def test_manual_call_log_sync_keeps_realtime_subscription_error(monkeypatch):
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    tables = [RingCentralConnections.__table__, RingCentralCallRecords.__table__]
+    tables = [Operation_logs.__table__, RingCentralConnections.__table__, RingCentralCallRecords.__table__]
     async with engine.begin() as connection:
         await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -246,6 +247,7 @@ async def test_manual_call_log_sync_keeps_realtime_subscription_error(monkeypatc
         connection = RingCentralConnections(
             employee_id=11,
             access_token_encrypted="test-token",
+            ringcentral_account_id="account-11", ringcentral_extension_id="extension-11",
             is_active=True,
             webhook_subscription_status="error",
             last_error="实时订阅权限不足",
@@ -256,7 +258,7 @@ async def test_manual_call_log_sync_keeps_realtime_subscription_error(monkeypatc
         async def keep_connection(_employee_id, current, _db):
             return current
 
-        async def no_records(_access_token, *, date_from, telephony_session_id=None):
+        async def no_records(_access_token, *, date_from, date_to=None, telephony_session_id=None):
             return []
 
         monkeypatch.setattr(ringcentral_router, "_refresh_connection_if_needed", keep_connection)
@@ -284,7 +286,7 @@ async def test_sales_call_report_uses_verified_provider_calls_for_connection_met
     tables = [
         Employees.__table__, SalesLeads.__table__, SalesDailyDialTasks.__table__,
         SalesCallActivities.__table__, RingCentralCallRecords.__table__, RingCentralConnections.__table__,
-        SalesLeadConversionLogs.__table__,
+        SalesLeadConversionLogs.__table__, Operation_logs.__table__,
     ]
     async with engine.begin() as connection:
         await connection.run_sync(lambda sync_connection: Base.metadata.create_all(sync_connection, tables=tables))

@@ -26,4 +26,11 @@
 .sales-phone-summary-warning{border-radius:0 0 12px 12px}
 .sales-phone-warning{display:flex;gap:7px;margin-bottom:12px;border-radius:8px}
 .sales-phone-warning svg{flex-shrink:0;margin-top:3px}
+.sales-sync-controls,.sales-sync-buttons{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+.sales-sync-controls label{display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b}
+.sales-sync-controls select{min-height:36px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:5px 8px;color:#334155}
+.sales-sync-evidence{border-top:1px solid #eef2f6;padding-top:8px;margin-top:8px}
+.sales-sync-evidence details summary{padding:6px 0;font-size:12px;line-height:1.6;align-items:flex-start;color:#92400e}
+.sales-sync-evidence ul{list-style:disc;padding-left:18px;font-size:11px;line-height:1.7;color:#64748b;overflow-wrap:anywhere}
+.sales-phone-grid .sales-sync-success{color:#047857}
 @media(max-width:640px){.sales-phone-connections summary>span{align-items:flex-start;flex-direction:column;gap:4px}.sales-phone-actions{align-items:flex-start;flex-direction:column}.sales-phone-body{padding:0 12px 12px}.sales-phone-grid{grid-template-columns:1fr}}

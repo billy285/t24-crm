@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.employees import Employees
 from models.ringcentral_connections import RingCentralConnections
+from services.ringcentral_coverage import connection_coverage, summarize_windows
 
 
 def _utc(value: datetime) -> datetime:
@@ -49,7 +50,8 @@ def passive_connection_status(connection, *, configured=True, binding_conflict=F
                 webhook_expires_at=connection.webhook_expires_at, binding_conflict=binding_conflict, message=message)
 
 
-async def team_connection_statuses(db: AsyncSession, employee_ids: list[int], *, configured=True) -> list[dict]:
+async def team_connection_statuses(db: AsyncSession, employee_ids: list[int], *, configured=True,
+                                   coverage_start=None, coverage_end=None) -> list[dict]:
     """Return only the requested employees; disclose no identity behind a conflict."""
     if not employee_ids:
         return []
@@ -61,12 +63,19 @@ async def team_connection_statuses(db: AsyncSession, employee_ids: list[int], *,
     counts = Counter((row.ringcentral_account_id, row.ringcentral_extension_id) for row in connections
                      if row.is_active and row.ringcentral_account_id and row.ringcentral_extension_id)
     by_employee = {row.employee_id: row for row in connections}
+    coverage_end = coverage_end or datetime.now(timezone.utc)
+    if coverage_start is None:
+        from datetime import timedelta
+        coverage_start = coverage_end - timedelta(days=7)
+    evidence = await connection_coverage(db, [row for row in connections if row.employee_id in employee_ids],
+                                         start=coverage_start, end=coverage_end)
     items = []
     for employee in employees:
         connection = by_employee.get(employee.id)
         conflict = bool(connection and connection.is_active and connection.ringcentral_account_id and connection.ringcentral_extension_id
                         and counts[(connection.ringcentral_account_id, connection.ringcentral_extension_id)] > 1)
         items.append(dict(employee_id=employee.id, employee_name=employee.name,
+                          coverage=evidence.get(employee.id) or summarize_windows([], coverage_start, coverage_end),
                           **passive_connection_status(connection, configured=configured, binding_conflict=conflict)))
     return items
 

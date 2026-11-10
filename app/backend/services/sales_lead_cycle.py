@@ -15,6 +15,8 @@ from models.sales_leads import SalesLeads
 from services.sales_task_assignment import sync_pending_daily_tasks
 from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_contact_protection import (blocked_phone_keys, lead_phone_keys, persist_lead_suppression)
+from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
+from services.prospect_verification import quality_for_many
 
 
 PROTECTED_STATUSES = {"follow_up", "interested", "appointment"}
@@ -136,9 +138,12 @@ async def ensure_daily_batch(
         or_(SalesLeads.assigned_sales_id == sales_employee_id, SalesLeads.assigned_sales_id.is_(None)),
     ))).scalars().all()
     candidate_keys = {lead.id: await lead_phone_keys(db, lead) for lead in candidates}
+    qualities = await quality_for_many(db, 'lead', [lead.id for lead in candidates])
     suppressed = await blocked_phone_keys(db, set().union(*candidate_keys.values()) if candidate_keys else set())
 
     def eligible(lead: SalesLeads) -> bool:
+        if qualities[lead.id]['status'] in {'invalid_phone', 'not_target', 'closed'}:
+            return False
         if candidate_keys[lead.id] & suppressed:
             return False
         if lead.id in used_today:
@@ -158,11 +163,11 @@ async def ensure_daily_batch(
         return True
 
     candidates = [lead for lead in candidates if eligible(lead)]
-    category_order = {"follow_up": 0, "retry": 1, "recycled": 2, "new": 3}
+    profiles, contact_start, contact_end = await queue_context(db, candidates, target_date)
+    contexts = {lead.id: contact_queue_context(lead, now=now, profile=profiles.get(lead.id),
+        start=contact_start, end=contact_end) for lead in candidates}
     candidates.sort(key=lambda lead: (
-        category_order[queue_category(lead)],
-        aware(lead.next_follow_up_at) or datetime.max.replace(tzinfo=timezone.utc),
-        lead.id,
+        *queue_sort_key(lead, contexts[lead.id]),
     ))
     employee = await db.get(Employees, sales_employee_id)
     created = 0

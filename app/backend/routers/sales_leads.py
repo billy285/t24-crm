@@ -36,6 +36,8 @@ from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import sync_pending_daily_tasks
+from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
+from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
 from services.sales_workflow_locks import lock_sales_workflow
 from services.phone_numbers import parse_phone_number, phone_match_key
@@ -910,6 +912,12 @@ async def get_daily_call_workbench(
     visible_ids = set((await db.execute(visible_query)).scalars()) if tasks else set()
     tasks = [(task, lead) for task, lead in tasks if lead.id in visible_ids]
     summaries = await enrichment_summaries(db, [lead for _, lead in tasks if lead.id in visible_ids])
+    qualities = await quality_for_many(db, 'lead', [lead.id for _, lead in tasks])
+    profiles, contact_start, contact_end = await queue_context(db, [lead for _, lead in tasks], target_date)
+    queue_now = datetime.now(timezone.utc)
+    contexts = {lead.id: contact_queue_context(lead, now=queue_now, profile=profiles.get(lead.id),
+        start=contact_start, end=contact_end) for _, lead in tasks}
+    tasks.sort(key=lambda pair: queue_sort_key(pair[1], contexts[pair[1].id], completed=pair[0].status == "completed"))
     items = []
     categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0, "new": 0, "retry": 0, "recycled": 0, "follow_up": 0}
     for task, lead in tasks:
@@ -931,7 +939,9 @@ async def get_daily_call_workbench(
             "priority": priority,
             "next_action_label": next_action_label,
             "queue_category": queue_category,
+            "contact_queue": contexts[lead.id],
             "lead": {**SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
+                     "prospect_quality": qualities[lead.id],
                      "contact_protection": await contact_protection_summary(db, lead),
                      **({"enrichment_summary": summaries[lead.id]} if lead.id in summaries else {})},
         })
@@ -950,6 +960,9 @@ async def get_daily_call_workbench(
     )
     return {
         "target_date": target_date,
+        "queue_policy": {"label": "到期回访优先，再按当地联系时段和资料完整度排序",
+            "evaluated_at": queue_now, "contact_start": contact_start, "contact_end": contact_end,
+            "unknown_timezone": sum(context['timezone'] is None for context in contexts.values())},
         "salesperson": {"id": salesperson.id, "name": salesperson.name},
         "quota": quota,
         "assigned_count": len(items),
@@ -1851,7 +1864,10 @@ async def sales_call_report(
         select(Employees).where(Employees.id.in_(salesperson_ids))
     )).scalars().all()
     names = {employee.id: employee.name for employee in employees}
-    connection_items = await team_connection_statuses(db, salesperson_ids)
+    coverage_end = datetime.now(timezone.utc)
+    coverage_start = datetime.combine(start_date, datetime.min.time(), tzinfo=BUSINESS_TIMEZONE).astimezone(timezone.utc)
+    connection_items = await team_connection_statuses(db, salesperson_ids,
+        coverage_start=coverage_start, coverage_end=coverage_end)
     connections_by_sales = {item["employee_id"]: item for item in connection_items}
     connection_health = {
         "total": len(salesperson_ids),
@@ -1938,6 +1954,7 @@ async def sales_call_report(
             "connection_message": connection_status.get("message", "请销售登录自己的账号连接 RingCentral。"),
             "data_complete": False,
             "coverage_status": "unknown",
+            "sync_coverage": connection_status.get("coverage"),
             "salesperson": names.get(sales_id) or next((row.sales_employee_name for row in employee_provider if row.sales_employee_name), "未命名销售"),
             "provider_calls": len(employee_provider),
             "connected": connected,
@@ -1988,6 +2005,14 @@ async def sales_call_report(
             ),
         },
         "connection_health": connection_health,
+        "sync_coverage": {
+            "requested_from": coverage_start,
+            "requested_to": coverage_end,
+            "window_fetched_employees": sum(item.get("coverage", {}).get("status") == "window_fetched" for item in connection_items),
+            "unverified_employees": sum(item.get("coverage", {}).get("status") != "window_fetched" for item in connection_items),
+            "failed_or_partial_employees": sum(bool(item.get("coverage", {}).get("needs_retry")) for item in connection_items),
+            "data_complete": False,
+        },
         "summary": {
             "provider_calls": provider_calls,
             "connected": connected,
@@ -2438,6 +2463,8 @@ async def record_ringcentral_dial_started(
         raise HTTPException(status_code=400, detail="该任务已转交或取消，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
     await ensure_lead_contact_allowed(db, lead)
+    if (await quality_for(db, 'lead', lead.id))['status'] in {'invalid_phone', 'not_target', 'closed'}:
+        raise HTTPException(409, "该商家核验为无效或非目标，请核实资料并更新核验状态后再拨打")
     ensure_enrichment_editable(lead)
     if lead.assigned_sales_id != task.sales_employee_id:
         raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
@@ -2653,6 +2680,8 @@ async def delete_sales_lead(
     lead = await _get_scoped_lead(db, lead_id, current_user)
     from services.sales_dossiers import ensure_dossier_deletable
     await ensure_dossier_deletable(db, lead)
+    from services.prospect_verification import ensure_quality_history_retained
+    await ensure_quality_history_retained(db, 'lead', [lead_id])
     if lead_is_blocked(lead):
         await persist_lead_suppression(db, lead, current_user, preserve_releases=True)
     await db.delete(lead)

@@ -580,3 +580,7 @@
 .mp-edit-dialog { grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden!important; }
 .mp-edit-dialog > fieldset { border:0; min-width:0; padding:0 2px; overflow-y:auto; }
 .mp-edit-dialog > .mp-edit-actions { margin-top:0; }
+
+.mp-quality-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px;color:#64748b}.mp-quality-meta small{font-size:10px}.mp-quality-meta .inline-flex{font-size:10px;line-height:16px;padding:0 5px}
+
+.mp-quality-summary{margin:4px 0 0;font-size:12px;line-height:1.8;color:#64748b;overflow-wrap:anywhere}

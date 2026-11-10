@@ -198,7 +198,11 @@ async def test_import_and_update_normalize_without_changing_original_payload(ind
     assert update.status_code == 200 and update.json()["industry"] == "美业"
     async with maker() as session:
         merchant = await session.get(MerchantPool, merchant_id)
-        assert merchant.industry == "美业" and json.loads(merchant.raw_payload) == raw
+        stored = json.loads(merchant.raw_payload)
+        assert merchant.industry == "美业"
+        assert stored.pop("prospect_quality")["status"] == "pending"
+        assert stored.pop("prospect_source") == {}
+        assert stored == raw
 
 
 @pytest.mark.asyncio

@@ -1,21 +1,26 @@
 import { parsePhoneNumber } from './phone-format';
 
 export const MERCHANT_IMPORT_HEADERS = ['商家名称', '商家电话', '商家位置', '地区', '来源'] as const;
+export const MERCHANT_IMPORT_EXTENDED_HEADERS = [...MERCHANT_IMPORT_HEADERS, '行业', '来源URL', '来源日期', '核验类型'] as const;
 export const MERCHANT_IMPORT_EXAMPLE = ['示例咖啡店', '+1 (212) 555 0123 ext 009', '1 Main St', 'New York, NY, US', 'Google Maps'] as const;
 
 export type MerchantImportIssueRow = {
   status: string; reason: string; phone?: string | null; phone_country?: string | null;
   phone_status?: string; duplicate_row?: number; raw?: Record<string, string>;
+  match_basis?: { type: 'phone' | 'website' | 'name_address'; scope: string; value: string; matched_row?: number | null } | null;
 };
 
 // Advice explains the server's decision; it never changes eligibility or data.
 export function merchantImportRepairAdvice(row: MerchantImportIssueRow): string | null {
   if (row.status === 'pending') return null;
   if (row.status === 'error') {
-    if (/5列|五列/.test(row.reason)) return '保留模板的五列；用表格软件编辑，含逗号的地区或地址放在同一个单元格。';
+    if (/\d+\s*列|五列/.test(row.reason)) return '保留当前模板的列数；用表格软件编辑，含逗号的地区或地址放在同一个单元格。';
     if (/商家名称|business_name|名称/.test(row.reason)) return '填写商家名称，长度不超过 200 字。';
+    if (/来源URL/.test(row.reason)) return '填写原始公开资料的完整 http 或 https 链接；商家官网应与来源页面分开保存。';
+    if (/来源日期/.test(row.reason)) return '按 YYYY-MM-DD 填写资料发布或刷新日期；不代表当前营业日期。';
+    if (/核验类型/.test(row.reason)) return '填写公开商家资料、招聘联系点或待核验；人工核验结果请入池后另行记录。';
     if (/来源|data_source/.test(row.reason)) return '来源填写简短的平台或文件名称，不超过 50 字。';
-    return '按原行号修改原文件，保留固定五列表头，再重新预检。';
+    return '按原行号修改原文件，保留模板表头及相同列数，再重新预检。';
   }
   if (row.status === 'duplicate') return row.duplicate_row
     ? `与原第 ${row.duplicate_row} 行重复；核对后在原文件保留一条，勿为绕过重复而改造号码。`

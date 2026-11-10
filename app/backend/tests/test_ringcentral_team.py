@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from core.database import Base
 from models.employees import Employees
+from models.operation_logs import Operation_logs
 from models.ringcentral_connections import RingCentralConnections
 from models.ringcentral_call_records import RingCentralCallRecords
 from routers import ringcentral
@@ -22,7 +23,7 @@ async def db():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(lambda c: Base.metadata.create_all(c, tables=[
-            Employees.__table__, RingCentralConnections.__table__, RingCentralCallRecords.__table__]))
+            Operation_logs.__table__, Employees.__table__, RingCentralConnections.__table__, RingCentralCallRecords.__table__]))
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions() as session:
         # Emulate pre-migration legacy data for duplicate diagnostics tests.
