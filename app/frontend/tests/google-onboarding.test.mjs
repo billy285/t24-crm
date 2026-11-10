@@ -36,7 +36,8 @@ function harness(initial = {}, storage = new Map()) {
   class ClockDate extends Date { static now() { return clock; } }
   const hooks = { useState(value) { const i = si++; if (!(i in states)) states[i] = typeof value === 'function' ? value() : value; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; }, useRef(value) { const i = ri++; if (!(i in refs)) refs[i] = { current: value }; return refs[i]; }, useEffect(callback, deps) { const i = ei++, old = effects[i]; if (!old || !equal(old.deps, deps)) queue.push(() => { old?.cleanup?.(); effects[i] = { deps, cleanup: callback() }; }); } };
   const invokeWithAuth = options => new Promise((resolve, reject) => { const row = { options, resolve, reject }; requests.push(row); if (autoContext && options.url.includes('/context')) resolve({ data: autoContext }); });
-  const lib = compile(apiSource, { './tokenStore': { invokeWithAuth } });
+  // Expiry checks in the API helper and workspace must share the fixture clock.
+  const lib = compile(apiSource, { './tokenStore': { invokeWithAuth } }, { Date: ClockDate });
   const fallback = new Proxy({}, { get: (_, name) => name === '__esModule' ? true : String(name) });
   const jsx = (type, props, key) => typeof type === 'function' && type.name === 'IdentityComparison' ? type(props) : ({ type, props, key });
   const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/lib/google-onboarding-api': lib, '@/lib/media-operations-api': { mediaError: (cause, message) => cause?.message || message, mediaErrorStatus: cause => cause?.status, mediaRequestId: () => uuid(counter++) } }, { get: (value, name) => value[name] || fallback });
@@ -162,7 +163,9 @@ test('existing bindings cannot be selected and current Google identity is separa
 });
 test('integration adds only owner onboarding entries without changing merchant status badges or grants', () => {
   const merchant = read('../src/components/MediaMerchantWorkspace.tsx'), googleWorkspace = read('../src/components/GoogleBusinessWorkspace.tsx');
-  assert.match(merchant, /isOwner && view === 'merchants' && customerId === null/); assert.match(merchant, /GoogleOnboardingWorkspace scope=\{scope\} isOwner=\{isOwner\}/);
+  assert.match(merchant, /queueList = view === 'merchants' && customerId === null/);
+  assert.match(merchant, /\{queueList && isOwner && <Button/);
+  assert.match(merchant, /GoogleOnboardingWorkspace scope=\{scope\} isOwner=\{isOwner\}/);
   assert.match(googleWorkspace, /entry.kind === 'bind'.*setOnboardingTarget\(customerId \?\? entry.customerId\)/);
   assert.match(googleWorkspace, /onboardingTarget \?\? undefined/);
   assert.match(read('../src/components/MediaPortfolioPanels.tsx'), /merchant.platforms.map\(platform => <span/);
