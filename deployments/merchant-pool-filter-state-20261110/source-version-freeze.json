@@ -7,7 +7,7 @@
   "static_members": 143,
   "manifest_sha256": "a2f9e5af5cce6780f210ce95e99726f9e8786fcaff908457fbf356551bf6eb75",
   "payload_sha256": "697db23f300f0ead22e47c34eab125ce931a104b5e60d53ff10a18258ad9d63b",
-  "helper_sha256": "ae94128165daedd82ba09b070cf9617247f87ae1f24dbd96058b1af35aba64ea",
+  "helper_sha256": "79ce41df01cbd657b5a1b28077a8f137441e7958f0a801b43fd731c8fe5c77ce",
   "backend_unchanged": true,
   "container_restart_required": false,
   "database_migration": false,

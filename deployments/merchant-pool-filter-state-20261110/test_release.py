@@ -62,7 +62,7 @@ class Tests(unittest.TestCase):
   writes=[]
   def write(path,value):
    self.assertFalse(path.exists());path.body=json.dumps(value,sort_keys=True).encode();path.present=True;writes.append(value);return H(path.body)
-  m=SimpleNamespace(Release=Base,read=lambda p:json.loads(p.read_bytes()),write=write,NGINX=File(old))
+  m=SimpleNamespace(Release=Base,read=lambda p:json.loads(p.read_bytes()),write=write,NGINX=File(old),digest=lambda v:H(json.dumps(v,sort_keys=True,separators=(',',':')).encode()))
   args=SimpleNamespace(release=root,manifest_sha256=H(body),prepared_sha256=None)
   release=r.make_release(m,args);assets={'index.html':'frozen'}
   prepared=dict(stage='STATIC_PREPARED',source_sha=SOURCE,frontend_version='b'*12,manifest_sha256=H(body),runtime=r.BASE_RUNTIME,
@@ -85,6 +85,15 @@ class Tests(unittest.TestCase):
    args.prepared_sha256=H((root/'prepared.json').body)
   with patch.object(r,'inventory',return_value={'index.html':'changed'}):
    with self.assertRaisesRegex(RuntimeError,'PREPARED_ASSET_OR_NGINX_DRIFT'):release.reviewed()
+ def test_prepare_keeps_large_inventory_private_but_prints_only_bounded_summary(self):
+  release,m,args,root,assets,events=self.fixture();(root/'prepared.json').present=False
+  release.extract=lambda:None;release.stage_public=lambda:None
+  large={f'assets/retained-{i:04d}.js':'a'*64 for i in range(700)}
+  with patch.object(r,'inventory',return_value=large):summary=release.prepare()
+  self.assertNotIn('public_inventory',summary);self.assertEqual(summary['static_files'],700)
+  self.assertEqual(summary['public_inventory_sha256'],m.digest(large));self.assertLess(len(json.dumps(summary)),2000)
+  self.assertEqual(m.read(root/'prepared.json')['public_inventory'],large)
+  self.assertGreater(len((root/'prepared.json').body),60000);self.assertEqual(summary['prepared_sha256'],H((root/'prepared.json').body))
  def test_single_root_change_and_successful_static_activation_no_service_calls(self):
   release,m,args,root,assets,events=self.fixture()
   with patch.object(r,'inventory',return_value=assets):

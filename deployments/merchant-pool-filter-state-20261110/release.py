@@ -123,7 +123,9 @@ def make_release(m,args):
    self.boundary();need(not(self.root/'prepared.json').exists(),'FRESH_PREPARE_REQUIRED')
    self.extract();self.stage_public();self.static_check();self.boundary()
    value={'stage':'STATIC_PREPARED','source_sha':source,'frontend_version':manifest['frontend_version'],'manifest_sha256':args.manifest_sha256,'public_root':str(self.public),'public_inventory':inventory(self.public),'next_nginx_sha256':H(self.nginx_pair()[1]),'runtime':BASE_RUNTIME,'static_only':True,'database_writes':False,'container_restarts':False}
-   m.write(self.root/'prepared.json',value);return {**value,'prepared_sha256':H((self.root/'prepared.json').read_bytes())}
+   m.write(self.root/'prepared.json',value)
+   summary={key:value[key] for key in ('stage','source_sha','frontend_version','manifest_sha256','public_root','next_nginx_sha256','runtime','static_only','database_writes','container_restarts')}
+   return {**summary,'static_files':len(value['public_inventory']),'public_inventory_sha256':m.digest(value['public_inventory']),'prepared_sha256':H((self.root/'prepared.json').read_bytes())}
   def reviewed(self):
    need(bool(re.fullmatch('[a-f0-9]{64}',args.prepared_sha256 or '')),'REVIEWED_PREPARED_SHA_REQUIRED')
    p=json.loads(protected(self.root/'prepared.json',args.prepared_sha256))
