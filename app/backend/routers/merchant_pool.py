@@ -26,7 +26,7 @@ from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
 from services.sales_contact_protection import ensure_phone_contact_allowed
 from services.sales_workflow_locks import lock_sales_workflow
-from services.sales_timezones import resolve_contact_timezone, sql_contact_timezone, sql_timezone_group
+from services.sales_timezones import STATE_CODES, STATE_NAMES, resolve_contact_timezone, sql_contact_timezone, sql_timezone_group
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -348,6 +348,13 @@ def _parse_import_values(mapped: dict[str, Any]) -> dict[str, Any]:
             parts.pop()
         if mapped.get("country") and len(parts) >= 2:
             mapped.setdefault("state", parts.pop().upper())
+        elif mapped.get("country") == "US" and len(parts) == 1:
+            # Public leads may identify a state without a city. Preserve that
+            # distinction so a missing city cannot become a fabricated one.
+            state = STATE_CODES.get(parts[0].upper(), parts[0].upper())
+            if state in STATE_NAMES:
+                mapped.setdefault("state", state)
+                parts.pop()
         if parts:
             mapped.setdefault("city", ", ".join(parts))
 

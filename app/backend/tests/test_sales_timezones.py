@@ -53,6 +53,11 @@ CASES = [
       ("Berkley", "Troy")],
     ({"country": "US", "state": "TN", "city": "Jackson"}, "America/Chicago", "central"),
     ({"country": "US", "state": "TX", "city": "The Colony"}, "America/Chicago", "central"),
+    ({"country": "US", "state": "TX", "city": "Grapevine"}, "America/Chicago", "central"),
+    ({"country": "US", "state": "FL", "city": "Hallandale Beach"}, "America/New_York", "eastern"),
+    ({"country": "US", "state": "FL", "city": "plantation"}, "America/New_York", "eastern"),
+    *[({"country": "US", "state": "TX", "city": city}, "America/Chicago", "central") for city in
+      ("Bellaire", "Coppell", "Corsicana", "League City")],
     ({"country": "US", "state": "TN", "city": "Unreviewed City"}, None, "unknown"),
     ({"country": "US", "state": "FL", "city": "Unreviewed City"}, None, "unknown"),
     ({"country": "US", "state": "MI", "city": "Menominee"}, "America/Menominee", "central"),

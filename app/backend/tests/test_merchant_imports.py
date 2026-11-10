@@ -83,6 +83,28 @@ async def test_preview_preserves_original_lines_and_never_creates_business_recor
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("region,state,zone", [
+    ("NY, US", "NY", "America/New_York"),
+    ("California, USA", "CA", "America/Los_Angeles"),
+    ("TX, US", "TX", None),
+])
+async def test_state_only_csv_preserves_missing_city_and_conservative_timezone(imports_client, region, state, zone):
+    from services.sales_timezones import resolve_contact_timezone
+
+    client, maker = imports_client
+    batch = await preview(client, [["店名待核验｜中文门店招聘", GOOD[1], "街道地址待核验", region, "中文招聘待核验"]])
+    assert batch["summary"] == {"pending": 1, "isolated": 0, "errors": 0, "importable": 1}
+    confirmed = await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())
+    assert confirmed.status_code == 200, confirmed.text
+    async with maker() as session:
+        row = (await session.execute(select(MerchantPool))).scalar_one()
+        assert (row.country, row.state, row.city) == ("US", state, None)
+        timezone = resolve_contact_timezone(country=row.country, state=row.state, city=row.city, address=row.address)
+        assert timezone["timezone"] == zone
+        assert timezone["timezone_needs_confirmation"] is True
+
+
+@pytest.mark.asyncio
 async def test_confirm_uses_server_validation_and_retry_never_duplicates(imports_client):
     client, maker = imports_client
     batch = await preview(client, [GOOD, ["Bad Phone", "123", "", "", "Maps"], ["Duplicate", GOOD[1], "2 Main St", GOOD[3], "Maps"]])
