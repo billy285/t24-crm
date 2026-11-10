@@ -1,0 +1,22 @@
+{
+  "source_sha": "f89031f4818ec2114594b73a9c3d750ee88014fd",
+  "baseline_runtime": {
+    "id": "f94582e507c00846088667307f356ec52a130578916a77a0218928ecf438ea12",
+    "image": "sha256:5679c46f3a78f852c1bf9544e4d1ab8c75acaa0e45df0fb529655644166a5518",
+    "config": "2358f89373d634572a826f62e4f8a1831c925789e982a6b2858e8d026985141b",
+    "started": "2026-11-10T11:09:36.65962259Z"
+  },
+  "runtime_paths": [
+    "routers/sales_knowledge.py",
+    "services/beautyos_knowledge_pack.py",
+    "services/sales_knowledge_profiles.py"
+  ],
+  "frontend_version": "a8cce266e74e",
+  "payload_bytes": 2350941,
+  "static_members": 143,
+  "source_commit_bytes_verified": true,
+  "fresh_build_passed": true,
+  "knowledge_content_install_in_release": false,
+  "manifest_sha256": "373d759bcbdc8ed8ce61cc000286b8b76b36d82776110040d1d5ada056b56071",
+  "helper_sha256": "a910dfc1a1836bd69d5c6006d7f6a6ae924c76165544ebf658cc28dcb97c54cb"
+}
