@@ -4,10 +4,10 @@ const baseUrl = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5191';
 const screenshotDir = process.env.T24_UI_SCREENSHOT_DIR;
 const priceAnswer = '我理解您希望控制费用。请先确认目前最需要解决的问题，我们会按真实需求说明合适的服务范围。';
 const articles = [
-  { id: 1, category: '套餐与报价', title: '客户说太贵如何回复？', customer_question: '客户觉得报价太贵，销售怎么推进？', standard_answer: priceAnswer, action_steps: ['确认真实需求', '按需求说明服务范围'], escalation_rule: '特殊折扣必须先由销售主管确认。', related_links: [], tags: ['价格'], status: 'published', is_sensitive: true, sort_order: 20 },
+  { id: 1, category: '套餐与报价', title: '客户说太贵如何回复？', customer_question: '客户觉得报价太贵，销售怎么推进？', standard_answer: priceAnswer, action_steps: ['确认真实需求', '按需求说明服务范围'], escalation_rule: '特殊折扣必须先由销售主管确认。', related_links: [], tags: ['价格'], status: 'published', is_sensitive: false, sort_order: 20 },
   { id: 2, category: '销售准备与开场', title: '首次联系如何开场？', customer_question: '第一次联系商家怎么开场？', standard_answer: '请先确认商家负责人，再介绍联系目的。', action_steps: [], related_links: [], tags: ['开场'], status: 'published', is_sensitive: false, sort_order: 30 },
   { id: 3, category: '特殊交接说明', title: '特殊交接待发布草稿', customer_question: '交接如何确认？', standard_answer: '由主管确认交接范围后发布。', action_steps: [], related_links: [], tags: [], status: 'draft', is_sensitive: false, sort_order: 40 },
-];
+].map(article => ({ ...article, product_scope: 'beautyos', phone_answer: article.standard_answer, revision: 1, availability: 'ready', store_types: ['通用'] }));
 
 type Write = { path: string; method: string; data: Record<string, unknown>; query: string };
 
@@ -75,13 +75,14 @@ for (const width of [1093, 1440]) {
     expect(detail!.x).toBeGreaterThan(list!.x + list!.width);
     expect(Math.abs(detail!.y - list!.y)).toBeLessThan(2);
     await expect(page.getByRole('tab', { name: '电话话术' })).toHaveAttribute('aria-selected', 'true');
+    await page.getByText('内部提醒 · 不随答复复制', { exact: true }).click();
     await expect(page.getByText('特殊折扣必须先由销售主管确认。')).toBeVisible();
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/knowledge-approved-${width}.png`, fullPage: true });
     await page.getByRole('button', { name: '复制短版话术' }).click();
     await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(priceAnswer);
     await page.getByRole('tab', { name: '完整答复', exact: true }).click();
     await page.getByRole('button', { name: '复制完整答复' }).click();
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`客户说太贵如何回复？\n\n标准答复：\n${priceAnswer}\n\n建议步骤：\n1. 确认真实需求\n2. 按需求说明服务范围`);
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(priceAnswer);
     await page.getByRole('tab', { name: '完整答复', exact: true }).press('ArrowLeft');
     await expect(page.getByRole('tab', { name: '电话话术' })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('button', { name: /首次联系如何开场/ }).click();
@@ -114,7 +115,7 @@ test('无结果提交保留搜索原话和分类，失败及取消保留已补�
   await page.getByRole('button', { name: '提交这个问题' }).click();
   const dialog = page.getByRole('dialog', { name: '提交销售新问题' });
   await expect(dialog.getByLabel('客户问了什么？')).toHaveValue(original);
-  await expect(dialog.getByLabel('补充场景（可选）')).toHaveValue('知识分类：套餐与报价');
+  await expect(dialog.getByLabel('补充场景（可选）')).toHaveValue('适用产品：美业 OS；知识分类：套餐与报价');
   await dialog.getByLabel('补充场景（可选）').fill('客户在异地，正在讨论套餐范围');
   await dialog.getByRole('button', { name: '提交问题', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveText('测试提交失败，请重试');
@@ -140,9 +141,9 @@ test('主管真实分类、草稿保存与待解答问题处理入口完整', as
   const editor = page.getByRole('dialog', { name: '新建知识卡' });
   await editor.getByLabel('新分类名称（选填）').fill('主管补充分类');
   await editor.getByLabel('标题', { exact: true }).fill('新客户咨询答复');
-  await editor.getByLabel('标准答复', { exact: true }).fill('请按客户实际需求说明服务。');
-  await editor.getByLabel('执行步骤（每行一条）').fill('确认需求\n记录客户反馈');
-  await editor.getByLabel('保存后立即发布给销售查看').uncheck();
+  await editor.getByLabel('完整对外答复', { exact: true }).fill('请按客户实际需求说明服务。');
+  await editor.getByLabel('销售执行步骤（每行一条，仅内部）').fill('确认需求\n记录客户反馈');
+  await editor.getByLabel('已核对本次内容，保存后发布给销售查看').uncheck();
   await editor.getByRole('button', { name: '保存知识卡' }).click();
   await expect(editor).toHaveCount(0);
   const saved = api.writes.find(write => write.path.endsWith('/sales-knowledge/articles'));
@@ -166,6 +167,7 @@ test('390px 手机分类可达，正文按需打开且复制控件和输入不�
   await page.getByRole('button', { name: /客户说太贵如何回复/ }).click();
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('tab', { name: '电话话术' })).toBeVisible();
+  await sheet.getByText('内部提醒 · 不随答复复制', { exact: true }).click();
   await expect(sheet.getByText('特殊折扣必须先由销售主管确认。')).toBeVisible();
   await sheet.getByRole('tab', { name: '完整答复', exact: true }).click();
   await expect(sheet.getByRole('button', { name: '复制完整答复' })).toBeVisible();
@@ -174,7 +176,7 @@ test('390px 手机分类可达，正文按需打开且复制控件和输入不�
   await noOverflow(page);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/knowledge-approved-mobile.png` });
   await sheet.getByRole('button', { name: 'Close', exact: true }).click();
-  await page.getByRole('complementary', { name: '知识分类' }).getByRole('button', { name: '其他', exact: true }).click();
+  await page.getByRole('complementary', { name: '知识分类' }).getByRole('button', { name: '边界与售后', exact: true }).click();
   await expect(page.getByRole('button', { name: '提交这个问题' })).toBeVisible();
   await page.getByRole('button', { name: '提交这个问题' }).click();
   const question = page.getByRole('dialog', { name: '提交销售新问题' });

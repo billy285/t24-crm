@@ -1,8 +1,9 @@
 import json
+import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +12,50 @@ from core.database import get_db
 from dependencies.auth import get_current_user
 from models.sales_knowledge_articles import SalesKnowledgeArticles, SalesKnowledgeQuestions
 from schemas.auth import UserResponse
+from services.sales_knowledge_profiles import (
+    add_pack_mapping, append_profile, article_data, check_revision, lock_knowledge,
+    metadata_from_payload, pack_mappings, profile_for, profiles_for_many,
+)
 
 
 router = APIRouter(prefix="/api/v1/sales-knowledge", tags=["sales-knowledge"])
 
 SALES_KNOWLEDGE_ROLES = {"sales", "sales_manager", "admin", "super_admin"}
 KNOWLEDGE_MANAGE_ROLES = {"sales_manager", "admin", "super_admin"}
+
+# Finite spoken aliases only. These select public tags on an already-authorized
+# visible article; neither internal notes nor unpublished drafts are searched.
+# Trial numbers identify a question and never assert a commercial policy.
+KNOWLEDGE_SEARCH_ALIASES = (
+    (r"(?:已(?:经)?有|已经(?:在)?用|现在(?:在)?用|一直用|有了)(?:其他|别的|一个|一套)?(?:预约|收银|管理)?(?:系统|软件)|用(?:别的|其他)(?:系统|软件)", (("已有系统",),)),
+    (r"太贵|很贵|有点贵|费用太高|价格太高|预算不够|多少钱|怎么收费|收费多少|什么价格", (("太贵",),)),
+    (r"没(?:有)?时间|现在(?:很)?忙|正在忙|晚点(?:打|联系)|过会(?:打|联系)|稍后(?:打|联系)|再打给我", (("回拨",),)),
+    (r"(?:发|给|寄)(?:点|份|个|一下|一些)?(?:资料|介绍)|发我微信|微信发我", (("发资料",),)),
+    (r"(?:免费|试用|体验).{0,12}(?:多久|几天|多少天|30天|60天|三十天|六十天|收费|免费)|免费试用|先试(?:试|用|一下)", (("当前规则",),)),
+    (r"自动(?:扣钱|扣费|扣款)|要(?:先)?绑卡|需要(?:先)?绑卡|是不是.*绑卡", (("试用疑虑",),)),
+    (r"^(?!.*(?:预约|排班|订单)).*(?:续费|退订|取消订阅|怎么取消|如何取消|到期怎么办|试用结束|不想用了)", (("续费", "取消"),)),
+    (r"短信|sms|群发消息|群发提醒", (("短信", "送达"),)),
+)
+
+
+def _search_visible_articles(items, query):
+    needle = query.strip().casefold()
+    if not needle:
+        return items
+    fields = ("title", "customer_question", "standard_answer", "phone_answer", "followup_question", "tags", "store_types")
+    def public_text(item):
+        return " ".join(" ".join(item.get(key) or []) if isinstance(item.get(key), list) else str(item.get(key) or "") for key in fields).casefold()
+    exact = [item for item in items if needle in public_text(item)]
+    if exact:
+        return exact
+    spoken = re.sub(r"[\s，。！？、,.!?：:；;‘’“”\"']", "", needle)
+    targets = [groups for pattern, groups in KNOWLEDGE_SEARCH_ALIASES if re.search(pattern, spoken)]
+    if not targets:
+        return []
+    def matches_alias(item):
+        tags = {str(tag).casefold() for tag in item.get("tags", [])}
+        return any(all(tag in tags for tag in group) for groups in targets for group in groups)
+    return [item for item in items if matches_alias(item)]
 
 
 def _role(user: UserResponse) -> str:
@@ -51,25 +90,8 @@ def _list_json(value: Optional[str]) -> list[str]:
         return []
 
 
-def _article_data(article: SalesKnowledgeArticles) -> dict:
-    return {
-        "id": article.id,
-        "category": article.category,
-        "title": article.title,
-        "customer_question": article.customer_question,
-        "standard_answer": article.standard_answer,
-        "action_steps": _list_json(article.action_steps),
-        "related_links": _list_json(article.related_links),
-        "escalation_rule": article.escalation_rule,
-        "tags": _list_json(article.tags),
-        "status": article.status,
-        "is_sensitive": article.is_sensitive,
-        "sort_order": article.sort_order,
-        "created_by_name": article.created_by_name,
-        "published_by_name": article.published_by_name,
-        "published_at": article.published_at,
-        "updated_at": article.updated_at,
-    }
+def _article_data(article: SalesKnowledgeArticles, profile=None) -> dict:
+    return article_data(article, profile)
 
 
 def _question_data(question: SalesKnowledgeQuestions) -> dict:
@@ -96,11 +118,43 @@ class KnowledgeArticlePayload(BaseModel):
     tags: list[str] = Field(default_factory=list, max_length=12)
     is_sensitive: bool = False
     sort_order: int = Field(default=0, ge=0, le=10000)
+    product_scope: Literal["general", "beautyos", "restaurant", "managed_service"] = "general"
+    phone_answer: str = Field(default="", max_length=1200)
+    followup_question: str = Field(default="", max_length=1000)
+    demo_steps: list[str] = Field(default_factory=list, max_length=12)
+    next_action: str = Field(default="", max_length=1000)
+    internal_notes: str = Field(default="", max_length=4000)
+    store_types: list[str] = Field(default_factory=list, max_length=12)
+    availability: Literal["ready", "requires_setup", "pending_confirmation"] = "pending_confirmation"
+    high_frequency: bool = False
+    expected_revision: Optional[int] = Field(default=None, ge=0)
 
-    @field_validator("category", "title", "standard_answer")
+    @field_validator("category", "title", "standard_answer", mode="before")
     @classmethod
     def strip_required_text(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("phone_answer", "followup_question", "next_action", "internal_notes")
+    @classmethod
+    def strip_profile_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("action_steps", "related_links", "tags", "demo_steps", "store_types")
+    @classmethod
+    def clean_lists(cls, values: list[str]) -> list[str]:
+        values = [value.strip() for value in values if value.strip()]
+        if any(len(value) > 2000 for value in values):
+            raise ValueError("单项内容不能超过2000字")
+        return values
+
+
+class KnowledgePublishPayload(BaseModel):
+    expected_revision: Optional[int] = Field(default=None, ge=0)
+
+
+class KnowledgePackInstallPayload(BaseModel):
+    manifest_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    publish_now: bool
 
 
 class KnowledgeQuestionPayload(BaseModel):
@@ -259,32 +313,35 @@ async def list_articles(
     query: str = Query(default="", max_length=200),
     category: Optional[str] = Query(default=None, max_length=80),
     include_all: bool = False,
+    product_scope: Optional[Literal["general", "beautyos", "restaurant", "managed_service"]] = None,
+    include_general: bool = True,
+    high_frequency: Optional[bool] = None,
+    store_type: Optional[str] = Query(default=None, max_length=80),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_access(current_user)
     await _ensure_seed_articles(db)
-    statement = select(SalesKnowledgeArticles)
-    if not (include_all and _role(current_user) in KNOWLEDGE_MANAGE_ROLES):
-        statement = statement.where(SalesKnowledgeArticles.status == "published")
+    articles = (await db.scalars(select(SalesKnowledgeArticles).where(SalesKnowledgeArticles.status != "archived"))).all()
+    profiles = await profiles_for_many(db, [article.id for article in articles])
+    published_only = not (include_all and _role(current_user) in KNOWLEDGE_MANAGE_ROLES)
+    items = [article_data(article, profiles.get(article.id), published_only=published_only) for article in articles]
+    items = [item for item in items if item is not None]
+    if product_scope:
+        scopes = {product_scope, "general"} if include_general else {product_scope}
+        items = [item for item in items if item["product_scope"] in scopes]
+    if high_frequency is not None:
+        items = [item for item in items if item["high_frequency"] is high_frequency]
+    if store_type and store_type != "全部":
+        items = [item for item in items if not item["store_types"] or "通用" in item["store_types"] or store_type in item["store_types"]]
+    # Category facets follow the same visible product/store/frequency scope.
+    # Search is applied to the approved version, never the manager's draft.
+    categories = sorted({item["category"] for item in items})
     if category and category != "全部":
-        statement = statement.where(SalesKnowledgeArticles.category == category)
-    if query.strip():
-        pattern = f"%{query.strip()}%"
-        statement = statement.where(or_(
-            SalesKnowledgeArticles.title.ilike(pattern),
-            SalesKnowledgeArticles.customer_question.ilike(pattern),
-            SalesKnowledgeArticles.standard_answer.ilike(pattern),
-            SalesKnowledgeArticles.tags.ilike(pattern),
-        ))
-    articles = (await db.scalars(statement.order_by(SalesKnowledgeArticles.sort_order, SalesKnowledgeArticles.id))).all()
-    categories = (await db.scalars(
-        select(SalesKnowledgeArticles.category)
-        .where(SalesKnowledgeArticles.status == "published")
-        .distinct()
-        .order_by(SalesKnowledgeArticles.category)
-    )).all()
-    return {"items": [_article_data(article) for article in articles], "categories": categories}
+        items = [item for item in items if item["category"] == category]
+    items = _search_visible_articles(items, query)
+    items.sort(key=lambda item: (not item["high_frequency"], item["sort_order"], item["id"]))
+    return {"items": items, "categories": categories, "total": len(items)}
 
 
 @router.post("/articles", status_code=status.HTTP_201_CREATED)
@@ -295,6 +352,7 @@ async def create_article(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manage(current_user)
+    await lock_knowledge(db)
     now = datetime.now(timezone.utc)
     article = SalesKnowledgeArticles(
         category=payload.category,
@@ -315,9 +373,12 @@ async def create_article(
         published_at=now if publish_now else None,
     )
     db.add(article)
-    await db.commit()
+    await db.flush()
     await db.refresh(article)
-    return _article_data(article)
+    metadata = metadata_from_payload(payload, article)
+    profile = await append_profile(db, article, metadata, current_user, action="create", publish=publish_now)
+    await db.commit()
+    return _article_data(article, profile)
 
 
 @router.put("/articles/{article_id}")
@@ -328,9 +389,14 @@ async def update_article(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manage(current_user)
+    await lock_knowledge(db, [article_id])
     article = await db.get(SalesKnowledgeArticles, article_id)
     if not article or article.status == "archived":
         raise HTTPException(status_code=404, detail="未找到该知识卡")
+    previous = await profile_for(db, article_id)
+    check_revision(previous, payload.expected_revision)
+    before_snapshot = _article_data(article, previous)
+    metadata = metadata_from_payload(payload, article, previous)
     article.category = payload.category
     article.title = payload.title
     article.customer_question = payload.customer_question
@@ -341,43 +407,128 @@ async def update_article(
     article.tags = json.dumps(payload.tags, ensure_ascii=False)
     article.is_sensitive = payload.is_sensitive
     article.sort_order = payload.sort_order
-    await db.commit()
+    article.status = "draft"
+    article.updated_at = datetime.now(timezone.utc)
+    await db.flush()
     await db.refresh(article)
-    return _article_data(article)
+    profile = await append_profile(db, article, metadata, current_user, action="edit_draft", previous=previous, before_snapshot=before_snapshot)
+    await db.commit()
+    return _article_data(article, profile)
 
 
 @router.post("/articles/{article_id}/publish")
 async def publish_article(
     article_id: int,
+    payload: Optional[KnowledgePublishPayload] = Body(default=None),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manage(current_user)
+    await lock_knowledge(db, [article_id])
     article = await db.get(SalesKnowledgeArticles, article_id)
     if not article or article.status == "archived":
         raise HTTPException(status_code=404, detail="未找到该知识卡")
+    previous = await profile_for(db, article_id)
+    check_revision(previous, payload.expected_revision if payload else None)
+    before_snapshot = _article_data(article, previous)
     article.status = "published"
     article.published_by_id = _employee_id(current_user)
     article.published_by_name = current_user.name
     article.published_at = datetime.now(timezone.utc)
-    await db.commit()
+    article.updated_at = article.published_at
+    await db.flush()
     await db.refresh(article)
-    return _article_data(article)
+    metadata = previous["after"] if previous else metadata_from_payload(KnowledgeArticlePayload(
+        category=article.category, title=article.title, standard_answer=article.standard_answer), article)
+    profile = await append_profile(db, article, metadata, current_user, action="publish", previous=previous, before_snapshot=before_snapshot, publish=True)
+    await db.commit()
+    return _article_data(article, profile)
 
 
 @router.delete("/articles/{article_id}")
 async def archive_article(
     article_id: int,
+    expected_revision: Optional[int] = Query(default=None, ge=0),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_manage(current_user)
+    await lock_knowledge(db, [article_id])
     article = await db.get(SalesKnowledgeArticles, article_id)
     if not article:
         raise HTTPException(status_code=404, detail="未找到该知识卡")
+    previous = await profile_for(db, article_id)
+    check_revision(previous, expected_revision)
+    before_snapshot = _article_data(article, previous)
+    metadata = previous["after"] if previous else metadata_from_payload(KnowledgeArticlePayload(
+        category=article.category, title=article.title, standard_answer=article.standard_answer), article)
     article.status = "archived"
+    article.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(article)
+    await append_profile(db, article, metadata, current_user, action="archive", previous=previous, before_snapshot=before_snapshot)
     await db.commit()
     return {"message": "知识卡已归档"}
+
+
+def _beautyos_pack():
+    from services.beautyos_knowledge_pack import BEAUTYOS_KNOWLEDGE_PACK, PACK_VERSION, canonical_pack_hash
+    return BEAUTYOS_KNOWLEDGE_PACK, PACK_VERSION, canonical_pack_hash()
+
+
+@router.post("/beautyos-pack/preview")
+async def preview_beautyos_pack(
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_manage(current_user)
+    pack, version, digest = _beautyos_pack()
+    mappings = await pack_mappings(db)
+    existing = sum(item["key"] in mappings for item in pack)
+    return {"pack_id": "beautyos-sales-scenarios", "version": version, "manifest_hash": digest,
+            "total": len(pack), "high_frequency_count": sum(item.get("high_frequency", False) for item in pack),
+            "existing_count": existing, "new_count": len(pack) - existing,
+            "items": [{**item, "already_installed": item["key"] in mappings,
+                       "existing_article_id": mappings.get(item["key"], {}).get("article_id"),
+                       "status": "draft", "revision": 0, "legacy_profile": False, "is_sensitive": item.get("is_sensitive", False)} for item in pack]}
+
+
+@router.post("/beautyos-pack/install")
+async def install_beautyos_pack(
+    payload: KnowledgePackInstallPayload,
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    _ensure_manage(current_user)
+    pack, version, digest = _beautyos_pack()
+    if payload.manifest_hash != digest:
+        raise HTTPException(409, "标准话术内容已更新，请重新预览后再启用；本次未写入")
+    await lock_knowledge(db)
+    mappings = await pack_mappings(db)
+    results, skipped = [], 0
+    for item in pack:
+        if item["key"] in mappings:
+            skipped += 1
+            continue
+        parsed = KnowledgeArticlePayload(**item)
+        now = datetime.now(timezone.utc)
+        article = SalesKnowledgeArticles(
+            category=parsed.category, title=parsed.title, customer_question=parsed.customer_question,
+            standard_answer=parsed.standard_answer, action_steps=json.dumps(parsed.action_steps, ensure_ascii=False),
+            related_links=json.dumps(parsed.related_links, ensure_ascii=False), escalation_rule=parsed.escalation_rule,
+            tags=json.dumps(parsed.tags, ensure_ascii=False), is_sensitive=parsed.is_sensitive, sort_order=parsed.sort_order,
+            status="published" if payload.publish_now else "draft", created_by_id=_employee_id(current_user),
+            created_by_name=current_user.name, published_by_id=_employee_id(current_user) if payload.publish_now else None,
+            published_by_name=current_user.name if payload.publish_now else None, published_at=now if payload.publish_now else None,
+        )
+        db.add(article)
+        await db.flush()
+        await db.refresh(article)
+        metadata = metadata_from_payload(parsed, article)
+        profile = await append_profile(db, article, metadata, current_user, action="install_standard_pack", publish=payload.publish_now)
+        add_pack_mapping(db, item, article, current_user, version=version, manifest_hash=digest)
+        results.append(_article_data(article, profile))
+    await db.commit()
+    return {"installed_count": len(results), "skipped_count": skipped, "total": len(pack),
+            "manifest_hash": digest, "version": version, "items": results}
 
 
 @router.get("/questions")

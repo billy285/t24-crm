@@ -443,3 +443,90 @@
 .sk-editor-fields { border:0; min-width:0; overflow:auto; padding:0 2px; }
 .sk-editor-actions { border-top:1px solid #e2e8f0; padding-top:14px; }
 @media(max-width:767px) { .sk-editor-dialog,.sk-question-dialog { height:100dvh!important; } .sk-editor-actions { flex-direction:row; gap:12px; } .sk-editor-actions button { flex:1; min-height:48px; } }
+
+/* Product-specific scripts keep customer text separate from operator guidance. */
+.t24-system .sales-center-ui.knowledge-refined-page .sk-page-intro { margin:6px 0 0; color:#64748b; font-size:14px; line-height:1.6; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters { display:flex; align-items:flex-end; flex-wrap:wrap; gap:12px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters > label { flex:1 1 180px; max-width:280px; min-width:0; display:flex; flex-direction:column; gap:7px; color:#53657d; font-size:13px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters > button { min-height:44px; }
+.t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-workspace { height:min(720px,max(420px,calc(100dvh - 390px))); }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-detail-badges,
+.knowledge-refined-portal .sk-detail-badges { display:flex; flex-wrap:wrap; gap:6px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-capability-note,
+.knowledge-refined-portal .sk-capability-note { border:1px solid #e7d7ad; border-radius:10px; padding:12px 14px; background:#fffaf0; color:#71542d; font-size:13px; line-height:1.7; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-capability-note.is-ready,
+.knowledge-refined-portal .sk-capability-note.is-ready { border-color:#dce6f1; background:#f7faff; color:#53657d; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-capability-note > span,
+.knowledge-refined-portal .sk-capability-note > span { font-weight:600; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-capability-note p,
+.knowledge-refined-portal .sk-capability-note p { margin:4px 0 0; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-copy-note,
+.knowledge-refined-portal .sk-copy-note { font-size:13px!important; color:#64748b!important; margin:8px 0 12px!important; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-warning,
+.knowledge-refined-portal .sk-internal-warning { display:flex; align-items:flex-start; gap:10px; padding:14px; border-radius:10px; background:#fff7e7; color:#855e29; font-size:14px; line-height:1.8; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-warning svg,
+.knowledge-refined-portal .sk-internal-warning svg { flex:none; margin-top:3px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-followup,
+.t24-system .sales-center-ui.knowledge-refined-page .sk-next-action,
+.knowledge-refined-portal .sk-followup,
+.knowledge-refined-portal .sk-next-action { padding:14px 16px; border-radius:10px; background:#f5f8fd; font-size:15px; line-height:1.8; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-followup h4,
+.t24-system .sales-center-ui.knowledge-refined-page .sk-next-action h4,
+.knowledge-refined-portal .sk-followup h4,
+.knowledge-refined-portal .sk-next-action h4 { font-size:13px; color:#53657d; margin-bottom:6px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-guidance,
+.knowledge-refined-portal .sk-internal-guidance { border-top:1px solid #e2e8f0; padding-top:12px; color:#705a3a; font-size:14px; line-height:1.8; overflow-wrap:anywhere; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-guidance summary,
+.knowledge-refined-portal .sk-internal-guidance summary { display:flex; gap:8px; align-items:center; min-height:44px; cursor:pointer; font-weight:500; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-guidance p,
+.knowledge-refined-portal .sk-internal-guidance p { white-space:pre-line; margin:10px 0; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-internal-guidance ol,
+.knowledge-refined-portal .sk-internal-guidance ol { list-style:decimal; padding-left:22px; }
+.t24-system .sales-center-ui.knowledge-refined-page .sk-review-meta,
+.knowledge-refined-portal .sk-review-meta { border-top:1px solid #e2e8f0; padding-top:12px; font-size:12px; line-height:1.8; color:#64748b; }
+.t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-list-meta > .is-featured { color:#047857; }
+.knowledge-refined-portal .sk-store-types { border:1px solid #e2e8f0; border-radius:10px; padding:8px 14px 12px; display:flex; flex-wrap:wrap; gap:8px 18px; }
+.knowledge-refined-portal .sk-store-types legend { padding:0 5px; color:#53657d; font-size:13px; }
+.knowledge-refined-portal .sk-store-types label,
+.knowledge-refined-portal .sk-form-check { display:flex; align-items:center; gap:8px; min-height:44px; line-height:1.6; }
+.knowledge-refined-portal .sk-editor-fields select { width:100%; min-height:44px; }
+.knowledge-refined-portal .sk-editor-help { font-size:13px; line-height:1.8; color:#64748b; }
+.knowledge-refined-portal .sk-editor-error { padding:14px; background:#fff5f2; border:1px solid #f5cbc1; color:#913b2a; border-radius:10px; font-size:14px; line-height:1.8; overflow-wrap:anywhere; }
+.knowledge-refined-portal .sk-editor-error button { margin-top:10px; white-space:normal; height:auto; }
+.knowledge-refined-portal .sk-pack-success { padding:14px; background:#effaf4; border:1px solid #bee4ce; color:#276345; border-radius:10px; font-size:14px; line-height:1.8; }
+.knowledge-refined-portal .sk-pack-summary { display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:12px; padding:14px 16px; border:1px solid #dce6f1; border-radius:10px; background:#f5f8fd; line-height:1.8; }
+.knowledge-refined-portal .sk-pack-summary span { color:#53657d; font-size:14px; }
+.knowledge-refined-portal .sk-pack-workspace { display:grid; grid-template-columns:minmax(180px,.32fr) minmax(0,.68fr); gap:16px; margin-top:16px; min-width:0; }
+.knowledge-refined-portal .sk-pack-workspace > nav { display:flex; flex-direction:column; gap:6px; max-height:480px; overflow:auto; min-width:0; padding-right:6px; }
+.knowledge-refined-portal .sk-pack-workspace > nav button { padding:10px 12px; text-align:left; border:1px solid transparent; border-radius:8px; color:#53657d; overflow-wrap:anywhere; background:#f8fafc; }
+.knowledge-refined-portal .sk-pack-workspace > nav button[aria-pressed=true] { color:#1d4ed8; background:#eff5ff; border-color:#cdddff; }
+.knowledge-refined-portal .sk-pack-workspace > nav button > span { font-size:12px; color:#047857; }
+.knowledge-refined-portal .sk-pack-detail { min-width:0; max-height:480px; overflow:auto; padding:8px 14px; border:1px solid #e2e8f0; border-radius:10px; }
+.t24-system .sk-beautyos-assistant .sk-assistant-availability { margin:12px 0; font-size:12px; color:#64748b; line-height:1.7; }
+.t24-system .sk-beautyos-assistant .sk-assistant-next { margin:12px 0; padding:10px; border-radius:8px; background:#f7faff; font-size:13px; line-height:1.8; }
+.t24-system .sk-beautyos-assistant .sk-assistant-next strong { color:#53657d; font-size:12px; }
+.t24-system .sk-beautyos-assistant .sk-assistant-internal { margin:14px 0; padding:10px 0; border-top:1px solid #e2e8f0; font-size:12px; color:#7a623f; line-height:1.8; }
+.t24-system .sk-beautyos-assistant .sk-assistant-internal summary { display:flex; gap:6px; min-height:44px; align-items:center; cursor:pointer; }
+.t24-system .sk-beautyos-assistant .sk-assistant-internal p { margin-top:8px; white-space:pre-line; overflow-wrap:anywhere; }
+@media (max-width:767px) {
+  .t24-system .sales-center-ui.knowledge-refined-page .sk-heading-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+  .t24-system .sales-center-ui.knowledge-refined-page .sk-heading-actions > button { padding:8px 10px; font-size:14px; }
+  .t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters { gap:10px; }
+  .t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters > label { flex:1 1 calc(50% - 5px); max-width:none; width:calc(50% - 5px); }
+  .t24-system .sales-center-ui.knowledge-refined-page .sk-product-filters > button { width:100%; }
+  .t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-workspace { height:auto; display:block; }
+  .knowledge-refined-portal .sk-pack-workspace { grid-template-columns:1fr; }
+  .knowledge-refined-portal .sk-pack-workspace > nav { max-height:180px; }
+  .knowledge-refined-portal .sk-pack-detail { max-height:none; padding:12px; }
+  .knowledge-refined-portal .sk-pack-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .knowledge-refined-portal .sk-editor-actions { flex-wrap:wrap; }
+  .knowledge-refined-portal .sk-editor-actions button { flex:1 1 auto; }
+}
+@container (max-width:740px) {
+  .t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-workspace { height:auto; }
+}
+@media (min-width:768px) and (max-width:1023px) {
+  .t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-workspace { grid-template-columns:1fr; height:auto; }
+  .t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-list-scroll { max-height:280px; }
+  .t24-system .sales-center-ui.knowledge-refined-page .knowledge-v4-detail { max-height:640px; }
+}

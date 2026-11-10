@@ -829,7 +829,7 @@ function SalesWorkspace() {
     </>}
     <Dialog open={knowledgeExpanded} onOpenChange={setKnowledgeExpanded}><CrmFormDialogContent className="sw-knowledge-dialog sales-center-ui crm-sales-dialog-polish">
 <CrmFormDialogHeader><DialogTitle>销售话术</DialogTitle></CrmFormDialogHeader>
-<CrmFormDialogBody className="crm-sales-dialog-body"><SalesKnowledgeAssistant contextLabel={focusedTask?.lead.industry} contextCategory={focusedTask && ['interested', 'appointment'].includes(focusedTask.lead.status) ? '套餐与报价' : focusedTask?.lead.status === 'new' ? '销售准备与开场' : '需求诊断'} /></CrmFormDialogBody>
+<CrmFormDialogBody className="crm-sales-dialog-body"><SalesKnowledgeAssistant productScope="beautyos" contextLabel={focusedTask?.lead.industry} contextCategory={focusedTask && ['interested', 'appointment'].includes(focusedTask.lead.status) ? '演示邀约' : focusedTask?.lead.status === 'new' ? '首拨核验' : '需求诊断'} /></CrmFormDialogBody>
 
 </CrmFormDialogContent></Dialog>
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}><CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
