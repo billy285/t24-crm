@@ -1,0 +1,16 @@
+{
+  "baseline_git_commit": "a6e63779d1f6c0c8cad422e2c24a8c1a46472427",
+  "baseline_source_sha": "ced537b14f9ed479b995c3f432cfdd8c32410589",
+  "build_receipt_sha256": "64091c538891b31096314cb3312210cccd835a0e0c5a0d039018db91def0d04b",
+  "changed_source_files": {
+    "app/frontend/src/components/crm-color-themes.css": "0a2cc77ee8ae985f887a812595919da4bfd397bacb7b83a0b0b54d28ab63bfc2",
+    "app/frontend/tests/crm-color-themes.test.mjs": "978891e5621c8b6b32d222460f2604a214b47c988ea1aa34d57331a6cef8b84e"
+  },
+  "dist_inventory_sha256": "d633f81c85551afbceee5972cdd87ab5f82bba8d691aafec687bd27eac24ebfc",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "0d5728374cd9",
+  "source_commit_bytes_verified": true,
+  "source_sha": "596687a9b9e70f35ad09854d62774c226ee21fd8",
+  "stage": "CRM_THEME_DETAILS_SOURCE_FREEZE"
+}
