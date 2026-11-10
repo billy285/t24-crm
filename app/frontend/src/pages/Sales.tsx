@@ -488,7 +488,8 @@ export default function Sales() {
         />
       </div>
 
-      <div className="calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="当前可见范围的成交客户概览">
+      <p className="text-xs text-slate-500">可访问成交客户总览 · 以下统计不随列表筛选变化</p>
+      <div className="calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="可访问成交客户总览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">成交客户</p><p className="text-2xl font-semibold text-slate-800 mt-1">{totalClosedCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务中客户</p><p className="text-2xl font-semibold text-green-600 mt-1">{activeCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">续费关注</p><p className="text-2xl font-semibold text-amber-600 mt-1">{renewalCustomers}</p></CardContent></Card>
@@ -501,14 +502,14 @@ export default function Sales() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="搜索商家、联系人、电话、套餐、负责人..."
+                aria-label="搜索成交客户" placeholder="搜索商家、联系人、电话、套餐、负责人..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9"
               />
             </div>
             <NativeSelect
-              value={filterServiceStatus}
+              aria-label="成交客户服务状态" value={filterServiceStatus}
               onChange={setFilterServiceStatus}
               options={[
                 { value: 'all', label: '全部服务状态' },
@@ -536,12 +537,12 @@ export default function Sales() {
               emptyText="没有找到成交客户"
             />
             <NativeSelect
-              value={filterSalesPerson}
+              aria-label="成交客户负责人" value={filterSalesPerson}
               onChange={setFilterSalesPerson}
               options={[{ value: 'all', label: '全部负责人' }, ...salesPersonOptions]}
             />
             <NativeSelect
-              value={filterCountry}
+              aria-label="成交客户国家" value={filterCountry}
               onChange={setFilterCountry}
               options={[{ value: 'all', label: '全部国家' }, ...countryOptions]}
             />
@@ -550,6 +551,15 @@ export default function Sales() {
         </CardContent>
       </Card>
 
+      {(search || [filterCustomerId, filterServiceStatus, filterSalesPerson, filterCountry].some(value => value !== 'all')) && <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600" aria-label="生效成交客户筛选">
+        <span>当前筛选 {filtered.length} 位</span>
+        {search && <Button type="button" variant="outline" size="sm" aria-label="清除搜索条件" onClick={() => setSearch('')}>搜索：{search} ×</Button>}
+        {filterCustomerId !== 'all' && <Button type="button" variant="outline" size="sm" onClick={() => setFilterCustomerId('all')}>指定客户 ×</Button>}
+        {filterServiceStatus !== 'all' && <Button type="button" variant="outline" size="sm" onClick={() => setFilterServiceStatus('all')}>{subStatusLabels[filterServiceStatus] || serviceStatusLabels[filterServiceStatus] || filterServiceStatus} ×</Button>}
+        {filterSalesPerson !== 'all' && <Button type="button" variant="outline" size="sm" onClick={() => setFilterSalesPerson('all')}>负责人：{filterSalesPerson} ×</Button>}
+        {filterCountry !== 'all' && <Button type="button" variant="outline" size="sm" onClick={() => setFilterCountry('all')}>国家：{countryOptions.find(option => option.value === filterCountry)?.label || filterCountry} ×</Button>}
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(''); setFilterCustomerId('all'); setFilterServiceStatus('all'); setFilterSalesPerson('all'); setFilterCountry('all'); }}>清空筛选</Button>
+      </div>}
       <Card className="border-slate-200">
         <CardContent className="p-0">
           <div className="calm-record-list-heading">

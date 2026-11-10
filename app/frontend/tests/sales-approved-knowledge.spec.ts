@@ -175,7 +175,7 @@ test('390px 手机分类可达，正文按需打开且复制控件和输入不�
   expect(target!.height).toBeGreaterThanOrEqual(44);
   await noOverflow(page);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/knowledge-approved-mobile.png` });
-  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await sheet.getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('complementary', { name: '知识分类' }).getByRole('button', { name: '边界与售后', exact: true }).click();
   await expect(page.getByRole('button', { name: '提交这个问题' })).toBeVisible();
   await page.getByRole('button', { name: '提交这个问题' }).click();

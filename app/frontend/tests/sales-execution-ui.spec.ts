@@ -155,7 +155,7 @@ test('销售今日工作台话术助手按需打开并提供真实知识内容',
 
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/sales-workbench-knowledge-assistant-local.png`, fullPage: true });
 
-  await page.getByRole('dialog', { name: '销售话术', exact: true }).getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('dialog', { name: '销售话术', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('sales-workbench-mobile')).toBeVisible();

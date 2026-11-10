@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import hashlib
 import json
 import re
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -301,17 +302,49 @@ async def customer_options(db, user):
     return {"items": result}
 
 
-async def list_drafts(db, user, *, status=None, skip=0, limit=50):
+async def list_drafts(db, user, *, status=None, q=None, kind=None, start: date | None = None, end: date | None = None, skip=0, limit=50):
     identity = _actor(user)
     await require_tables(db, TABLES)
     if status is not None and status not in STATUSES:
         raise HTTPException(422, "草稿状态无效")
+    if kind is not None and kind not in KINDS:
+        raise HTTPException(422, "登记类型无效")
+    if start and end and start > end:
+        raise HTTPException(422, "登记开始日期不能晚于结束日期")
+    search = str(q or "").strip()
+    if len(search) > 120:
+        raise HTTPException(422, "搜索内容最多120个字符")
     clauses = []
     if user.role != "super_admin":
         visible = [item["id"] for item in (await customer_options(db, user))["items"]]
         clauses.extend([FinanceEntryDraft.created_by_id == identity, (FinanceEntryDraft.kind == "company_expense") | FinanceEntryDraft.customer_id.in_(visible)])
     if status:
         clauses.append(FinanceEntryDraft.status == status)
+    if kind:
+        clauses.append(FinanceEntryDraft.kind == kind)
+    if search:
+        # These conditions narrow the existing ownership/customer scope above.
+        # Escape SQL wildcards so reference numbers are searched literally.
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        customer_matches = select(Customers.id).where(or_(Customers.business_name.ilike(pattern, escape="\\"), Customers.customer_code.ilike(pattern, escape="\\")))
+        matches = [FinanceEntryDraft.customer_name.ilike(pattern, escape="\\"), FinanceEntryDraft.customer_id.in_(customer_matches)]
+        matches.extend(FinanceEntryDraft.payload[field].as_string().ilike(pattern, escape="\\") for field in ("notes", "evidence_reference", "transaction_reference", "product_name"))
+        number = search.removeprefix("#").strip()
+        if number.isascii() and number.isdigit() and int(number) <= 9223372036854775807:
+            matches.append(FinanceEntryDraft.id == int(number))
+        clauses.append(or_(*matches))
+    business_zone = ZoneInfo("Asia/Shanghai")
+    try:
+        if start:
+            clauses.append(FinanceEntryDraft.created_at >= datetime.combine(start, time.min, tzinfo=business_zone).astimezone(timezone.utc))
+        if end:
+            if end == date.max:
+                clauses.append(FinanceEntryDraft.created_at <= datetime.combine(end, time.max, tzinfo=business_zone).astimezone(timezone.utc))
+            else:
+                clauses.append(FinanceEntryDraft.created_at < datetime.combine(end + timedelta(days=1), time.min, tzinfo=business_zone).astimezone(timezone.utc))
+    except (OverflowError, ValueError):
+        raise HTTPException(422, "登记日期超出支持范围，请调整日期") from None
     total = await db.scalar(select(func.count(FinanceEntryDraft.id)).where(*clauses))
     rows = (await db.scalars(select(FinanceEntryDraft).where(*clauses).order_by(FinanceEntryDraft.updated_at.desc(), FinanceEntryDraft.id.desc()).offset(skip).limit(limit))).all()
     return {"items": [draft_data(row, user) for row in rows], "total": total, "skip": skip, "limit": limit}

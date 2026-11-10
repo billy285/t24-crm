@@ -1,6 +1,7 @@
 import './crm-customer-delivery-compact.css';
 import '@/components/customer-form-progressive.css';
 import CustomerFormSection from '@/components/CustomerFormSection';
+import { visibleCustomerColumns, currentPagePreview, customerAddressLines } from '@/lib/customer-directory-presentation';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
 import { useRetainedView } from '@/lib/use-retained-view';
@@ -291,11 +292,11 @@ function loadCols(): string[] {
           localStorage.setItem(COLS_KEY, JSON.stringify(preferredDefaultColumns));
           return preferredDefaultColumns;
         }
-        return sanitized;
+        return visibleCustomerColumns(sanitized, [...validKeys], preferredDefaultColumns);
       }
     }
   } catch { /* */ }
-  return preferredDefaultColumns;
+  return visibleCustomerColumns(preferredDefaultColumns, allColumns.map(col => col.key), preferredDefaultColumns);
 }
 
 const emptyAdvancedFilters = {
@@ -1234,7 +1235,7 @@ export default function Customers() {
   }, [searchParams, customers, selectedCustomer?.id, statusLabels, canViewFinance]);
 
   const toggleCol = (key: string) => {
-    const nc = visibleCols.includes(key) ? visibleCols.filter(c => c !== key) : [...visibleCols, key];
+    const nc = visibleCustomerColumns(visibleCols.includes(key) ? visibleCols.filter(c => c !== key) : [...visibleCols, key], allColumns.map(col => col.key), preferredDefaultColumns);
     setVisibleCols(nc);
     localStorage.setItem(COLS_KEY, JSON.stringify(nc));
   };
@@ -2528,12 +2529,7 @@ export default function Customers() {
 
   if (selectedCustomer) {
     const c = selectedCustomer;
-    const detailAddress = [
-      c.address,
-      c.city,
-      c.country && c.state ? getStateLabel(c.country, c.state) : (c.state || ''),
-      c.country ? getCountryLabel(c.country) : '',
-    ].filter(Boolean).join(', ');
+    const addressLines = customerAddressLines(c, c.country && c.state ? getStateLabel(c.country, c.state) : c.state || '', c.country ? getCountryLabel(c.country) : '');
     const totalDealAmount = deals.reduce((sum, item) => sum + Number(item.deal_amount || 0), 0);
     const totalAmountDue = payments.reduce((sum, item) => sum + Number(item.amount_due || 0), 0);
     const totalAmountPaid = payments.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0);
@@ -2773,8 +2769,8 @@ export default function Customers() {
               <div className="space-y-4">
                 {effective.modules.basic.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
-                  <div className="customer-detail-summary-fields mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{detailAddress || '-'}</span></div></div>
-                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>编辑基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.opportunities.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
+                  <div className="customer-detail-summary-fields mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{addressLines.region || '地区待补充'}</span></div><div className="flex justify-between gap-4"><span className="shrink-0 text-slate-500">详细地址</span><span className="min-w-0 break-words text-right font-medium text-slate-800">{addressLines.street || '地址待补充'}</span></div></div>
+                  <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>查看基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.opportunities.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
                 </CardContent></Card>)}
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
@@ -2832,7 +2828,7 @@ export default function Customers() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">来源:</span><span>{sourceLabels[c.source] || c.source}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">国家:</span><span>{c.country ? getCountryLabel(c.country) : '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">州/省:</span><span>{c.country && c.state ? getStateLabel(c.country, c.state) : (c.state || '-')}</span></div>
-                <div className="flex gap-2 items-center md:col-span-2"><MapPin className="w-3 h-3 text-slate-400" /><span>{[c.address, c.city, c.state, c.country].filter(Boolean).join(', ')}</span></div>
+                <div className="flex gap-2 items-center md:col-span-2"><MapPin className="w-3 h-3 text-slate-400" /><span>{[addressLines.street, addressLines.region].filter(Boolean).join(' · ')}</span></div>
                 {c.website && <div className="flex min-w-0 gap-2 items-center md:col-span-2"><Globe className="w-3 h-3 shrink-0 text-slate-400" /><a href={c.website} target="_blank" rel="noreferrer" className="truncate text-blue-600 hover:underline">{c.website}</a></div>}
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">负责销售:</span><span>{c.sales_person || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">平台现状:</span><span>{c.current_platform || '-'}</span></div>
@@ -3285,7 +3281,7 @@ export default function Customers() {
     );
   }
 
-  const previewCustomer = filtered.find(customer => customer.id === previewCustomerId) || paginatedCustomers.items[0];
+  const previewCustomer = currentPagePreview(paginatedCustomers.items, previewCustomerId);
 
   // ========== LIST VIEW ==========
   return (
@@ -3331,8 +3327,8 @@ export default function Customers() {
 
       {showColPicker && (
         <Card className="border-slate-200"><CardContent className="p-3">
-          <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium text-slate-600">自定义显示列</span><Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowColPicker(false)}><X className="w-3 h-3" /></Button></div>
-          <div className="flex flex-wrap gap-2">{allColumns.map(col => (<label key={col.key} className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={visibleCols.includes(col.key)} onChange={() => toggleCol(col.key)} className="rounded" />{col.label}</label>))}</div>
+          <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium text-slate-600">自定义显示列</span><div className="flex items-center gap-2"><Button variant="ghost" size="sm" onClick={() => { setVisibleCols(preferredDefaultColumns); localStorage.setItem(COLS_KEY, JSON.stringify(preferredDefaultColumns)); }}>恢复默认列</Button><Button aria-label="关闭列设置" title="关闭列设置" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShowColPicker(false)}><X className="w-3 h-3" /></Button></div></div>
+          <div className="flex flex-wrap gap-2">{allColumns.map(col => (<label key={col.key} className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={visibleCols.includes(col.key)} disabled={col.key === 'business_name'} onChange={() => toggleCol(col.key)} className="rounded" />{col.label}</label>))}</div>
         </CardContent></Card>
       )}
 
@@ -3467,7 +3463,7 @@ export default function Customers() {
             <tr key={c.id} className={`border-b border-slate-100 cursor-pointer transition-colors hover:bg-blue-50/60 ${previewCustomer?.id === c.id ? 'bg-blue-50/50' : ''}`}>
               {isOwner && <td data-customer-column="selection" className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td data-customer-column="customer_code" className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
-              {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name} onClick={() => openDetail(c)}>{c.business_name}</td>}
+              {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name}><button type="button" className="min-h-8 max-w-full break-words text-left font-medium text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => openDetail(c)}>{c.business_name}</button></td>}
               {visibleCols.includes('contact_name') && <td data-customer-column="contact_name" className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
               {visibleCols.includes('phone') && <td data-customer-column="phone" className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{formatPhoneNumber(c.phone, c.country)}</td>}
               {visibleCols.includes('state') && <td data-customer-column="state" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}
@@ -3636,7 +3632,7 @@ export default function Customers() {
       </CardContent></Card>
         </section>
         {previewCustomer && <aside className="calm-customer-preview" aria-label="客户快捷概览">
-          <p className="text-xs text-slate-500">当前客户</p>
+          <p className="text-xs text-slate-500">当前预览 · 不影响批量勾选</p>
           <h3 className="mt-2 text-xl font-semibold text-slate-900">{previewCustomer.business_name}</h3>
           <p className="mt-2 text-sm text-slate-500">{previewCustomer.customer_code || '未设置编号'} · {statusLabels[previewCustomer.status] || previewCustomer.status}</p>
           <dl className="my-6 space-y-3 text-sm">

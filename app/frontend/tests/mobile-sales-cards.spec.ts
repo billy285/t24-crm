@@ -80,7 +80,7 @@ test('手机意向客户可直接跟进，失败保留草稿并从菜单打开�
   const notes = sheet.getByLabel('沟通记录 *', { exact: true });
   await notes.fill('客户约定周五再次联系');
   await expect(notes).toHaveCSS('font-size', '16px');
-  await expect(sheet.getByRole('button', { name: 'Close', exact: true })).toHaveCSS('width', '44px');
+  await expect(sheet.getByRole('button', { name: '关闭', exact: true })).toHaveCSS('width', '44px');
   await sheet.getByRole('button', { name: '保存跟进', exact: true }).click();
   await expect(page.getByText('模拟保存失败', { exact: true })).toBeVisible();
   await expect(notes).toHaveValue('客户约定周五再次联系');

@@ -1,22 +1,5 @@
 /* CRM desktop reading scale. The private shell never renders crm-desktop-main. */
 @media (min-width: 1024px) {
-  .t24-system.app-shell .crm-desktop-main {
-    --t24-body-size: 14px;
-    --t24-body-line: 21px;
-    --t24-aux-size: 12px;
-    --t24-aux-line: 18px;
-    --t24-section-size: 16px;
-    --t24-section-line: 24px;
-    --t24-detail-size: 18px;
-    --t24-detail-line: 26px;
-    --t24-title-size: 24px;
-    --t24-title-line: 32px;
-    --t24-metric-size: 22px;
-    --t24-metric-line: 30px;
-    font-size: var(--t24-body-size);
-    line-height: var(--t24-body-line);
-  }
-
   /* Local variables also reach page-specific rules, regardless of their load order. */
   .t24-system.app-shell .crm-desktop-main :is(.app-page-title h1, .app-page-title h2, .app-page-heading, .sc-page-heading h1, .slr-page-heading h2, .customer-360-hero-copy h2) {
     font-size: var(--t24-title-size);
@@ -41,6 +24,8 @@
     --t24-table-row-height: 44px;
     --t24-table-cell-y: 10px;
     --t24-table-cell-x: 12px;
+    --t24-control-height: 32px;
+    --t24-control-compact: 32px;
     font-size: var(--t24-body-size);
     line-height: var(--t24-body-line);
     font-variant-numeric: tabular-nums;
@@ -66,18 +51,16 @@
     height: var(--t24-table-row-height);
   }
 
-  /* Editing controls keep their original input sizing; only page buttons tighten. */
-  .t24-system.app-shell .crm-desktop-main .t24-button:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)) {
-    min-height: 36px;
-    padding-block: 7px;
-    font-size: 13px;
-    line-height: 18px;
+  .t24-system.app-shell .crm-desktop-main table :is(.t24-input, .t24-native-select, .t24-select-trigger):not(:where(.cft-table *, form *, [role="dialog"] *, [role="alertdialog"] *)) {
+    padding-block: 4px;
   }
 
-  .t24-system.app-shell .crm-desktop-main .t24-button-compact:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)),
+  /* Row actions keep a compact density; ordinary controls use shared tokens. */
   .t24-system.app-shell .crm-desktop-main table .t24-button:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *, .t24-button-link)) {
     min-height: 32px;
     padding-block: 5px;
+    font-size: 13px;
+    line-height: 18px;
   }
 
   .t24-system.app-shell .crm-desktop-main .t24-button-icon:not(:where(form *, [role="dialog"] *, [role="alertdialog"] *)) {

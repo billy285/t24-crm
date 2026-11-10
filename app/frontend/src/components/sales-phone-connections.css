@@ -34,3 +34,8 @@
 .sales-sync-evidence ul{list-style:disc;padding-left:18px;font-size:11px;line-height:1.7;color:#64748b;overflow-wrap:anywhere}
 .sales-phone-grid .sales-sync-success{color:#047857}
 @media(max-width:640px){.sales-phone-connections summary>span{align-items:flex-start;flex-direction:column;gap:4px}.sales-phone-actions{align-items:flex-start;flex-direction:column}.sales-phone-body{padding:0 12px 12px}.sales-phone-grid{grid-template-columns:1fr}}
+
+.sales-phone-summary-warning{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.sales-phone-warning{flex-wrap:wrap;align-items:center}
+.sales-sync-evidence>summary{min-height:32px;color:#64748b}
+@media(max-width:767px){.sales-phone-connections summary{padding:10px 12px;min-height:44px}.sales-phone-connections button,.sales-sync-evidence>summary{min-height:44px}.sales-phone-summary-warning{padding:10px 12px}.sales-phone-footnote{margin-top:10px}}

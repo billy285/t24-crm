@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import './finance-entry.css';
+import { formatBusinessDateTimeInput } from '@/lib/business-date';
+import { financeEntryListQuery, changeFinanceEntryListFilters } from '@/lib/finance-entry-list-filters';
 
 type EntryForm = {
   customer_id: string; currency: string; product_name: string; income_type: string; amount_due: string; amount_paid: string;
@@ -70,7 +72,15 @@ export default function FinanceEntry() {
   const [params, setParams] = useSearchParams();
   const statusParam = params.get('status') || (owner ? 'submitted' : 'draft');
   const status = statuses.includes(statusParam as FinanceEntryStatus) ? statusParam : 'all';
-  const page = Math.max(1, Number(params.get('page')) || 1);
+  const page = Math.max(1, Math.floor(Number(params.get('page')) || 1));
+  const searchQuery = (params.get('q') || '').trim();
+  const kindFilter = Object.prototype.hasOwnProperty.call(kindLabels, params.get('kind') || '') ? params.get('kind') as FinanceEntryKind : '';
+  const startFilter = params.get('start') || '';
+  const endFilter = params.get('end') || '';
+  const [searchInput, setSearchInput] = useState(searchQuery);
+  const [showListFilters, setShowListFilters] = useState(Boolean(kindFilter || startFilter || endFilter));
+  const hasListFilters = Boolean(searchQuery || kindFilter || startFilter || endFilter);
+  useEffect(() => { setSearchInput(searchQuery); }, [searchQuery]);
   const limit = 20;
   const [list, setList] = useState<FinanceEntryList | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -115,16 +125,15 @@ export default function FinanceEntry() {
     if (clear) setList(null);
     setListLoading(true); setListError('');
     try {
-      const query = new URLSearchParams({ skip: String((page - 1) * limit), limit: String(limit) });
-      if (status !== 'all') query.set('status', status);
+      const query = financeEntryListQuery({ page, limit, status, q: searchQuery, kind: kindFilter, start: startFilter, end: endFilter });
       const result = await financeEntryApi<FinanceEntryList>(`?${query}`);
       if (request !== listSequence.current || currentScope.current !== identity) return;
       if (!Array.isArray(result?.items) || !Number.isSafeInteger(result.total)) throw new Error('登记列表返回不完整');
       result.items.forEach(row => { verifiedDraft(row); if (registrar && row.created_by_id !== Number(employee?.id)) throw new Error('登记范围不一致'); });
       setList(result);
-    } catch (error) { if (request === listSequence.current && currentScope.current === identity) { if ([401,403,404].includes(financeEntryErrorStatus(error) || 0)) { setList(null); setItem(null); setAttachments([]); setDetailError('当前登记或客户授权已不可用，请重新读取。'); } setListError(financeEntryError(error)); } }
+    } catch (error) { if (request === listSequence.current && currentScope.current === identity) { if ([401,403,404].includes(financeEntryErrorStatus(error) || 0)) { setList(null); setItem(null); setAttachments([]); setDetailError('当前登记或客户授权已不可用，请重新读取。'); } setListError(financeEntryErrorStatus(error) === 422 ? '筛选条件无效，请核对登记日期范围、登记类型和搜索长度。' : financeEntryError(error)); } }
     finally { if (request === listSequence.current && currentScope.current === identity) setListLoading(false); }
-  }, [allowed, scope, page, status]);
+  }, [allowed, scope, page, status, searchQuery, kindFilter, startFilter, endFilter]);
 
   useEffect(() => { void loadList(true); return () => { listSequence.current++; }; }, [loadList]);
   useEffect(() => {
@@ -247,7 +256,7 @@ export default function FinanceEntry() {
       const blob = await downloadFinanceEntryAttachment(current.id, attachment);
       if (currentScope.current !== identity) return;
       const url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = attachment.filename.replace(/[\/\\\x00-\x1f]/g, '_').slice(0, 160) || '财务凭据'; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      link.href = url; link.download = Array.from(attachment.filename).map(character => character === '/' || character === '\\' || character.charCodeAt(0) < 32 ? '_' : character).join('').slice(0, 160) || '财务凭据'; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) { if (currentScope.current === identity) { hideDeniedDetail(error); setAttachmentsError(financeEntryError(error, '凭据下载失败，请重试。')); } }
     finally { if (currentScope.current === identity) { busyRef.current = false; setBusy(''); } }
   };
@@ -273,6 +282,10 @@ export default function FinanceEntry() {
       setMutationError(financeEntryError(error, action === 'post' ? '入账结果尚未确认，请重新读取，避免重复处理。' : '提交结果尚未确认，请重新读取后再继续。'));
     } finally { if (currentScope.current === identity) { busyRef.current = false; setBusy(''); } }
   };
+  const changeListFilters = (changes: Record<string, string>) => {
+    setParams(changeFinanceEntryListFilters(params, changes));
+  };
+  const clearListFilters = () => { setSearchInput(''); changeListFilters({ q: '', kind: '', start: '', end: '' }); };
   const changeStatus = (next: string, nextPage = 1) => { const query = new URLSearchParams(params); query.set('status', next); query.set('page', String(nextPage)); setParams(query); };
   const rowAmount = (row: FinanceEntryDraft) => row.payload[row.kind === 'manual_receipt' ? 'amount_paid' : 'amount'] == null ? '金额待填写' : money(row.payload[row.kind === 'manual_receipt' ? 'amount_paid' : 'amount'], row.payload.currency || 'USD');
   const patch = <K extends keyof EntryForm>(key: K, value: EntryForm[K]) => setForm(current => ({ ...current, [key]: value }));
@@ -285,10 +298,29 @@ export default function FinanceEntry() {
     <header className="fe-header"><div><p className="fe-eyebrow">{owner ? '老板核对 · 公司正式账保持独立' : '财务登记 · 仅本人提交'}</p><h1>财务登记台</h1><p>{owner ? '核对登记与凭据，由你决定退回或确认入账。' : '先保存草稿，填写凭据后提交；正式入账由老板确认。'}</p></div><div className="fe-header-actions"><Button variant="outline" disabled={listLoading} onClick={() => void loadList()}><RefreshCw size={14} className={listLoading ? 'animate-spin' : ''}/>刷新</Button>{canCreate && <Button onClick={openNew}><Plus size={15}/>新建登记</Button>}</div></header>
     <div className="fe-scope" role="note"><LockKeyhole size={14}/><span>{owner ? '这里显示员工登记，不会自动入账。' : '仅显示本人草稿及当前仍获授权的客户。'} 不开放公司利润、工资、分润或私人空间。</span></div>
     <nav className="fe-tabs" aria-label="登记状态">{statusTabs.map(value => <button key={value} type="button" aria-current={status === value ? 'page' : undefined} onClick={() => changeStatus(value)}>{value === 'all' ? '全部登记' : financeEntryStatusLabels[value as FinanceEntryStatus]}</button>)}</nav>
+    <section className="fe-search-controls" aria-label="检索登记">
+      <form className="fe-search-row" onSubmit={event => { event.preventDefault(); changeListFilters({ q: searchInput }); }}>
+        <Input aria-label="搜索登记" placeholder="搜索客户、登记编号、凭据或备注" maxLength={120} value={searchInput} onChange={event => setSearchInput(event.target.value)} />
+        <Button type="submit" variant="outline">搜索</Button>
+        <Button type="button" variant="outline" aria-expanded={showListFilters} aria-controls="finance-entry-list-filters" onClick={() => setShowListFilters(value => !value)}>更多筛选{kindFilter || startFilter || endFilter ? ' · 已启用' : ''}</Button>
+      </form>
+      {showListFilters && <div id="finance-entry-list-filters" className="fe-search-extra">
+        <label>登记类型<NativeSelect aria-label="筛选登记类型" value={kindFilter} onChange={value => changeListFilters({ kind: value })} options={[{value:'',label:'全部登记类型'}, ...Object.entries(kindLabels).map(([value,label])=>({value,label}))]} /></label>
+        <label>登记开始 · 北京时间<Input aria-label="登记开始日期" type="date" value={startFilter} max={endFilter || undefined} onChange={event => changeListFilters({ start: event.target.value })} /></label>
+        <label>登记截止 · 北京时间<Input aria-label="登记截止日期" type="date" value={endFilter} min={startFilter || undefined} onChange={event => changeListFilters({ end: event.target.value })} /></label>
+      </div>}
+      {hasListFilters && <div className="fe-active-filters" aria-label="生效登记筛选">
+        <span>当前筛选{list ? ` ${list.total} 条` : ''}</span>
+        {searchQuery && <Button type="button" size="sm" variant="outline" aria-label="清除登记搜索" onClick={() => changeListFilters({ q: '' })}>搜索：{searchQuery} ×</Button>}
+        {kindFilter && <Button type="button" size="sm" variant="outline" aria-label="清除登记类型筛选" onClick={() => changeListFilters({ kind: '' })}>{kindLabels[kindFilter]} ×</Button>}
+        {(startFilter || endFilter) && <Button type="button" size="sm" variant="outline" aria-label="清除登记日期筛选" onClick={() => changeListFilters({ start: '', end: '' })}>{startFilter || '不限开始'} 至 {endFilter || '不限截止'} ×</Button>}
+        <Button type="button" size="sm" variant="ghost" onClick={clearListFilters}>清空筛选</Button>
+      </div>}
+    </section>
     {listError && <div className="fe-notice is-error" role="alert"><p>{listError}{list ? ' 以下保留上次读取的记录，状态可能已变化。' : ''}</p><Button variant="outline" onClick={() => void loadList()} disabled={listLoading}>重新读取</Button></div>}
     <section className="fe-list" aria-label="登记记录" aria-busy={listLoading}>
       <div className="fe-list-heading"><h2>{owner && status === 'submitted' ? '等待你核对' : '登记记录'}</h2><span>{list ? `共 ${list.total} 条` : listLoading ? '正在读取…' : '尚未读取'}</span></div>
-      {!list && listLoading ? <div className="fe-empty" role="status">正在读取登记记录…</div> : list && list.items.length === 0 && !listError ? <div className="fe-empty"><FilePenLine size={24}/><h3>当前状态暂无登记</h3><p>{canCreate ? '可以先建立草稿，稍后补齐后再提交。' : '员工提交后会出现在待核对列表。'}</p>{canCreate && <Button variant="outline" onClick={openNew}>新建登记</Button>}</div> : <div className="fe-records">{list?.items.map(row => <article className="fe-record" key={row.id}><div className="fe-record-title"><span className={`fe-status is-${row.status}`}>{financeEntryStatusLabels[row.status]}</span><h3>{row.kind === 'company_expense' ? '公司支出' : row.customer_name || `客户 #${row.customer_id}`}</h3><p>{kindLabels[row.kind]} · #{row.id}{owner ? ` · ${row.created_by_name || '登记员'}` : ''}</p>{row.status === 'returned' && row.return_reason && <p className="fe-return-reason">退回原因：{row.return_reason}</p>}</div><div className="fe-record-value"><small>登记金额</small><strong>{rowAmount(row)}</strong><span>{valueText(row.payload[row.kind === 'manual_receipt' ? 'payment_date' : 'expense_date']).slice(0, 10) || '日期待填写'}</span></div><Button variant="outline" onClick={() => void openExisting(row.id)}>{row.status === 'submitted' && owner ? '核对登记' : editableFinanceEntry(row) && registrar ? '继续填写' : '查看详情'}<ChevronRight size={14}/></Button></article>)}</div>}
+      {!list && listLoading ? <div className="fe-empty" role="status">正在读取登记记录…</div> : list && list.items.length === 0 && !listError ? <div className="fe-empty"><FilePenLine size={24}/><h3>{hasListFilters ? '暂无匹配的登记' : '当前状态暂无登记'}</h3><p>{hasListFilters ? '请调整搜索、类型或登记日期。' : canCreate ? '可以先建立草稿，稍后补齐后再提交。' : '员工提交后会出现在待核对列表。'}</p>{hasListFilters ? <Button variant="outline" onClick={clearListFilters}>清空筛选</Button> : canCreate && <Button variant="outline" onClick={openNew}>新建登记</Button>}</div> : <div className="fe-records">{list?.items.map(row => <article className="fe-record" key={row.id}><div className="fe-record-title"><span className={`fe-status is-${row.status}`}>{financeEntryStatusLabels[row.status]}</span><h3>{row.kind === 'company_expense' ? '公司支出' : row.customer_name || `客户 #${row.customer_id}`}</h3><p>{kindLabels[row.kind]} · #{row.id}{owner ? ` · ${row.created_by_name || '登记员'}` : ''}</p><p>登记于 {formatBusinessDateTimeInput(row.created_at).replace('T', ' ') || '时间待确认'} · 北京时间</p><p>登记于 {formatBusinessDateTimeInput(row.created_at).replace('T', ' ') || '时间待确认'} · 北京时间</p>{row.status === 'returned' && row.return_reason && <p className="fe-return-reason">退回原因：{row.return_reason}</p>}</div><div className="fe-record-value"><small>登记金额</small><strong>{rowAmount(row)}</strong><span>{valueText(row.payload[row.kind === 'manual_receipt' ? 'payment_date' : 'expense_date']).slice(0, 10) || '日期待填写'}</span></div><Button variant="outline" onClick={() => void openExisting(row.id)}>{row.status === 'submitted' && owner ? '核对登记' : editableFinanceEntry(row) && registrar ? '继续填写' : '查看详情'}<ChevronRight size={14}/></Button></article>)}</div>}
       {list && list.total > 0 && <footer className="fe-pagination"><span>第 {page} / {Math.max(1, Math.ceil(list.total / limit))} 页 · 每页 {limit} 条</span><div><Button variant="outline" disabled={page <= 1 || listLoading} onClick={() => changeStatus(status, page - 1)}><ChevronLeft size={14}/>上一页</Button><Button variant="outline" disabled={page * limit >= list.total || listLoading} onClick={() => changeStatus(status, page + 1)}>下一页<ChevronRight size={14}/></Button></div></footer>}
     </section>
     <Dialog open={editorOpen} onOpenChange={open => { if (!open) closeEditor(); }}><CrmFormDialogContent className="fe-dialog max-w-2xl" onInteractOutside={event => { if (busy || dirty || unknownPost) { event.preventDefault(); if (dirty) setLeaveChoice(true); } }} onEscapeKeyDown={event => { if (busy || unknownPost) event.preventDefault(); }}><CrmFormDialogHeader><p className="fe-eyebrow">{item ? `登记 #${item.id} · ${financeEntryStatusLabels[item.status]}` : activeDraftId.current ? `登记 #${activeDraftId.current} · ${detailLoading ? '读取中' : '结果待确认'}` : '新建草稿 · 尚未提交'}</p><DialogTitle>{owner ? '核对财务登记' : item && !editableFinanceEntry(item) ? '查看登记' : '填写财务登记'}</DialogTitle><p className="fe-context">{!item && activeDraftId.current ? '正在核实该登记的最新状态' : kind === 'company_expense' ? '公司支出草稿 · 不开放公司原账簿' : item?.customer_name || '仅可选择老板已授权的客户'}{item && owner ? ` · 登记人 ${item.created_by_name || '未记录'}` : ''}</p></CrmFormDialogHeader><CrmFormDialogBody>

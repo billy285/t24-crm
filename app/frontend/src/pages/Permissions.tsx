@@ -19,8 +19,10 @@ import { toast } from 'sonner';
 import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock } from 'lucide-react';
 import { logOperation } from '../lib/operation-log-helper';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { appNavigationItems } from '@/lib/app-navigation';
 
-const allPages = Object.entries(pageLabels).map(([path, label]) => ({ path, label }));
+const permissionPageLabels = Object.fromEntries(Object.entries(pageLabels).map(([path, label]) => [path, appNavigationItems.find(item => item.path === path)?.label || label]));
+const allPages = Object.entries(permissionPageLabels).map(([path, label]) => ({ path, label }));
 const allButtons = Object.entries(buttonPermissionLabels).map(([key, label]) => ({ key: key as ButtonPermission, label }));
 const roles = Object.keys(systemRoleLabels) as SystemRole[];
 
@@ -58,7 +60,7 @@ export default function Permissions() {
     const buttonsAdded = after.buttons.filter(item => !before.buttons.includes(item));
     const buttonsRemoved = before.buttons.filter(item => !after.buttons.includes(item));
     const details = [
-      ...pagesAdded.map(item => `允许访问：${pageLabels[item] || item}`), ...pagesRemoved.map(item => `取消访问：${pageLabels[item] || item}`),
+      ...pagesAdded.map(item => `允许访问：${permissionPageLabels[item] || item}`), ...pagesRemoved.map(item => `取消访问：${permissionPageLabels[item] || item}`),
       ...buttonsAdded.map(item => `允许操作：${buttonPermissionLabels[item] || item}`), ...buttonsRemoved.map(item => `取消操作：${buttonPermissionLabels[item] || item}`),
       ...(before.dataScope !== after.dataScope ? [`数据范围：${dataScopeLabels[before.dataScope]} → ${dataScopeLabels[after.dataScope]}`] : []),
       ...Object.keys(after.sensitiveFields).filter(key => before.sensitiveFields[key as keyof typeof before.sensitiveFields] !== after.sensitiveFields[key as keyof typeof after.sensitiveFields]).map(key => `${({ viewPassword: '查看媒体密码', copyPassword: '复制媒体密码', viewFinance: '查看财务信息' } as Record<string, string>)[key] || key}：${after.sensitiveFields[key as keyof typeof after.sensitiveFields] ? '允许' : '禁止'}`),
@@ -116,7 +118,7 @@ export default function Permissions() {
     <p className="text-sm text-slate-500">按角色查看访问范围；权限调整在电脑端完成。</p>
     <label className="block text-sm text-slate-600">查看角色<select aria-label="查看角色" value={selectedRole} onChange={event => setSelectedRole(event.target.value as SystemRole)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900">{roles.map(role => <option key={role} value={role}>{systemRoleLabels[role]}</option>)}</select></label>
     <Card><CardHeader><CardTitle className="text-base">数据与敏感信息</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['数据范围', dataScopeLabels[currentPerms.dataScope]], ['查看媒体密码', currentPerms.sensitiveFields.viewPassword ? '允许' : '禁止'], ['复制媒体密码', currentPerms.sensitiveFields.copyPassword ? '允许' : '禁止'], ['查看财务信息', currentPerms.sensitiveFields.viewFinance ? '允许' : '禁止']].map(([label,value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
-    <Card><CardHeader><CardTitle className="text-base">可访问页面 · {currentPerms.pages.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.pages.map(path => <li key={path} className="min-h-11 py-3">{pageLabels[path] || path}</li>)}{!currentPerms.pages.length && <li className="text-slate-500">未开放页面</li>}</ul></CardContent></Card>
+    <Card><CardHeader><CardTitle className="text-base">可访问页面 · {currentPerms.pages.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.pages.map(path => <li key={path} className="min-h-11 py-3">{permissionPageLabels[path] || path}</li>)}{!currentPerms.pages.length && <li className="text-slate-500">未开放页面</li>}</ul></CardContent></Card>
     <Card><CardHeader><CardTitle className="text-base">允许操作 · {currentPerms.buttons.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.buttons.map(key => <li key={key} className="min-h-11 py-3">{buttonPermissionLabels[key] || key}</li>)}{!currentPerms.buttons.length && <li className="text-slate-500">未开放操作</li>}</ul></CardContent></Card>
   </div>;
 
@@ -267,12 +269,11 @@ export default function Permissions() {
             </CardHeader>
             <CardContent className="space-y-3">
               {(['self', 'department', 'all'] as DataScope[]).map(scope => (
-                <div
+                <label
                   key={scope}
-                  className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                  className={`flex items-center justify-between gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-blue-300 ${
                     currentPerms.dataScope === scope ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'
                   }`}
-                  onClick={() => setDataScope(scope)}
                 >
                   <div>
                     <p className="text-sm font-medium">{dataScopeLabels[scope]}</p>
@@ -282,12 +283,8 @@ export default function Permissions() {
                       {scope === 'all' && '可以查看系统中所有客户和数据'}
                     </p>
                   </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    currentPerms.dataScope === scope ? 'border-blue-500 bg-blue-500' : 'border-slate-300'
-                  }`}>
-                    {currentPerms.dataScope === scope && <div className="w-2 h-2 rounded-full bg-white" />}
-                  </div>
-                </div>
+                  <input type="radio" name="permission-data-scope" aria-label={dataScopeLabels[scope]} value={scope} checked={currentPerms.dataScope === scope} onChange={() => setDataScope(scope)} className="h-5 w-5 shrink-0 accent-blue-600" />
+                </label>
               ))}
             </CardContent>
           </Card>

@@ -1,0 +1,32 @@
+/* Shared reading hierarchy for delivery pages; mobile records stay near the top. */
+.crm-delivery-refined .dc-applied-filters{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:#64748b;font-size:12px;margin:10px 0}
+.crm-delivery-refined .dc-applied-filters>span{margin-right:4px}
+.crm-delivery-refined .dc-applied-filters button{border:1px solid #dce4ef;background:#fff;border-radius:8px;min-height:32px;padding:4px 9px;color:#38578f}
+.crm-delivery-refined .dc-applied-filters button:hover{background:#eff5ff}
+.crm-delivery-refined .dc-muted-meta{font-size:12px;color:#64748b}
+@media(max-width:767px){
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined:is(.dc-tasks,.dc-callbacks) .dc-heading{display:flex;flex-direction:row;align-items:center;gap:8px;margin:10px 0}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined:is(.dc-tasks,.dc-callbacks) .dc-heading>div:first-child{min-width:0;flex:1}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined:is(.dc-tasks,.dc-callbacks) .dc-heading .app-page-description{display:none}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-callbacks .dc-heading>div:last-child{width:auto;flex:0 0 auto}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-tasks .dc-heading>button{flex:0 0 auto}
+
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading{display:flex;flex-direction:row;align-items:center;gap:8px;margin:10px 0}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading>div{min-width:0;flex:1}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading .app-page-description{display:none}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading>button{flex-shrink:0}
+ .crm-delivery-refined .dc-media-entry{border:1px solid #dce4ef;border-radius:10px;background:#fff;margin:8px 0}
+ .crm-delivery-refined .dc-media-entry>summary{padding:10px 12px;font-size:12px;color:#526783;cursor:pointer;min-height:44px}
+
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metrics{grid-template-columns:repeat(var(--dc-metric-count,4),minmax(0,1fr));gap:0;margin:12px 0;border:1px solid #dce4ef;border-radius:12px;background:#fff;overflow:hidden}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metrics .dc-metric{min-width:0;min-height:76px;border:0;border-right:1px solid #edf1f6;border-radius:0;padding:9px 5px;box-shadow:none;background:transparent;gap:5px;grid-column:auto}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metrics .dc-metric:last-child{border-right:0}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric.is-active{background:#edf4ff}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric-label{font-size:11px;line-height:16px;gap:3px;justify-content:center;text-align:center}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric-label svg,.t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric-label i,.t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric small{display:none}
+ .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metric strong{font-size:18px;line-height:23px;text-align:center;overflow-wrap:anywhere}
+ .crm-delivery-refined .dc-applied-filters{gap:6px;margin:8px 0}
+ .crm-delivery-refined .dc-applied-filters button{min-height:44px}
+ .crm-delivery-refined .dc-today-toolbar{align-items:stretch;gap:8px}
+ .crm-delivery-refined .dc-today-toolbar nav{overflow-x:auto;white-space:nowrap;max-width:100%}
+}

@@ -1,5 +1,6 @@
 """Clerk registration workspace, independent from owner-only ledger APIs."""
 from typing import Literal
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,8 +50,8 @@ async def customer_options(user: UserResponse = Depends(get_current_user), db: A
 
 
 @router.get("")
-async def list_drafts(status: str | None = None, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await service.list_drafts(db, user, status=status, skip=skip, limit=limit)
+async def list_drafts(status: str | None = None, q: str | None = Query(None, max_length=120), kind: Literal["manual_receipt", "customer_expense", "company_expense"] | None = None, start: date | None = None, end: date | None = None, skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await service.list_drafts(db, user, status=status, q=q, kind=kind, start=start, end=end, skip=skip, limit=limit)
 
 
 @router.post("", status_code=201)

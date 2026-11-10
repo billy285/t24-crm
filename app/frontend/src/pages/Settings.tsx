@@ -2,7 +2,7 @@ import './crm-org-compact.css';
 import './crm-org-visual-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import './admin-workspace.css';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '../lib/tokenStore';
@@ -25,6 +25,8 @@ import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, lo
 import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig } from '../lib/dict-config';
 import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
 import ProductPlanSettings from '@/components/ProductPlanSettings';
+import SettingsDictionaryEditor from '@/components/SettingsDictionaryEditor';
+import { trackSettingsSave, type SettingsSaveFeedback } from '@/lib/settings-save-feedback';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 const industryLabels: Record<string, string> = { restaurant: '餐厅', nail: '美甲', massage: '按摩', beauty: '美容', supermarket: '超市', other: '其他' };
@@ -155,6 +157,7 @@ export default function Settings() {
   };
 
   const [settingsSaving, setSettingsSaving] = useState('');
+  const [settingsSaveResults, setSettingsSaveResults] = useState<Record<string, SettingsSaveFeedback>>({});
   const settingsSaveLock = useRef(false);
   const [settingsLoadError, setSettingsLoadError] = useState(false);
   const [settingsReload, setSettingsReload] = useState(0);
@@ -258,7 +261,7 @@ export default function Settings() {
   };
 
   const persistCodeSettings = async () => {
-    if (!codeSettings.defaultPrefix.trim()) { toast.error('默认前缀不能为空'); return; }
+    if (!codeSettings.defaultPrefix.trim()) { toast.error('默认前缀不能为空'); throw new Error('默认前缀不能为空'); }
     try {
       const saved = await saveRemoteAppConfig('customer_code_settings', codeSettings);
       saveSettings(saved);
@@ -267,6 +270,7 @@ export default function Settings() {
       toast.success('编号格式已保存');
     } catch {
       toast.error('保存编号格式失败');
+      throw new Error('保存编号格式失败，请重试');
     }
   };
 
@@ -278,6 +282,7 @@ export default function Settings() {
       toast.success('公司信息已保存');
     } catch {
       toast.error('保存公司信息失败');
+      throw new Error('保存公司信息失败，请重试');
     }
   };
   const persistDict = async () => {
@@ -288,6 +293,7 @@ export default function Settings() {
       toast.success('字典配置已保存');
     } catch {
       toast.error('保存字典配置失败');
+      throw new Error('保存字典配置失败，请重试');
     }
   };
   const persistDash = async () => {
@@ -298,6 +304,7 @@ export default function Settings() {
       toast.success('仪表盘配置已保存');
     } catch {
       toast.error('保存仪表盘配置失败');
+      throw new Error('保存仪表盘配置失败，请重试');
     }
   };
   const persistReminder = async () => {
@@ -308,6 +315,7 @@ export default function Settings() {
       toast.success('提醒规则已保存');
     } catch {
       toast.error('保存提醒规则失败');
+      throw new Error('保存提醒规则失败，请重试');
     }
   };
   const persistNotif = async () => {
@@ -318,6 +326,7 @@ export default function Settings() {
       toast.success('通知设置已保存');
     } catch {
       toast.error('保存通知设置失败');
+      throw new Error('保存通知设置失败，请重试');
     }
   };
   const persistExport = async () => {
@@ -328,13 +337,17 @@ export default function Settings() {
       toast.success('导出配置已保存');
     } catch {
       toast.error('保存导出配置失败');
+      throw new Error('保存导出配置失败，请重试');
     }
   };
 
   const runSettingsSave = async (key: string, save: () => Promise<void>) => {
     if (!canEditSettings || settingsSaveLock.current || settingsLoadError) return;
     settingsSaveLock.current = true; setSettingsSaving(key);
-    try { await save(); } finally { settingsSaveLock.current = false; setSettingsSaving(''); }
+    try {
+      const label = ({ saveCodeSettings: '编号规则', saveCompany: '公司信息', saveDict: '字典选项', saveDash: '仪表盘设置', saveReminder: '提醒设置', saveNotif: '通知设置', saveExport: '导出设置' } as Record<string, string>)[key] || '设置';
+      await trackSettingsSave(label, save, result => setSettingsSaveResults(current => ({ ...current, [key]: result })));
+    } finally { settingsSaveLock.current = false; setSettingsSaving(''); }
   };
   const saveCodeSettings = () => runSettingsSave('saveCodeSettings', persistCodeSettings);
   const saveCompany = () => runSettingsSave('saveCompany', persistCompany);
@@ -343,6 +356,12 @@ export default function Settings() {
   const saveReminder = () => runSettingsSave('saveReminder', persistReminder);
   const saveNotif = () => runSettingsSave('saveNotif', persistNotif);
   const saveExport = () => runSettingsSave('saveExport', persistExport);
+  const settingsSaveBar = (key: string, label: string, changed: boolean, onSave: () => Promise<void>, secondary?: ReactNode) => {
+    const feedback = settingsSaveResults[key];
+    const message = feedback?.phase === 'saving' ? feedback.message : changed && feedback?.phase !== 'error' ? '有未保存的修改' : feedback?.message || '修改后保存生效';
+    return <div className="settings-savebar"><p role={feedback?.phase === 'error' ? 'alert' : 'status'} aria-live="polite" className={`min-w-0 flex-1 text-xs ${feedback?.phase === 'error' ? 'text-amber-700' : feedback?.phase === 'success' && !changed ? 'text-emerald-700' : 'text-slate-500'}`}>{message}</p><div className="flex items-center gap-2">{secondary}<Button type="button" onClick={onSave} disabled={!changed || Boolean(settingsSaving) || settingsLoading || settingsLoadError} aria-busy={settingsSaving === key} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" />{settingsSaving === key ? '保存中…' : label}</Button></div></div>;
+  };
+
   const updateEnvValue = (scope: EnvScope, key: string, value: string) => {
     const identity = `${scope}:${key}`; setEnvChangedKeys(current => value === (envBaseline.current[scope][key]?.value ?? '') ? current.filter(item => item !== identity) : [...new Set([...current, identity])]);
     setEnvConfig(prev => ({
@@ -699,35 +718,37 @@ export default function Settings() {
               <div className="col-span-2"><Label>地址</Label><Input value={company.address} onChange={e => { setCompany({ ...company, address: e.target.value }); setCompanyChanged(true); }} placeholder="公司地址" /></div>
               <div className="col-span-2"><Label>简介</Label><Textarea value={company.description} onChange={e => { setCompany({ ...company, description: e.target.value }); setCompanyChanged(true); }} rows={3} placeholder="公司简介..." /></div>
             </div>
-            <div className="flex justify-end"><Button onClick={saveCompany} disabled={!companyChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveCompany', '保存公司信息', companyChanged, saveCompany)}
           </CardContent></Card>
         </TabsContent>
 
         {/* Dictionary Config */}
         <TabsContent value="dict">
-          <Card className="border-slate-200"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="w-4 h-4 text-blue-600" /> 字典配置</CardTitle><CardDescription>配置行业、状态、来源等下拉选项（格式: key:label, 逗号分隔）</CardDescription></CardHeader>
-          <CardContent className="space-y-4">
-            <div><Label>行业类型</Label><Textarea value={dictConfig.industries} onChange={e => { setDictConfig({ ...dictConfig, industries: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>客户状态</Label><Textarea value={dictConfig.statuses} onChange={e => { setDictConfig({ ...dictConfig, statuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>客户来源</Label><Textarea value={dictConfig.sources} onChange={e => { setDictConfig({ ...dictConfig, sources: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>客户等级</Label><Textarea value={dictConfig.levels} onChange={e => { setDictConfig({ ...dictConfig, levels: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>产品类型</Label><Textarea value={dictConfig.products} onChange={e => { setDictConfig({ ...dictConfig, products: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>客户意向套餐</Label><Textarea value={dictConfig.customerPackages} onChange={e => { setDictConfig({ ...dictConfig, customerPackages: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>国家</Label><Textarea value={dictConfig.countries} onChange={e => { setDictConfig({ ...dictConfig, countries: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>计费周期</Label><Textarea value={dictConfig.billingCycles} onChange={e => { setDictConfig({ ...dictConfig, billingCycles: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>收款模式</Label><Textarea value={dictConfig.paymentModes} onChange={e => { setDictConfig({ ...dictConfig, paymentModes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>收款方式</Label><Textarea value={dictConfig.paymentMethods} onChange={e => { setDictConfig({ ...dictConfig, paymentMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>公司支出类型</Label><Textarea value={dictConfig.companyExpenseTypes} onChange={e => { setDictConfig({ ...dictConfig, companyExpenseTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>套餐状态</Label><Textarea value={dictConfig.subscriptionStatuses} onChange={e => { setDictConfig({ ...dictConfig, subscriptionStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>跟进阶段</Label><Textarea value={dictConfig.followUpStages} onChange={e => { setDictConfig({ ...dictConfig, followUpStages: e.target.value }); setDictChanged(true); }} rows={3} /></div>
-            <div><Label>跟进方式</Label><Textarea value={dictConfig.followUpMethods} onChange={e => { setDictConfig({ ...dictConfig, followUpMethods: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>回访类型</Label><Textarea value={dictConfig.callbackTypes} onChange={e => { setDictConfig({ ...dictConfig, callbackTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>回访状态</Label><Textarea value={dictConfig.callbackStatuses} onChange={e => { setDictConfig({ ...dictConfig, callbackStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>回访结果</Label><Textarea value={dictConfig.callbackResults} onChange={e => { setDictConfig({ ...dictConfig, callbackResults: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>任务类型</Label><Textarea value={dictConfig.taskTypes} onChange={e => { setDictConfig({ ...dictConfig, taskTypes: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>任务优先级</Label><Textarea value={dictConfig.taskPriorities} onChange={e => { setDictConfig({ ...dictConfig, taskPriorities: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div><Label>任务状态</Label><Textarea value={dictConfig.taskStatuses} onChange={e => { setDictConfig({ ...dictConfig, taskStatuses: e.target.value }); setDictChanged(true); }} rows={2} /></div>
-            <div className="flex justify-end"><Button onClick={saveDict} disabled={!dictChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+          <Card className="border-slate-200"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="w-4 h-4 text-blue-600" /> 下拉选项管理</CardTitle><CardDescription>按类别管理显示名称，展开需要调整的一组；修改后统一保存。</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            {[
+              { key: 'industries' as const, label: '行业类型' },
+              { key: 'statuses' as const, label: '客户状态' },
+              { key: 'sources' as const, label: '客户来源' },
+              { key: 'levels' as const, label: '客户等级' },
+              { key: 'products' as const, label: '产品类型' },
+              { key: 'customerPackages' as const, label: '客户意向套餐' },
+              { key: 'countries' as const, label: '国家' },
+              { key: 'billingCycles' as const, label: '计费周期' },
+              { key: 'paymentModes' as const, label: '收款模式' },
+              { key: 'paymentMethods' as const, label: '收款方式' },
+              { key: 'companyExpenseTypes' as const, label: '公司支出类型' },
+              { key: 'subscriptionStatuses' as const, label: '套餐状态' },
+              { key: 'followUpStages' as const, label: '跟进阶段' },
+              { key: 'followUpMethods' as const, label: '跟进方式' },
+              { key: 'callbackTypes' as const, label: '回访类型' },
+              { key: 'callbackStatuses' as const, label: '回访状态' },
+              { key: 'callbackResults' as const, label: '回访结果' },
+              { key: 'taskTypes' as const, label: '任务类型' },
+              { key: 'taskPriorities' as const, label: '任务优先级' },
+              { key: 'taskStatuses' as const, label: '任务状态' },
+            ].map(field => <SettingsDictionaryEditor key={field.key} label={field.label} value={dictConfig[field.key]} onChange={value => { setDictConfig(current => ({ ...current, [field.key]: value })); setDictChanged(true); }} />)}
+            {settingsSaveBar('saveDict', '保存字典选项', dictChanged, saveDict)}
           </CardContent></Card>
         </TabsContent>
 
@@ -762,7 +783,7 @@ export default function Settings() {
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><div className="flex items-center gap-2 mb-2"><Eye className="w-4 h-4 text-blue-600" /><span className="text-sm font-medium text-blue-800">预览</span></div>
               <code className="text-sm font-mono bg-white px-2 py-0.5 rounded border border-blue-200 text-blue-800">{previewCode(codeSettings, 'restaurant')}</code>
             </div>
-            <div className="flex items-center justify-between pt-2 border-t"><Button variant="outline" size="sm" onClick={() => { setCodeSettings({ ...defaultSettings, industryPrefixes: defaultIndustryPrefixes.map(ip => ({ ...ip })) }); setCodeChanged(true); }}><RotateCcw className="w-3.5 h-3.5 mr-1" /> 恢复默认</Button><Button onClick={saveCodeSettings} disabled={!codeChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveCodeSettings', '保存编号规则', codeChanged, saveCodeSettings, <Button variant="outline" size="sm" onClick={() => { setCodeSettings({ ...defaultSettings, industryPrefixes: defaultIndustryPrefixes.map(ip => ({ ...ip })) }); setCodeChanged(true); }}><RotateCcw className="w-3.5 h-3.5 mr-1" /> 恢复默认</Button>)}
           </CardContent></Card>
         </TabsContent>
 
@@ -783,7 +804,7 @@ export default function Settings() {
                 <Switch checked={(dashboardConfig as any)[item.key]} onCheckedChange={v => { setDashboardConfig({ ...dashboardConfig, [item.key]: v }); setDashChanged(true); }} />
               </div>
             ))}
-            <div className="flex justify-end pt-2"><Button onClick={saveDash} disabled={!dashChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveDash', '保存仪表盘设置', dashChanged, saveDash)}
           </CardContent></Card>
         </TabsContent>
 
@@ -800,7 +821,7 @@ export default function Settings() {
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>欠费提醒</Label></div><Switch checked={reminderConfig.enableOverduePayment} onCheckedChange={v => { setReminderConfig({ ...reminderConfig, enableOverduePayment: v }); setReminderChanged(true); }} /></div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>延期任务提醒</Label></div><Switch checked={reminderConfig.enableDelayedTask} onCheckedChange={v => { setReminderConfig({ ...reminderConfig, enableDelayedTask: v }); setReminderChanged(true); }} /></div>
-            <div className="flex justify-end pt-2"><Button onClick={saveReminder} disabled={!reminderChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveReminder', '保存提醒设置', reminderChanged, saveReminder)}
           </CardContent></Card>
         </TabsContent>
 
@@ -855,7 +876,7 @@ export default function Settings() {
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>浏览器通知</Label><p className="text-xs text-slate-500">启用浏览器推送通知</p></div><Switch checked={notifConfig.enableBrowserNotif} onCheckedChange={v => { setNotifConfig({ ...notifConfig, enableBrowserNotif: v }); setNotifChanged(true); }} /></div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><div><Label>邮件通知</Label><p className="text-xs text-slate-500">重要事项发送邮件通知</p></div><Switch checked={notifConfig.enableEmailNotif} onCheckedChange={v => { setNotifConfig({ ...notifConfig, enableEmailNotif: v }); setNotifChanged(true); }} /></div>
             {notifConfig.enableEmailNotif && <div><Label>通知邮箱</Label><Input value={notifConfig.notifEmail} onChange={e => { setNotifConfig({ ...notifConfig, notifEmail: e.target.value }); setNotifChanged(true); }} placeholder="接收通知的邮箱" /></div>}
-            <div className="flex justify-end pt-2"><Button onClick={saveNotif} disabled={!notifChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveNotif', '保存通知设置', notifChanged, saveNotif)}
           </CardContent></Card>
         </TabsContent>
 
@@ -877,7 +898,7 @@ export default function Settings() {
             <div><Label>默认导出格式</Label><NativeSelect value={exportConfig.defaultFormat} onChange={v => { setExportConfig({ ...exportConfig, defaultFormat: v }); setExportChanged(true); }} className="w-40" options={[{ value: 'xlsx', label: 'Excel (.xlsx)' }, { value: 'csv', label: 'CSV (.csv)' }]} /></div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><Label>导出包含备注</Label><Switch checked={exportConfig.includeNotes} onCheckedChange={v => { setExportConfig({ ...exportConfig, includeNotes: v }); setExportChanged(true); }} /></div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><Label>导出包含社交链接</Label><Switch checked={exportConfig.includeSocialLinks} onCheckedChange={v => { setExportConfig({ ...exportConfig, includeSocialLinks: v }); setExportChanged(true); }} /></div>
-            <div className="flex justify-end pt-2"><Button onClick={saveExport} disabled={!exportChanged} className="bg-blue-600 hover:bg-blue-700"><Save className="w-4 h-4 mr-1" /> 保存</Button></div>
+            {settingsSaveBar('saveExport', '保存导出设置', exportChanged, saveExport)}
           </CardContent></Card>
         </TabsContent>
 

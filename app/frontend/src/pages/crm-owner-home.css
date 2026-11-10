@@ -106,3 +106,6 @@
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { flex-direction: row; align-items: center; }
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { display: none; }
 }
+
+.crm-owner-home .dashboard-object-link { border-radius: 8px; }
+.dashboard-object-link:focus-visible { outline: 2px solid #245ce8; outline-offset: 3px; }

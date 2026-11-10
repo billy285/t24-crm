@@ -7,8 +7,8 @@
     --t24-aux-line: 18px;
     --t24-input-size: 13px;
     --t24-input-line: 20px;
-    --t24-control-height: 32px;
-    --t24-control-compact: 28px;
+    --t24-control-height: 36px;
+    --t24-control-compact: 32px;
     --t24-table-cell-y: 6px;
     --t24-table-cell-x: 10px;
     min-width: 0;
@@ -20,9 +20,9 @@
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact.space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 10px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title, .sc-page-heading, .slr-page-heading, .mp-page-heading, .knowledge-v4-header) { min-height: 32px; gap: 8px 12px; padding: 0; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title h2, .sc-page-heading h1, .slr-page-heading h2, .mp-page-heading h2, .knowledge-v4-header h2) { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(input:not([type='checkbox']):not([type='radio']), select) { height: 32px; min-height: 32px; border-radius: 6px; font-size: 13px; line-height: 20px; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact button { min-height: 28px; font-size: 13px; line-height: 20px; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title, .sc-page-heading, .mp-page-heading, .slr-page-heading, .sk-heading-actions) button { height: 32px; min-height: 32px; padding: 5px 10px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(input:not([type='checkbox']):not([type='radio']), select) { height: 36px; min-height: 36px; border-radius: 6px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact button { min-height: 32px; font-size: 13px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.app-page-title, .sc-page-heading, .mp-page-heading, .slr-page-heading, .sk-heading-actions) button { height: 36px; min-height: 36px; padding: 5px 10px; border-radius: 6px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact :is(.merchant-results-card, .sl-lead-table, .knowledge-v4-list, .knowledge-v4-detail) { border-radius: 8px; box-shadow: none; }
 
   /* Merchant pool: two quiet text lines and a full, unbroken phone number. */
@@ -42,7 +42,7 @@
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-region-column { width: 136px; font-size: 12px; line-height: 18px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-state-column { width: 88px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-queue-table .mp-action-column { width: 100px; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-row-actions > button { height: 28px; min-height: 28px; padding: 3px 6px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-row-actions > button { height: 32px; min-height: 32px; padding: 3px 6px; font-size: 12px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-list-pagination { min-height: 44px; padding: 6px 10px; gap: 8px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-selection-bar { padding: 10px 12px; border-radius: 8px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .mp-selection-main { gap: 8px 16px; }
@@ -92,7 +92,7 @@
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-next-step > :is(strong, span) { font-size: 13px; line-height: 20px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-next-step > small { font-size: 11px; line-height: 18px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-row-actions { gap: 2px; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-row-actions button { min-height: 28px; padding: 3px 5px; font-size: 12px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-row-actions button { min-height: 32px; padding: 3px 5px; font-size: 12px; line-height: 20px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sl-lead-table > div > .border-t { padding: 6px 10px; }
 
   /* Dialling is a working canvas, not a spreadsheet: keep writing room and one clear next action. */
@@ -143,11 +143,11 @@
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sw-team-avatar { width: 28px; height: 28px; flex-basis: 28px; font-size: 12px; }
 
   /* Knowledge: compact navigation and results, readable article body. */
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-search input { height: 34px; min-height: 34px; padding: 6px 38px; border-radius: 6px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-search input { height: 36px; min-height: 36px; padding: 6px 38px; border-radius: 6px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-search > svg { top: 9px; left: 12px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .sk-clear-search { top: 2px; right: 2px; width: 30px; height: 30px; min-height: 30px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-categories nav { flex-wrap: wrap; gap: 4px; overflow: visible; padding: 0; }
-  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-categories nav button { min-height: 28px; padding: 4px 10px; border-radius: 5px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-categories nav button { min-height: 32px; padding: 4px 10px; border-radius: 5px; font-size: 12px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-workspace { grid-template-columns: minmax(230px, .34fr) minmax(0, .66fr); gap: 12px; height: min(760px, max(380px, calc(100dvh - 230px))); }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-panel-title { min-height: 34px; padding: 7px 12px; }
   .t24-system.app-shell .crm-desktop-main .crm-sales-compact .knowledge-v4-list-scroll { min-height: 0; max-height: none; padding: 4px; }

@@ -22,6 +22,10 @@ from models.employees import Employees
 from models.customer_access_grants import CustomerAccessGrant
 from models.finance_entry_drafts import FinanceEntryDraft, FinanceEntryDraftAudit
 import models.finance_entry_attachments
+# Combined collection can register Tasks through the employee router. Include its
+# foreign-key targets so this synthetic database does not depend on test order.
+import models.automation
+import models.opportunities
 from models.payments import Payments
 from models.expenses import Expenses
 from models.company_expenses import Company_expenses
@@ -462,3 +466,91 @@ async def test_void_is_owner_only_terminal_and_audited_without_ledger_write(env)
     assert response.status_code == 200 and response.json()["status"] == "voided"
     assert (await action(env, response.json(), "post")).status_code == 409
     assert (await counts(env))["payments"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_search_precedes_pagination_and_keeps_total_and_writes_unchanged(env):
+    target = await create(env, payload=receipt(notes="Unique first search target"))
+    for index in range(25):
+        await create(env, payload=receipt(notes=f"Ordinary registration {index}"))
+    before = await counts(env)
+    initial = (await env.client.get(PREFIX, params={"limit": 5})).json()
+    assert initial["total"] == 26 and target["id"] not in {item["id"] for item in initial["items"]}
+    match = await env.client.get(PREFIX, params={"q":"Unique first", "limit":5})
+    assert match.status_code == 200 and match.headers["cache-control"] == "private, no-store"
+    assert match.json()["total"] == 1 and [item["id"] for item in match.json()["items"]] == [target["id"]]
+    a = (await env.client.get(PREFIX,params={"q":"Ordinary", "limit":5})).json()
+    b = (await env.client.get(PREFIX,params={"q":"Ordinary", "limit":5, "skip":5})).json()
+    assert a["total"] == b["total"] == 25 and len(a["items"]) == len(b["items"]) == 5
+    assert not ({item["id"] for item in a["items"]} & {item["id"] for item in b["items"]})
+    assert await counts(env) == before
+
+
+@pytest.mark.asyncio
+async def test_list_search_preserves_creator_owner_and_revoked_customer_scope(env):
+    mine = await create(env,payload=receipt(notes="Needle own",evidence_reference="FILE-ALPHA",transaction_reference="CHECK-ALPHA"))
+    company = await create(env,kind="company_expense",customer_id=None,payload={"currency":"USD","category":"software","category_name":"Synthetic tool","amount":5,"notes":"Needle company"})
+    env.user = OTHER
+    other = await create(env,payload=receipt(notes="Needle other"))
+    env.user = OWNER
+    hidden = await create(env,customer_id=20,payload=receipt(notes="Needle hidden"))
+    env.user = CLERK
+    result = (await env.client.get(PREFIX,params={"q":"Needle"})).json()
+    assert {item["id"] for item in result["items"]} == {mine["id"],company["id"]}
+    for token in ("FILE-ALPHA","CHECK-ALPHA",f"#{mine['id']}"):
+        result = (await env.client.get(PREFIX,params={"q":token})).json()
+        assert [item["id"] for item in result["items"]] == [mine["id"]]
+    async with env.sessions() as db:
+        customer = await db.get(Customers,10)
+        customer.customer_code = "T24-SYNTHETIC-010"
+        await db.commit()
+    assert (await env.client.get(PREFIX,params={"q":"SYNTHETIC-010"})).json()["total"] == 1
+    async with env.sessions() as db:
+        grant = await db.scalar(select(CustomerAccessGrant).where(CustomerAccessGrant.employee_id == 2))
+        grant.invitation_status = "revoked"
+        await db.commit()
+    result = (await env.client.get(PREFIX,params={"q":"Needle"})).json()
+    assert {item["id"] for item in result["items"]} == {company["id"]}
+    assert (await env.client.get(PREFIX,params={"q":"ALPHA"})).json()["total"] == 0
+    env.user = OWNER
+    result = (await env.client.get(PREFIX,params={"q":"Needle"})).json()
+    assert {item["id"] for item in result["items"]} == {mine["id"],company["id"],other["id"],hidden["id"]}
+    env.user = UserResponse(id="2",role="ops",email="ops@example.test")
+    assert (await env.client.get(PREFIX,params={"q":"Needle"})).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_registration_dates_use_beijing_day_and_combine_with_kind_and_status(env):
+    rows = [await create(env,payload=receipt(notes=f"Boundary {index}")) for index in range(4)]
+    stamps = [datetime(2026,11,10,15,59,59,tzinfo=timezone.utc),datetime(2026,11,10,16,0,tzinfo=timezone.utc),datetime(2026,11,11,15,59,59,tzinfo=timezone.utc),datetime(2026,11,11,16,0,tzinfo=timezone.utc)]
+    async with env.sessions() as db:
+        for row,stamp in zip(rows,stamps):
+            draft = await db.get(FinanceEntryDraft,row["id"])
+            draft.created_at = stamp
+        await db.commit()
+    params = {"start":"2026-11-11","end":"2026-11-11","kind":"manual_receipt","q":"Boundary"}
+    result = await env.client.get(PREFIX,params=params)
+    assert result.status_code == 200 and result.json()["total"] == 2
+    assert {item["id"] for item in result.json()["items"]} == {rows[1]["id"],rows[2]["id"]}
+    assert (await env.client.get(PREFIX,params={"kind":"customer_expense"})).json()["total"] == 0
+    assert (await env.client.get(PREFIX,params={**params,"status":"submitted"})).json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_list_reference_search_escapes_wildcards_and_large_ids(env):
+    literal = await create(env,payload=receipt(notes="100% complete; under_score"))
+    await create(env,payload=receipt(notes="Ordinary registration"))
+    for token in ("%","_"):
+        result = (await env.client.get(PREFIX,params={"q":token})).json()
+        assert [item["id"] for item in result["items"]] == [literal["id"]]
+    assert (await env.client.get(PREFIX,params={"q":"' OR 1=1 --"})).json()["total"] == 0
+    assert (await env.client.get(PREFIX,params={"q":"9"*100})).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query",[{"kind":"unknown"},{"start":"2026-02-30"},{"start":"2026-11-12","end":"2026-11-11"},{"q":"a"*121},{"start":"0001-01-01"}])
+async def test_list_invalid_filters_do_not_mutate_records(env,query):
+    await create(env)
+    before = await counts(env)
+    assert (await env.client.get(PREFIX,params=query)).status_code == 422
+    assert await counts(env) == before

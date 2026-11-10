@@ -13,22 +13,26 @@ interface NativeSelectProps {
   options: NativeSelectOption[];
   placeholder?: string;
   className?: string;
+  controlClassName?: string;
+  density?: 'default' | 'compact' | 'comfortable';
   disabled?: boolean;
   id?: string;
   'aria-label'?: string;
 }
 
-export function NativeSelect({ value, onChange, options, placeholder, className, disabled = false, id, 'aria-label': ariaLabel }: NativeSelectProps) {
+export function NativeSelect({ value, onChange, options, placeholder, className, controlClassName, density = 'default', disabled = false, id, 'aria-label': ariaLabel }: NativeSelectProps) {
+  const height = `var(${density === 'compact' ? '--t24-control-compact' : density === 'comfortable' ? '--t24-control-large' : '--t24-control-height'})`;
   return (
-    <div className={cn('relative', className)}>
+    <div className={cn('t24-native-select-wrap relative', className)} style={{ height, minHeight: height }}>
       <select
         id={id}
-        aria-label={ariaLabel}
+        aria-label={ariaLabel || placeholder || options[0]?.label}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         onPointerDown={(e) => e.stopPropagation()}
-        className="t24-native-select flex w-full appearance-none rounded-lg border border-input bg-white px-3 py-2 pr-8 text-base shadow-[0_1px_2px_rgba(15,23,42,0.025)] ring-offset-background hover:border-slate-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60"
+        style={{ width: '100%', height: '100%', minHeight: '100%' }}
+        className={cn('t24-native-select flex w-full appearance-none rounded-lg border border-input bg-white px-3 py-2 pr-8 text-base shadow-[0_1px_2px_rgba(15,23,42,0.025)] ring-offset-background hover:border-slate-300 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-60', controlClassName)}
       >
         {placeholder && (
           <option value="" disabled>

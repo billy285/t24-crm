@@ -7,7 +7,7 @@
     --t24-detail-size: 18px; --t24-detail-line: 26px;
     --t24-title-size: 22px; --t24-title-line: 30px;
     --t24-metric-size: 22px; --t24-metric-line: 28px;
-    --t24-control-height: 34px; --t24-table-cell-y: 8px;
+    --t24-control-height: 36px; --t24-control-compact: 32px; --t24-table-cell-y: 8px;
   }
   .t24-system .crm-desktop-main .crm-org-compact > :not([hidden]) ~ :not([hidden]),
   .t24-system .crm-desktop-main .crm-org-compact :is(.space-y-5, .space-y-4) > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; margin-bottom: 0; }
@@ -24,7 +24,7 @@
   .t24-system .crm-desktop-main .crm-org-compact .text-xs { font-size: 12px; line-height: 18px; }
   .t24-system .crm-desktop-main .crm-org-compact .text-2xl { font-size: 22px; line-height: 28px; }
   .t24-system .crm-desktop-main .crm-org-compact :is(.gap-4, .gap-5, .gap-6) { gap: 12px; }
-  .t24-system .crm-desktop-main .crm-org-compact :is(input:not([type='checkbox']):not([type='radio']), select, [role='combobox']) { min-height: 34px; height: 34px; border-radius: 6px; font-size: 13px; line-height: 20px; }
+  .t24-system .crm-desktop-main .crm-org-compact :is(input:not([type='checkbox']):not([type='radio']), select, [role='combobox']) { min-height: 36px; height: 36px; border-radius: 6px; font-size: 13px; line-height: 20px; }
   .t24-system .crm-desktop-main .crm-org-compact button:not([role='switch']):not([role='checkbox']):not(.cft-expand) { min-height: 32px; height: auto; font-size: 13px; line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
   .t24-system .crm-desktop-main .crm-org-compact :is(button, input, select, summary):focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
   .t24-system .crm-desktop-main .crm-org-compact table:not(.cft-table) { width: 100%; font-size: 13px; line-height: 20px; }

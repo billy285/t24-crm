@@ -498,6 +498,7 @@ class EmployeesResponse(BaseModel):
     department: Optional[str] = None
     position: Optional[str] = None
     login_username: Optional[str] = None
+    has_login_password: bool = False
     hire_date: Optional[str] = None
     supervisor: Optional[str] = None
     notes: Optional[str] = None

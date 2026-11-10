@@ -7,6 +7,7 @@ import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { buildReturnLink } from '@/lib/navigation-state';
 import { useLocation } from 'react-router-dom';
 import './admin-workspace.css';
+import './company-roadmap-refinement.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -872,7 +873,7 @@ export default function CompanyRoadmap() {
               <p className="mt-2 text-sm leading-6 text-slate-700">判断：{recommendation.why}</p>
               <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-sm font-medium text-slate-800">下一步：{recommendation.action}</p>
               {overview.settings.current_focus ? <p className="mt-2 rounded-lg border border-slate-200 bg-white/60 px-3 py-2 text-xs leading-5 text-slate-600">老板补充边界：{overview.settings.current_focus}</p> : null}
-              {recommendation.decision ? <div className="mt-3 rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2.5 text-xs text-slate-600"><div className="flex flex-wrap gap-x-4 gap-y-1"><span>决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</span><span>确认人：{recommendation.decision.decided_by_name || '待确认'}</span><span>复盘日：{recommendation.decision.next_review_date || '待安排'}</span>{recommendation.decision.task_id ? <span>执行负责人：{recommendation.decision.task_assignee_name || '待分配'}</span> : null}{recommendation.decision.task_id ? <span>任务状态：{taskStatusLabels[recommendation.decision.task_status || ''] || '打开任务核对'}</span> : null}</div>{recommendation.decision.decision_note ? <p className="mt-1.5 leading-5">说明：{recommendation.decision.decision_note}</p> : null}{recommendation.decision.task_completion_result ? <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 leading-5 text-emerald-700">完成结果：{recommendation.decision.task_completion_result}</p> : null}{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="mt-1 h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</div> : null}
+              {recommendation.decision ? <details className="roadmap-decision-summary mt-3 rounded-lg border border-slate-200/80 bg-white/60 px-3 py-2.5 text-xs text-slate-600" open={recommendation.decision.status !== 'completed'}><summary className="mb-2 cursor-pointer font-medium">已记录决定 · {decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</summary><div className="flex flex-wrap gap-x-4 gap-y-1"><span>决定：{decisionStatusLabels[recommendation.decision.status] || recommendation.decision.status}</span><span>确认人：{recommendation.decision.decided_by_name || '待确认'}</span><span>复盘日：{recommendation.decision.next_review_date || '待安排'}</span>{recommendation.decision.task_id ? <span>执行负责人：{recommendation.decision.task_assignee_name || '待分配'}</span> : null}{recommendation.decision.task_id ? <span>任务状态：{taskStatusLabels[recommendation.decision.task_status || ''] || '打开任务核对'}</span> : null}</div>{recommendation.decision.decision_note ? <p className="mt-1.5 leading-5">说明：{recommendation.decision.decision_note}</p> : null}{recommendation.decision.task_completion_result ? <p className="mt-1.5 rounded-md bg-emerald-50 px-2 py-1.5 leading-5 text-emerald-700">完成结果：{recommendation.decision.task_completion_result}</p> : null}{recommendation.decision.task_id ? <Button asChild size="sm" variant="link" className="mt-1 h-auto p-0 text-xs"><Link to={`/tasks?task_id=${recommendation.decision.task_id}`}>打开执行任务 #{recommendation.decision.task_id}<ArrowRight className="ml-1 h-3 w-3" /></Link></Button> : null}</details> : null}
             </div>
             {isAdmin ? <Button onClick={() => {
               setDecisionStatus((recommendation.decision?.status as typeof decisionStatus) || 'accepted');
@@ -885,6 +886,7 @@ export default function CompanyRoadmap() {
         </CardContent>
       </Card>
 
+      <details className="calm-admin-disclosure roadmap-goal-details"><summary><span>长期目标与现金</span><span className="text-xs font-normal text-slate-500">{cashHealthLabels[cashLevel]}{overview.cash_health.is_stale ? ' · 需更新余额' : ''}</span></summary>
       <Card className="calm-roadmap-goal overflow-hidden border-slate-200 bg-white text-slate-900">
         <CardContent className="p-5 lg:p-6">
           <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
@@ -913,6 +915,7 @@ export default function CompanyRoadmap() {
           {!overview.goal.is_complete_data ? <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">{overview.goal.has_profit_data ? `当前只有 ${overview.goal.ready_months}/${overview.goal.total_months} 个已完成月份具备可核算利润；缺失汇率的月份不会被当作 0 元利润。` : '尚无已完成月份的正式利润数据，当前进度和差额只用于提示数据准备，不能据此判断经营表现。'}</div> : null}
         </CardContent>
       </Card>
+      </details>
 
 
       <details className="calm-admin-disclosure">

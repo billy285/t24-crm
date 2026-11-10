@@ -81,7 +81,7 @@ test('真实隔离 API：手选关联→同区间去重试点→老板开放批�
     await expect(dialog.getByText('本页已读取 1 笔')).toBeVisible();
     await dialog.getByRole('button', { name: '再次同步本区间（去重核验）', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '再次同步本区间（去重核验）', exact: true })).toBeEnabled();
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click();
     const observed = (await (await get(base + '/overview')).json()).bindings.find((item: { id: number }) => item.id === first.id);
     expect(observed.pilot_evidence.successful_sync_count).toBe(2); expect(observed.pilot_evidence.repeat_dedupe_verified).toBe(true); expect(observed.pilot_evidence.cash_evidence_verified).toBe(true);
     expect(await ledger()).toHaveLength(0);

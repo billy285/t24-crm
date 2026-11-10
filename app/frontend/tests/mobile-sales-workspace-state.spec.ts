@@ -121,7 +121,7 @@ test('主管跨模块回来保留历史日期、销售、逾期筛选、搜索�
   let dialog = await queue(page);
   await expect(dialog.getByLabel('搜索客户队列')).toHaveValue('Seattle');
   await expect(dialog.locator('[data-task-id]')).toHaveCount(1);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
   await leave(page);
   await returnToWork(page);
@@ -137,24 +137,24 @@ test('主管跨模块回来保留历史日期、销售、逾期筛选、搜索�
     await expect(dialog).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: `${screenshots}/local-mock-sales-restored-history-query.png`, animations: 'disabled' });
   }
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
   await scope(page, historicalDay, '27');
   dialog = await queue(page);
   await expect(dialog.getByLabel('搜索客户队列')).toHaveValue('');
   await expect(dialog.locator('[data-task-id]')).toHaveCount(2);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
   await scope(page, historicalDay, '28');
   dialog = await queue(page);
   await expect(dialog.getByLabel('搜索客户队列')).toHaveValue('Seattle');
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
   await scope(page, '2026-09-02', '28');
   dialog = await queue(page);
   await expect(dialog.getByLabel('搜索客户队列')).toHaveValue('');
   await expect(dialog.locator('[data-task-id]')).toHaveCount(2);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
   await scope(page, historicalDay, '28');
   dialog = await queue(page);
@@ -256,7 +256,7 @@ for (const denyWrites of [false, true]) {
     let dialog = await queue(page);
     await expect(dialog.getByLabel('搜索客户队列')).toHaveValue('Seattle');
     await expect(dialog.locator('[data-task-id]')).toHaveCount(1);
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toBeHidden();
     await page.getByRole('navigation', { name: '手机主导航', exact: true }).getByRole('button', { name: '首页', exact: true }).click();
     await expect(page).toHaveURL(/\/apps$/);

@@ -384,10 +384,10 @@ export default function Layout({ children }: LayoutProps) {
               <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{isSalesWorkspace ? '销售中心' : currentPageLabel}</p>
             </div>
           </div>
-          <button className="hidden text-slate-600 hover:text-slate-800 md:block lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">
+          <button type="button" className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-800 md:inline-flex lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">
             <Menu className="w-5 h-5" />
           </button>
-          {isSalesWorkspace ? <SalesCenterNavigation className="hidden flex-1 md:flex" /> : <nav aria-label="当前位置" className="hidden min-w-0 items-center gap-2 text-sm lg:flex">
+          {isSalesWorkspace ? <SalesCenterNavigation className="hidden flex-1 md:flex" /> : <nav aria-label="当前位置" className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex">
             {activeNavSection && <>
               <span className="shrink-0 text-slate-400">{activeNavSection.label}</span>
               <ChevronRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
@@ -420,7 +420,7 @@ export default function Layout({ children }: LayoutProps) {
             <div className="hidden md:block">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button type="button" variant="ghost" size="sm" className="gap-2" aria-label="打开我的账户" title="我的账户">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
                     <User className="w-4 h-4 text-blue-600" />
                   </div>

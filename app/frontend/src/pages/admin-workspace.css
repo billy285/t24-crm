@@ -95,3 +95,14 @@
 }
 
 .t24-system .calm-admin-dashboard .calm-owner-priority{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%;margin-top:16px;padding:14px 16px;min-height:56px;border:1px solid #f3dfba;border-radius:12px;background:#fffaf1;color:#7b521c;text-align:left}.calm-owner-priority small{display:block;font-size:13px;margin-bottom:4px}.calm-owner-priority strong{display:block;font-size:16px}.calm-owner-priority>span:last-child{display:flex;align-items:center;gap:8px;font-size:14px;white-space:nowrap}.calm-owner-priority svg{width:16px;height:16px}@media(max-width:430px){.calm-owner-priority>span:last-child{font-size:13px}.calm-owner-priority strong{font-size:15px}}
+
+@media (max-width: 767px) {
+  .t24-system .calm-employees-page .employee-directory-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 8px 0; }
+  .t24-system .calm-employees-page .employee-directory-summary > div > div { display: block; padding: 0; text-align: left; }
+  .t24-system .calm-employees-page .employee-directory-summary p:last-child { margin-top: 2px; font-size: 20px; line-height: 26px; }
+  .t24-system .employee-directory-filters > .relative:first-child { min-width: 0; }
+  .t24-system .calm-employees-page .employee-mobile-guidance { margin-block: 8px; }
+}
+
+.t24-system .calm-system-settings .settings-savebar { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; padding: 12px 0; border-top: 1px solid #e2e8f0; background: #fff; }
+.t24-system .calm-system-settings .settings-savebar > p { min-width: 160px; }

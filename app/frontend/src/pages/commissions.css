@@ -60,3 +60,11 @@
 .commission-login-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:12px; margin-bottom:12px; border-bottom:1px dashed #e2e8f0; font-size:13px; }
 .commission-login-row p { margin-top:3px; color:#64748b; font-size:12px; overflow-wrap:anywhere; }
 .commission-mobile-card dd { min-width:0; text-align:right; overflow-wrap:anywhere; }
+
+.commission-mobile-filters { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-block: 12px; }
+@media (max-width: 767px) {
+  .commission-page .commission-priority { padding: 16px; margin-bottom: 16px; }
+  .commission-page .commission-priority h2 { margin-top: 6px; font-size: 18px; line-height: 26px; }
+  .commission-page .commission-priority > p:last-child { margin-top: 8px; }
+  .commission-page .commission-toolbar { padding-block: 10px; }
+}

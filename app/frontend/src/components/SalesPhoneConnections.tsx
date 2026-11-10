@@ -40,21 +40,21 @@ function syncTime(value?: string | null) {
 export function connectionLabel(item: PhoneConnection) {
   if (item.binding_conflict) return '分机绑定冲突';
   if (item.needs_reconnect) return '需要重新连接';
-  if (!item.connected) return '尚未连接';
+  if (!item.connected) return '待接入';
   if (item.last_error || !item.realtime_sync_enabled) return '同步需处理';
-  if (!item.last_synced_at) return '等待首次同步';
+  if (!item.last_synced_at) return '待同步';
   return '实时同步已启用';
 }
 
 export function SyncCoverageDetails({ coverage }: { coverage?: SyncCoverage }) {
   if (!coverage) return <p>尚无可核对的同步期间记录。</p>;
   const last = coverage.last_attempt;
-  return <div className="sales-sync-evidence">
+  return <details className="sales-sync-evidence"><summary>同步期间与覆盖依据<ChevronDown size={12}/></summary><div>
     <p>{last ? `最近补同步：${last.status === 'completed' ? '分页拉取完成' : last.status === 'partial' ? '部分完成，需处理' : '失败，需重试'}` : '尚无该分机绑定的分页拉取凭据'}</p>
     {last && <><p>{syncTime(last.requested_from)} 至 {syncTime(last.requested_to)}</p><p>读取 {last.pages} 页 · {last.fetched} 条 · 写入/更新 {last.saved} 条 · 未归属 {last.skipped} 条</p></>}
     {coverage.unverified_ranges.length > 0 && <details><summary>{coverage.unverified_ranges.length} 段尚未核验的期间（含新发生通话）<ChevronDown size={12} /></summary><ul>{coverage.unverified_ranges.map((range, index) => <li key={index}>{syncTime(range.start)} 至 {syncTime(range.end)}</li>)}</ul></details>}
     <p>分页已拉取仍不代表历史完整；通话可能延迟入账。</p>
-  </div>;
+  </div></details>;
 }
 
 export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, onSyncComplete }: { onConnectMine?: () => void; periodDays?: number; onSyncComplete?: () => void }) {
@@ -137,7 +137,7 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
       <div className="sales-phone-body">
         <div className="sales-phone-actions"><p>每位销售用自己的CRM账号连接已分配的RingCentral账号或分机，通话按绑定销售归属。</p><Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}><RefreshCw size={14} />刷新状态</Button></div>
         <div className="sales-sync-controls"><Button size="sm" variant="outline" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(value => !value)}>{attentionOnly ? '查看全部员工' : `只看需处理（${attention}）`}</Button><label>本人补同步期间<select value={syncDays} onChange={event => setSyncDays(Number(event.target.value))} disabled={!!busy}>{[1, 7, 30].map(days => <option key={days} value={days}>最近{days}天</option>)}</select></label></div>
-        {error && <p className="sales-phone-warning" role="alert"><AlertCircle size={15} />连接状态暂不可用，不能据此判断销售没有拨打。{items && ' 下方保留上次读取结果。'}</p>}
+        {error && <p className="sales-phone-warning" role="alert"><AlertCircle size={15} />连接状态暂不可用，不能据此判断销售没有拨打。{items && ' 下方保留上次读取结果。'}<Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}>重新读取连接状态</Button></p>}
         {displayed && displayed.length === 0 && items && items.length > 0 && <p role="status">当前没有需要处理的接入或补同步记录。</p>}
         {displayed && displayed.length > 0 && <div className="sales-phone-grid">{displayed.map(item => {
           const label = connectionLabel(item);
@@ -157,6 +157,6 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
         <p className="sales-phone-footnote">以上按北京时间核对最近{periodDays}个自然日；重新绑定前的期间不会算作新绑定凭据。未核验区间与0条记录都不能证明没有拨打。真实员工授权及受控通话仍需逐人现场验收。</p>
       </div>
     </details>
-    {(error || attention > 0) && <p className="sales-phone-summary-warning" role="status">{error ? '电话连接状态暂不可用' : `${attention} 位销售的电话接入需处理`}，通话统计可能不完整。展开查看详情。</p>}
+    {(error || attention > 0) && <p className="sales-phone-summary-warning" role="status"><span>{error ? '电话连接状态暂不可用' : `${attention} 位销售的电话接入需处理`}，通话统计可能不完整。展开查看详情。</span>{error && <Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}>重新读取状态</Button>}</p>}
   </section>;
 }

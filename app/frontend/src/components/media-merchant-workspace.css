@@ -88,3 +88,11 @@
     white-space: nowrap;
   }
 }
+
+.mw-module-navigation { min-width: 0; flex-shrink: 0; }
+.mw-module-navigation .mw-module-nav-more { display: none; }
+@media (max-width: 760px) {
+  .mw-module-navigation { display: flex; align-items: center; width: 100%; }
+  .mw-module-navigation > nav { flex: 1 1 auto; min-width: 0; }
+  .mw-module-navigation .mw-module-nav-more { display: inline-flex; flex: 0 0 auto; min-width: 44px; min-height: 44px; margin-right: 8px; padding: 8px; font-size: 12px; border-left: 1px solid #e2e8f0; border-radius: 0 8px 8px 0; }
+}

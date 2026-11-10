@@ -169,7 +169,7 @@ async function runLayout(page: Page, viewport: { width: number; height: number }
     await surface.getByRole('button', { name: '打开客户队列', exact: true }).click();
     const queue = page.getByRole('dialog', { name: '客户队列', exact: true });
     await expect(queue.locator('[data-task-id]')).toHaveCount(20);
-    await queue.getByRole('button', { name: 'Close', exact: true }).click();
+    await queue.getByRole('button', { name: '关闭', exact: true }).click();
   } else if (await picker.isVisible()) await expect(picker.locator('option:not([disabled])')).toHaveCount(20);
   else await expect(surface.getByRole('complementary', { name: '今日客户队列', exact: true })).toBeVisible();
 

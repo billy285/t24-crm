@@ -1,0 +1,3 @@
+.calm-roadmap-page .roadmap-goal-details > .t24-card { border: 0; box-shadow: none; border-radius: 0 0 10px 10px; }
+.calm-roadmap-page .roadmap-decision-summary > summary { min-height: 32px; padding-block: 6px; }
+@media (max-width: 767px) { .calm-roadmap-page .roadmap-decision-summary > summary { min-height: 44px; } }

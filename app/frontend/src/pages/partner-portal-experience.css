@@ -10,3 +10,12 @@
 .portal-overview>summary>span { display:block; margin-top:5px; font-size:13px; font-weight:400; color:#64748b; }
 .portal-record-detail { margin-top:14px; border-top:1px dashed #e2e8f0; padding-top:4px; font-size:13px; line-height:1.6; color:#64748b; }
 .portal-record-detail>summary { cursor:pointer; min-height:44px; padding:12px 0; font-size:14px; }
+
+@media(max-width:767px){
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .app-page-title{display:flex;flex-direction:row;align-items:center;gap:8px}
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .app-page-title>div{min-width:0;flex:1}
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .app-page-title>button{width:auto;flex-shrink:0}
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .portal-owner-selector>div{padding:10px 12px;gap:6px}
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .portal-owner-selector>div>div:first-child{display:none}
+ .t24-system.app-shell .crm-desktop-main .partner-portal-page .portal-partner-identity>div{padding:10px 12px}
+}

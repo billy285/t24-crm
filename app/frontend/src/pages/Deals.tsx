@@ -15,8 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { Plus, Search, Edit, Trash2, ClipboardCheck, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, ClipboardCheck, AlertTriangle, ExternalLink, MoreHorizontal } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -1633,13 +1634,13 @@ export default function Deals() {
                       <td className="px-4 py-3 text-slate-500">{cycleLabels[d.billing_cycle] || d.billing_cycle}</td>
                       <td className="px-4 py-3 text-slate-500 hidden md:table-cell">{d.deal_date?.slice(0, 10)}</td>
                       <td className="px-4 py-3 hidden md:table-cell">{d.is_paid ? <Badge className="bg-green-100 text-green-700 text-xs">已付</Badge> : <Badge className="bg-red-100 text-red-700 text-xs">未付</Badge>}</td>
-                      <td className="px-4 py-3 hidden lg:table-cell">{d.is_handed_over ? '✅' : '⏳'} {d.is_transferred_ops ? '→运营' : ''}</td>
+                      <td className="px-4 py-3 hidden lg:table-cell"><div className="flex flex-wrap gap-1"><Badge variant="outline" className={d.is_handed_over ? 'border-emerald-200 text-emerald-700' : 'border-amber-200 text-amber-700'}>{d.is_handed_over ? '已交接' : '待交接'}</Badge><span className="text-xs text-slate-500">{d.is_transferred_ops ? '已转运营' : '待转运营'}</span></div></td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            className="min-h-8 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                             disabled={generatingBoardId === d.id || boardsLoading || boardsError}
                             onClick={() => openBoard(d)}
                             title="按这条成交记录生成或补齐服务看板"
@@ -1647,9 +1648,12 @@ export default function Deals() {
                             <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                             {generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => openHandoff(d)}>交接</Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" title="编辑成交" aria-label={`编辑 ${d.customer_name} 的成交记录`} onClick={() => openEditDeal(d)}><Edit className="w-3.5 h-3.5" /></Button>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" title="删除成交" aria-label={`删除 ${d.customer_name} 的成交记录`} onClick={() => setDeleteTarget(d)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                          <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500" title="更多成交操作" aria-label={`更多成交操作：${d.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => openHandoff(d)}>交接安排</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => openEditDeal(d)}><Edit className="mr-2 h-4 w-4" />编辑成交</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={() => setDeleteTarget(d)}><Trash2 className="mr-2 h-4 w-4" />删除成交</DropdownMenuItem>
+                          </DropdownMenuContent></DropdownMenu>
                         </div>
                       </td>
                     </tr>

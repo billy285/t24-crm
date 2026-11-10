@@ -15,6 +15,7 @@ import './merchant-pool-refined.css';
 import './crm-sales-compact.css';
 import './merchant-pool-industries.css';
 import './merchant-pool-timezones.css';
+import './sales-ui-clarity.css';
 import MerchantImportDialog, { type MerchantImportReceipt } from '@/components/MerchantImportDialog';
 import { useUnsavedChanges, confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
 import { formatPhoneNumber } from '@/lib/phone-format';
@@ -535,6 +536,25 @@ export default function MerchantPool() {
   const tableColumnCount = (canManagePool ? 6 : 5) + Number(showStatusColumn);
   const extraFilterCount = Number(regions.length > 0) + Number(Boolean(source)) + Number(Boolean(qualityStatus)) + Number(Boolean(poolStatus && !['pending', 'converted'].includes(poolStatus)));
   const categoryLabel = industry === unclassifiedIndustry ? '待分类' : industry;
+  const changeQualityStatus = (value: string) => {
+    if (!confirmDiscardAllChanges()) return;
+    setQualityStatus(value); setPage(1); setSelectedMerchantIds([]); setReviewing(null);
+  };
+  const clearFilters = () => {
+    if (!confirmDiscardAllChanges()) return;
+    setSearch(''); setRegions([]); setIndustry(''); setSource(''); setTimezoneGroup(''); setQualityStatus('');
+    if (poolStatus && !['pending', 'converted'].includes(poolStatus)) setPoolStatus('pending');
+    setSelectedMerchantIds([]); setSelectedSalesId(''); setReviewing(null); setPage(1);
+  };
+  const activeConditions = [
+    search.trim() && `搜索：${search.trim()}`,
+    categoryLabel && `行业：${categoryLabel}`,
+    timezoneGroup && `时区：${contactTimezoneLabels[timezoneGroup as keyof typeof contactTimezoneLabels] || [...mainTimezoneFilters, ...otherTimezoneFilters].find(zone => zone.value === timezoneGroup)?.label || timezoneGroup}`,
+    regions.length > 0 && `州/省：${regions.join('、')}`,
+    qualityStatus && `核验：${qualityLabels[qualityStatus] || qualityStatus}`,
+    source && `来源：${sourceOptions.find(option => option.value === source)?.label || source}`,
+  ].filter(Boolean);
+  const hasFilters = activeConditions.length > 0 || Boolean(poolStatus && !['pending', 'converted'].includes(poolStatus));
   const changeIndustry = (value: string) => {
     if (!confirmDiscardAllChanges()) return;
     setIndustry(value);
@@ -648,9 +668,9 @@ export default function MerchantPool() {
         <div className="mp-search-toolbar">
           <label className="mp-search-field"><Search className="h-4 w-4" /><Input aria-label="搜索商家" value={search} onChange={event => { if (!confirmDiscardAllChanges()) return; setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、电话或网站" /></label>
           <Button variant="outline" aria-expanded={filtersExpanded} aria-controls="merchant-pool-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><Filter className="mr-2 h-4 w-4" />更多筛选{extraFilterCount ? ` · ${extraFilterCount}` : ''}</Button>
-          {(search || regions.length > 0 || industry || source || timezoneGroup || qualityStatus || (poolStatus && !['pending', 'converted'].includes(poolStatus))) && <Button variant="ghost" onClick={() => { setSearch(''); setRegions([]); setIndustry(''); setSource(''); setTimezoneGroup(''); setQualityStatus(''); if (!['pending', 'converted', ''].includes(poolStatus)) changeView('pending'); setPage(1); }}>清空筛选</Button>}
+          {hasFilters && <Button variant="ghost" onClick={clearFilters}>清空筛选</Button>}
         </div>
-        <div className="mp-industry-toolbar">
+        <details className="mp-scope-disclosure" open={!isMobile}><summary>行业与拨打时区<span>{categoryLabel || '全部行业'} · {[...mainTimezoneFilters, ...otherTimezoneFilters].find(zone => zone.value === timezoneGroup)?.label || '全部时区'}</span><ChevronDown size={14} /></summary><div className="mp-scope-options"><div className="mp-industry-toolbar">
           <nav className="mp-industry-filters" aria-label="行业分类">
             {categoryFilters.map(category => <button key={category.label} type="button" aria-pressed={industry === category.value} disabled={bulkAssigning || bulkUpdating} onClick={() => changeIndustry(category.value)}>{category.label}<span>{category.value === '' ? facetTotal ?? '—' : industryFacets ? industryFacets.find(item => item.value === category.value)?.count ?? 0 : '—'}</span></button>)}
             {(extraIndustries.length > 0 || (industry && !categoryFilters.some(item => item.value === industry))) && <NativeSelect aria-label="其他行业分类" value={categoryFilters.some(item => item.value === industry) ? '' : industry} onChange={changeIndustry} options={[{ value: '', label: '其他行业' }, ...extraIndustries.map(item => ({ value: item.value, label: `${item.label} ${item.count}` }))]} />}
@@ -663,13 +683,18 @@ export default function MerchantPool() {
           <NativeSelect aria-label="其他拨打时区" disabled={bulkAssigning || bulkUpdating} value={otherTimezoneFilters.some(zone => zone.value === timezoneGroup) ? timezoneGroup : ''} onChange={changeTimezoneGroup} options={otherTimezoneFilters} />
           <span className="mp-timezone-hint">按门店地址识别，自动适配夏令时</span>
         </div>
-        {qualityFacets && <p className="mp-quality-summary" role="status">首拨核验 · 待核验 {qualityFacets.pending || 0} · 有效门店 {qualityFacets.valid || 0} · 需处理 {(qualityFacets.invalid_phone || 0) + (qualityFacets.not_target || 0) + (qualityFacets.closed || 0)}</p>}
+        </div></details>
+        <nav className="mp-quality-queue" aria-label="首拨核验队列">
+          {[{value:'pending',label:'待核验'},{value:'valid',label:'有效门店'}].map(item => <button key={item.value} type="button" aria-pressed={qualityStatus === item.value} onClick={() => changeQualityStatus(qualityStatus === item.value ? '' : item.value)}>{item.label}<strong>{qualityFacets ? qualityFacets[item.value] || 0 : '—'}</strong></button>)}
+          <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-pressed={['invalid_phone','not_target','closed'].includes(qualityStatus)}>需处理<strong>{qualityFacets ? (qualityFacets.invalid_phone || 0) + (qualityFacets.not_target || 0) + (qualityFacets.closed || 0) : '—'}</strong><ChevronDown size={13}/></button></DropdownMenuTrigger><DropdownMenuContent align="end">{['invalid_phone','not_target','closed'].map(value => <DropdownMenuItem key={value} onSelect={() => changeQualityStatus(value)}>{qualityLabels[value]} · {qualityFacets ? qualityFacets[value] || 0 : '—'}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu>
+        </nav>
+        <div className="mp-current-results" role="status" aria-live="polite"><span>当前结果 <strong>{listError ? '暂不可用' : loading ? '正在读取…' : `${total.toLocaleString()} 家`}</strong> · {viewTitle}{batchScope ? ' · 本批导入' : ''}</span>{activeConditions.length > 0 && <span className="mp-applied-conditions">{activeConditions.join(' · ')}</span>}</div>
       </div>
       {filtersExpanded && <div id="merchant-pool-extra-filters" className="mp-expanded-filters">
         <label><span className="sc-filter-label">记录状态</span><NativeSelect value={poolStatus} onChange={changeView} options={[{ value: '', label: '全部状态' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]} /></label>
         <div><span className="sc-filter-label">州 / 省</span><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" className="w-full justify-between font-normal"><span className="truncate">{regions.length ? regions.join(' / ') : '州/省（可多选）'}</span><ChevronDown className="h-4 w-4 shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent align="start" className="max-h-72 w-64 overflow-y-auto">{usStateOptions.map(state => <DropdownMenuCheckboxItem key={state} checked={regions.includes(state)} onCheckedChange={checked => { setRegions(previous => checked ? (previous.includes(state) ? previous : [...previous, state]) : previous.filter(item => item !== state)); setPage(1); }} onSelect={event => event.preventDefault()}>{state}</DropdownMenuCheckboxItem>)}</DropdownMenuContent></DropdownMenu></div>
         <label><span className="sc-filter-label">行业</span><NativeSelect aria-label="筛选商家行业" value={industry} onChange={changeIndustry} options={[...categoryFilters, ...extraIndustries.map(item => ({ value: item.value, label: item.label }))]} /></label>
-        <label><span className="sc-filter-label">首拨核验</span><NativeSelect aria-label="筛选首拨核验" value={qualityStatus} onChange={value => { if (!confirmDiscardAllChanges()) return; setQualityStatus(value); setPage(1); }} options={[{value:"",label:"全部核验状态"},...Object.entries(qualityLabels).map(([value,label]) => ({value,label:qualityFacets ? `${label} ${qualityFacets[value] || 0}` : label}))]} /></label>
+        <label><span className="sc-filter-label">首拨核验</span><NativeSelect aria-label="筛选首拨核验" value={qualityStatus} onChange={changeQualityStatus} options={[{value:"",label:"全部核验状态"},...Object.entries(qualityLabels).map(([value,label]) => ({value,label:qualityFacets ? `${label} ${qualityFacets[value] || 0}` : label}))]} /></label>
         <label><span className="sc-filter-label">资料来源</span><NativeSelect aria-label="筛选资料来源" value={source} onChange={value => { if (!confirmDiscardAllChanges()) return; setSource(value); setPage(1); }} options={sourceOptions} /></label>
         <p className="mp-filter-summary">自动隔离 {stats.isolated} · 其中重复 {stats.duplicates} · 已归档 {stats.archived}<span>归档记录可通过记录状态单独查看。</span></p>
       </div>}

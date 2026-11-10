@@ -7,6 +7,8 @@ import { useRetainedView } from '@/lib/use-retained-view';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import './delivery-workspace.css';
+import './crm-delivery-refinement.css';
+import './delivery-records-refined.css';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { invokeWithAuth } from '../lib/tokenStore';
@@ -36,7 +38,7 @@ import { toast } from 'sonner';
 import {
   Search, Plus, Edit, Trash2, ArrowLeft, LayoutList, Kanban, Users,
   AlertTriangle, Clock, CheckCircle2, XCircle, BarChart3, Filter, RefreshCw, Info,
-  ChevronRight, Copy, FileImage, Sparkles, ShieldCheck, ClipboardCheck, MoreHorizontal,
+  ChevronDown, ChevronRight, Copy, FileImage, Sparkles, ShieldCheck, ClipboardCheck, MoreHorizontal,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ExportButton from '@/components/ExportButton';
@@ -499,7 +501,7 @@ const requiresCompletionReference = (task?: Pick<ServiceTask, 'task_type'> | nul
 
 // ==================== Main Component ====================
 export default function ServiceBoard() {
-  const { role, employee, isAdmin, dataScope, hasPermission } = useRole();
+  const { role, employee, isAdmin, dataScope, hasPermission, canAccess } = useRole();
   const isMobile = useIsMobile();
   const businessToday = businessDateKey();
   const navigate = useNavigate();
@@ -882,6 +884,7 @@ export default function ServiceBoard() {
   // ==================== Permissions ====================
   const canEdit = hasPermission('task_edit');
   const canCreate = hasPermission('task_create');
+  const canCreateFromDeal = canCreate && canAccess('/deals');
   const canDelete = hasPermission('task_delete');
   const canAddServiceTask = canCreate || canEdit;
 
@@ -1645,7 +1648,7 @@ export default function ServiceBoard() {
         <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || sp.service_stage} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : overdue ? '已逾期' : expiring ? '即将到期' : sp.service_stage === 'ended' ? '已结束' : '进行中'}</Badge></div>
         <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">{issue ? sp.issue_description || '需要先处理服务卡点' : nextTask ? `下一步：${nextTask.task_name}` : sp.last_work_summary || '查看服务记录，确认下一步安排'}</p>
         <Button className="mt-3 min-h-11 w-full" onClick={() => { void openDetail(sp); setDetailTab('tasks'); }}>{issue ? '处理服务卡点' : nextTask ? '继续任务' : '查看服务详情'}</Button>
-        <details className="mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500">服务详情与更多操作</summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新摘要</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
+        <details className="mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500">服务详情与更多操作</summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新进展</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
       </article>;
     }
 
@@ -2829,7 +2832,7 @@ export default function ServiceBoard() {
   }
 
   return (
-    <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page calm-delivery-page">
+    <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page calm-delivery-page crm-delivery-refined">
       {/* Header */}
       <div className="dc-heading flex-col sm:flex-row items-start sm:items-center">
         <div>
@@ -2846,9 +2849,9 @@ export default function ServiceBoard() {
               sheetName="服务进度"
             />
           </div>
-          <Button variant="outline" size="sm" aria-expanded={showStats} aria-controls="delivery-operating-details" onClick={() => setShowStats(!showStats)} className="min-h-11 gap-1.5 md:min-h-0"><BarChart3 className="w-4 h-4" /> {showStats ? '收起运营详情' : '运营详情'}</Button>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11 gap-1.5 md:min-h-0" aria-label="更多交付操作">更多交付操作<ChevronDown size={14}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setShowStats(!showStats)}>{showStats ? '收起运营详情' : '查看运营详情'}</DropdownMenuItem>{canCreate && <DropdownMenuItem onSelect={openCreateProgress}>补录旧客户服务</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>
           <Button variant="outline" size="sm" onClick={loadData} disabled={refreshing} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? '刷新中…' : '刷新'}</Button>
-          {canCreate && <Button onClick={openCreateProgress} className="col-span-2 min-h-11 bg-blue-600 hover:bg-blue-700 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" /> 手动新增服务</Button>}
+          {canCreateFromDeal && <Button onClick={() => navigate('/deals')} className="col-span-2 min-h-11 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" />从成交创建交付</Button>}
         </div>
       </div>
 
@@ -2863,7 +2866,7 @@ export default function ServiceBoard() {
 
       {(canCreate || archivedStoppedCount > 0) && <details className="dc-guidance">
         <summary><Info size={15} /><strong>交付规则与历史说明</strong><span>{archivedStoppedCount > 0 ? `已隐藏 ${archivedStoppedCount} 条停止合作的历史记录` : '从成交交接开始，避免重复建档'}</span><ChevronRight size={14} /></summary>
-        <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p><Button size="sm" variant="outline" onClick={() => navigate('/deals')}>去成交管理生成</Button></>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
+        <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p>{canCreateFromDeal && <Button size="sm" variant="outline" onClick={() => navigate('/deals')}>从成交创建交付</Button>}</>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
       </details>}
 
       <section id="delivery-operating-details" className="dc-operating-details" hidden={!showStats} aria-label="运营详细统计">
@@ -3109,7 +3112,7 @@ export default function ServiceBoard() {
 
       {/* LIST VIEW */}
       {viewMode === 'list' && <section className="dc-progress-list">
-        {filtered.length === 0 ? <DeliveryEmpty title="没有匹配的交付记录" description="可以调整客户名称或筛选条件，查看其他服务进展。">{canCreate && <Button variant="outline" onClick={openCreateProgress}><Plus size={15} />新增服务记录</Button>}</DeliveryEmpty> : <>
+        {filtered.length === 0 ? <DeliveryEmpty title="没有匹配的交付记录" description="可以调整客户名称或筛选条件，查看其他服务进展。">{canCreateFromDeal && <Button variant="outline" onClick={() => navigate('/deals')}>从成交创建交付</Button>}{canCreate && <Button variant="ghost" onClick={openCreateProgress}>补录旧客户服务</Button>}</DeliveryEmpty> : <>
           {!isMobile && <div className="hidden md:block dc-table-scroll"><CompactFinanceTable label="客户交付进展" legacyClassName="dc-progress-table" className="crm-delivery-ledger"
             expectedHeaders={['客户 / 服务', '阶段与进度', '负责团队', '最近进展', '操作']}
             columns={[
@@ -3126,7 +3129,7 @@ export default function ServiceBoard() {
               <td><div className="dc-stage-line"><span>{allStageLabels[sp.service_stage] || sp.service_stage}</span><b>{sp.progress_percent}%</b></div><div className="dc-progress-track"><i style={{ width: `${Math.max(0, Math.min(sp.progress_percent, 100))}%` }} /></div><small>{ts.total ? `${ts.completed} / ${ts.total} 任务完成` : '尚无交付任务'}{ts.overdue > 0 ? ` · ${ts.overdue} 项逾期` : ''}</small></td>
               <td><span className="dc-person"><i>{(sp.ops_person || '待')[0]}</i>{sp.ops_person || '待分配运营'}</span><small>销售 · {sp.sales_person || '未分配'}</small>{sp.design_person && <small>设计 · {sp.design_person}</small>}</td>
               <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{sp.service_stage === 'ended' ? '服务已结束' : isOverdue(sp) ? '交付已逾期' : isExpiringSoon(sp) ? '即将到期' : '按阶段推进'}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
-              <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看详情</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新摘要</Button>{nextStage && <Button size="sm" variant="ghost" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</>}{canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-8 w-8 shrink-0 px-0" aria-label={`更多服务操作：${sp.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44"><DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-slate-700" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /><span>编辑进度</span></Button></DropdownMenuItem>{canEdit && canDelete && <DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-rose-600 hover:bg-rose-50" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /><span>删除服务</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div></td>
+              <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看交付</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新进展</Button></>}{canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-8 w-8 shrink-0 px-0" aria-label={`更多服务操作：${sp.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{nextStage && <DropdownMenuItem onSelect={() => handleAdvanceStage(sp)}>推进到{allStageLabels[nextStage] || nextStage}</DropdownMenuItem>}<DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-slate-700" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /><span>编辑服务资料</span></Button></DropdownMenuItem>{canEdit && canDelete && <DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-rose-600 hover:bg-rose-50" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /><span>删除服务</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div></td>
             </tr>;
           })}</tbody></CompactFinanceTable></div>}
           {isMobile && <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}</div>}
@@ -3167,13 +3170,13 @@ export default function ServiceBoard() {
                         {/* Kanban quick actions */}
                         {canEdit && (
                           <div className="flex gap-1 mt-1.5 pt-1.5 border-t border-slate-100" onClick={e => e.stopPropagation()}>
-                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openEditProgress(sp)}>编辑</Button>
+                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openEditProgress(sp)}>编辑资料</Button>
                             {nextStage && (
                               <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-green-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => handleAdvanceStage(sp)}>
-                                → {allStageLabels[nextStage]?.slice(0, 4)}
+                                推进到{allStageLabels[nextStage] || nextStage}
                               </Button>
                             )}
-                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openQuickUpdate(sp)}>摘要</Button>
+                            <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs text-slate-500 hover:text-blue-600 md:h-7 md:min-h-0 md:px-1.5 md:text-[10px]" onClick={() => openQuickUpdate(sp)}>更新进展</Button>
                           </div>
                         )}
                       </div>

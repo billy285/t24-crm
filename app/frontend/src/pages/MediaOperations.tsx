@@ -308,7 +308,7 @@ export default function MediaOperations() {
   if (roleLoading || resolvedScope !== scope) return <div className="mo-loading"><Loader2 className="animate-spin" aria-hidden="true"/>正在确认访问范围…</div>;
   if (!allowed) return <section className="media-operations mo-denied"><LockKeyhole aria-hidden="true"/><h1>代运营中心尚未向此账号开放</h1><p>由老板邀请运营人员，并单独授权客户交付资料。</p></section>;
 
-  return <main className="media-operations app-page mo-merchant-mode" aria-label="代运营中心">
+  return <section className="media-operations app-page mo-merchant-mode" aria-label="代运营中心">
     <MediaMerchantWorkspace scope={scope} isOwner={owner} providerEntry={merchantProviderEntry}
       canNavigate={() => !busyRef.current && !unknownResult && !imageHoldRef.current}
       onOpenTask={id => { if (busyRef.current || unknownResult || imageHoldRef.current || !confirmDiscardAllChanges()) return; void readDetail(id); }}
@@ -358,5 +358,5 @@ export default function MediaOperations() {
         </CrmFormDialogFooter>
       </CrmFormDialogContent>
     </Dialog>
-  </main>;
+  </section>;
 }

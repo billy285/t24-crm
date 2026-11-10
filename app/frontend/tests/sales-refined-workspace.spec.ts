@@ -254,7 +254,7 @@ test('手机全队列可切换，RingCentral 返回保留内联草稿且不虚�
   await customerQueue.click();
   const queueSheet = page.getByRole('dialog', { name: '客户队列', exact: true });
   await expect(queueSheet.locator('[data-task-id]')).toHaveCount(15);
-  await queueSheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await queueSheet.getByRole('button', { name: '关闭', exact: true }).click();
   await chooseTask(surface, 390, 915);
   await expect(surface.getByRole('heading', { name: '第15位商家', exact: true })).toBeVisible();
   await surface.getByRole('button', { name: '待回访', exact: true }).click();

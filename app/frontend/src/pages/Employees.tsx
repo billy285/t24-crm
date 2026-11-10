@@ -13,6 +13,7 @@ import { actionTypeLabels, logOperation } from '../lib/operation-log-helper';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import SalesDataScopeHint from '@/components/SalesDataScopeHint';
+import { employeePasswordState } from '@/lib/employee-account-presentation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRightLeft, Phone, Mail, KeyRound, Calendar, Trash2, MoreHorizontal, AlertTriangle, RefreshCw, ChevronRight, MonitorSmartphone } from 'lucide-react';
+import { Plus, Edit, Search, ArrowLeft, ShieldCheck, ShieldOff, UserX, ArrowRightLeft, Phone, Mail, KeyRound, Calendar, Trash2, MoreHorizontal, AlertTriangle, RefreshCw, ChevronRight } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useBusinessDicts } from '../lib/dict-config';
@@ -73,6 +74,7 @@ export default function Employees() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   const [filterDept, setFilterDept] = useState('all');
+  const [showDirectoryFilters, setShowDirectoryFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [unboundPartners, setUnboundPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string; contact_email?: string }>>([]);
@@ -465,11 +467,11 @@ export default function Employees() {
             <div><Label>电话</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+ 国家码和电话号码" /><p className="mt-1 text-xs text-slate-500">请包含国际国家码，分机可写为 ext 123。</p></div>
             <div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             {!editingId && (
-              <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="可选，至少8位" /></div>
+              <div><Label>初始密码</Label><Input type="password" value={form.initial_password} onChange={e => setForm({ ...form, initial_password: e.target.value })} placeholder="暂不设置可留空，至少8位" /></div>
             )}
             <div className="md:col-span-2"><Label>备注</Label><Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
           </fieldset>}
-          {!editingId && <p className="text-xs text-slate-500 mt-3">建议不在此填写，由员工本人在安全环境下设置；第一阶段尚未开放邮件邀请流程。</p>}
+          {!editingId && <p className="text-xs text-slate-500 mt-3">仅建立员工资料不会自动配置密码。需要员工使用密码登录时，请设置初始密码；稍后可在员工操作中设置或重置密码。请通过安全方式告知员工，勿放入备注。</p>}
           </CrmFormDialogBody>
           <CrmFormDialogFooter>
             <Button variant="outline" onClick={() => { if (!saving && employeeDraft.confirmDiscard()) setShowForm(false); }}>取消</Button>
@@ -514,7 +516,7 @@ export default function Employees() {
               <div className="crm-employee-facts grid md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">工号:</span><span>{e.employee_code || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">角色:</span><span>{getRoleDisplay(e.role)}</span></div>
-                {!isMobile && <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">登录用户名:</span><span>{e.login_username || '-'}</span></div>}
+                {!isMobile && <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">登录用户名:</span><span>{e.login_username || '未设用户名'}<span className={`ml-2 text-xs ${employeePasswordState(e).className}`}>{employeePasswordState(e).label}</span></span></div>}
                 <div className="flex gap-2 items-center"><Phone className="w-3 h-3 text-slate-400" /><span>{formatPhoneNumber(e.phone)}</span></div>
                 <div className="flex gap-2 items-center"><Mail className="w-3 h-3 text-slate-400" /><span>{e.email || '-'}</span></div>
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">部门:</span><span>{departmentLabels[e.department] || e.department || '-'}</span></div>
@@ -623,20 +625,12 @@ export default function Employees() {
         <div>
           <p className="app-page-kicker">T24 Marketing · Team</p>
           <h2 className="app-page-heading">员工管理</h2>
-          <p className="app-page-description">查看在职员工，继续交接与团队管理。</p>
+          <p className="app-page-description">{isMobile ? '员工目录 · 账号操作与交接在电脑端处理' : '查看在职员工，继续交接与团队管理。'}</p>
         </div>
         {!isMobile && canCreate && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 添加员工</Button>}
       </div>
 
-      <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/80 p-4 text-sm text-blue-900 md:hidden">
-        <MonitorSmartphone className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-        <div>
-          <p className="font-semibold">手机版提供员工目录与工作概览</p>
-          <p className="mt-1 text-xs leading-5 text-blue-700">新增账号、密码重置、批量交接、停启用、离职与删除请在电脑端处理。</p>
-        </div>
-      </div>
-
-      <div className="t24-directory-metrics calm-employee-summary grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="t24-directory-metrics calm-employee-summary employee-directory-summary grid grid-cols-4 gap-2">
         {[
           { label: '总员工', value: loading || (loadError && employees.length === 0) ? '—' : employees.length, color: 'text-blue-600' },
           { label: '在职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'active').length, color: 'text-green-600' },
@@ -650,12 +644,14 @@ export default function Employees() {
       </div>
 
       <Card className="t24-directory-toolbar border-slate-200"><CardContent className="p-3">
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索姓名、电话、邮箱、用户名..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
-          <NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-full sm:w-[120px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
-          <NativeSelect value={filterRole} onChange={setFilterRole} className="w-full sm:w-[120px]" options={[{ value: 'all', label: '全部角色' }, ...allRoleOptions]} />
-          <NativeSelect value={filterDept} onChange={setFilterDept} className="w-full sm:w-[120px]" options={[{ value: 'all', label: '全部部门' }, ...Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+        <div className="employee-directory-filters flex flex-wrap gap-2 md:flex-nowrap">
+          <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input aria-label="搜索员工" placeholder="搜索姓名、电话、邮箱、用户名..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
+          <Button type="button" variant="outline" className="md:hidden" aria-expanded={showDirectoryFilters} onClick={() => setShowDirectoryFilters(value => !value)}>筛选{[filterStatus, filterRole, filterDept].some(value => value !== 'all') ? ' · 已启用' : ''}</Button>
+          <NativeSelect aria-label="员工状态" value={filterStatus} onChange={setFilterStatus} className={`${showDirectoryFilters ? 'block' : 'hidden'} w-full md:block md:w-[120px]`} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(empStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+          <NativeSelect aria-label="员工角色" value={filterRole} onChange={setFilterRole} className={`${showDirectoryFilters ? 'block' : 'hidden'} w-full md:block md:w-[120px]`} options={[{ value: 'all', label: '全部角色' }, ...allRoleOptions]} />
+          <NativeSelect aria-label="员工部门" value={filterDept} onChange={setFilterDept} className={`${showDirectoryFilters ? 'block' : 'hidden'} w-full md:block md:w-[120px]`} options={[{ value: 'all', label: '全部部门' }, ...Object.entries(departmentLabels).map(([k, v]) => ({ value: k, label: v }))]} />
         </div>
+        {[filterStatus, filterRole, filterDept].some(value => value !== 'all') && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600"><span>当前筛选：{[filterStatus !== 'all' && (empStatusLabels[filterStatus] || filterStatus), filterRole !== 'all' && getRoleDisplay(filterRole), filterDept !== 'all' && (departmentLabels[filterDept] || filterDept)].filter(Boolean).join(' · ')}</span><Button type="button" variant="ghost" size="sm" onClick={() => { setFilterStatus('all'); setFilterRole('all'); setFilterDept('all'); }}>清空筛选</Button></div>}
       </CardContent></Card>
 
       {loadError && (
@@ -681,7 +677,7 @@ export default function Employees() {
       <Card className="t24-directory-results border-slate-200"><CardContent className="p-0">
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
         : loadError && employees.length === 0 ? <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">员工资料尚未加载</p><p className="mt-1 text-xs text-slate-400">请使用上方“重试”，当前不显示为零员工。</p></div>
-        : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无员工</p>
+        : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">{search || [filterStatus, filterRole, filterDept].some(value => value !== 'all') ? '暂无匹配的员工，请调整筛选' : '暂无员工'}</p>
         : (
           <>
           {isMobile ? <div className="space-y-3 p-3" data-testid="employee-mobile-cards">
@@ -697,6 +693,7 @@ export default function Employees() {
                   </div>
                   <Badge variant="secondary" className="shrink-0 text-xs">{departmentLabels[e.department] || e.department || '未分部门'}</Badge>
                 </div>
+                <p className={`mt-2 text-xs ${employeePasswordState(e).className}`}>{employeePasswordState(e).label}</p>
                 <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                   <div><span className="block text-slate-400">岗位</span><span className="mt-0.5 block font-medium text-slate-700">{positionLabels[e.position] || e.position || '-'}</span></div>
                   <div><span className="block text-slate-400">直属上级</span><span className="mt-0.5 block font-medium text-slate-700">{e.supervisor || '-'}</span></div>
@@ -721,17 +718,17 @@ export default function Employees() {
           </div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b bg-slate-50 text-left text-slate-500">
             <th className="px-4 py-3 font-medium">工号</th><th className="px-4 py-3 font-medium">姓名</th>
             <th className="px-4 py-3 font-medium">角色</th><th className="px-4 py-3 font-medium">部门</th>
-            <th className="px-4 py-3 font-medium hidden md:table-cell">用户名</th>
+            <th className="px-4 py-3 font-medium hidden md:table-cell">登录账号</th>
             <th className="px-4 py-3 font-medium hidden md:table-cell">电话</th>
-            <th className="px-4 py-3 font-medium">状态</th><th className="px-4 py-3 text-right font-medium w-20">操作</th>
+            <th className="px-4 py-3 font-medium">员工状态</th><th className="px-4 py-3 text-right font-medium w-20">操作</th>
           </tr></thead>
           <tbody>{paginated.items.map(e => (
             <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
               <td className="px-4 py-3 text-xs font-mono text-slate-500" onClick={() => openDetail(e)}>{e.employee_code || '-'}</td>
-              <td className="px-4 py-3 font-medium text-blue-600" onClick={() => openDetail(e)}>{e.name}</td>
+              <td className="px-4 py-3 font-medium text-blue-600" ><button type="button" className="min-h-8 max-w-full break-words text-left font-medium text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => openDetail(e)}>{e.name}</button></td>
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge variant="secondary" className="text-xs">{getRoleDisplay(e.role)}</Badge></td>
               <td className="px-4 py-3 text-slate-500" onClick={() => openDetail(e)}>{departmentLabels[e.department] || e.department || '-'}</td>
-              <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{e.login_username || '-'}</td>
+              <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}><span className="block">{e.login_username || '未设用户名'}</span><span className={`block text-xs ${employeePasswordState(e).className}`}>{employeePasswordState(e).label}</span></td>
               <td className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(e)}>{formatPhoneNumber(e.phone)}</td>
               <td className="px-4 py-3" onClick={() => openDetail(e)}><Badge className={`text-xs ${empStatusColors[e.status]}`}>{empStatusLabels[e.status] || e.status}</Badge></td>
               <td className="px-4 py-3 text-right">

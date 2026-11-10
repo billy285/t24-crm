@@ -11,6 +11,8 @@ import '@/components/sales-center.css';
 import './sales-workspace.css';
 import './sales-leads-refined.css';
 import './crm-sales-compact.css';
+import './sales-ui-clarity.css';
+import { callEvidenceState, reportEvidenceState, type CallEvidence } from '@/lib/sales-call-evidence';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
 import SalesLeadDossier from '@/components/SalesLeadDossier';
@@ -160,6 +162,7 @@ function SalesLeadWorkspace() {
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
   const [statsReady, setStatsReady] = useState(false);
+  const [callReportError, setCallReportError] = useState(false);
   const [leadInsights, setLeadInsights] = useState<Record<number, LeadInsight>>({});
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState(false);
@@ -263,8 +266,8 @@ function SalesLeadWorkspace() {
       }
       if (statsResult.status === 'fulfilled') { setStats(statsResult.value.data || stats); setStatsReady(true); }
       else failedSections.push('统计');
-      if (callReportResult.status === 'fulfilled') setCallReport(callReportResult.value.data || null);
-      else failedSections.push('真实通话报告');
+      if (callReportResult.status === 'fulfilled') { setCallReport(callReportResult.value.data || null); setCallReportError(false); }
+      else { setCallReportError(true); failedSections.push('真实通话报告'); }
 
       if (canManage) {
         const [assigneeResult, dashboardResult, performanceResult, recoveryResult] = managementResults;
@@ -310,9 +313,9 @@ function SalesLeadWorkspace() {
   }, [items, view, insightRetry]);
 
   const scopeText = useMemo(() => {
-    if (isAdmin) return '全部线索';
-    if (role === 'sales_manager') return '直属团队线索';
-    return `${employee?.name || '当前销售'}的线索`;
+    if (isAdmin) return '全部销售';
+    if (role === 'sales_manager') return '直属销售团队';
+    return employee?.name || '当前销售';
   }, [employee?.name, isAdmin, role]);
 
   const copyLeadPhone = async (lead: SalesLead) => {
@@ -602,16 +605,24 @@ function SalesLeadWorkspace() {
     return <Button size="sm" variant="outline" onClick={() => openEdit(lead, true)}>继续跟进</Button>;
   };
 
+  const visibleDataErrors = dataErrors.filter(section => view !== 'calls' || section !== '真实通话报告');
+  const callEvidence = callReport ? reportEvidenceState(callReport) : null;
+  const providerValue = (value: number) => callEvidence?.available ? value : '—';
+  const providerDuration = (value: number) => callEvidence?.available ? formatDuration(value) : '—';
+  const employeeValue = (item: CallEvidence, value: number) => callEvidenceState(item).available ? value : '—';
+  const employeeDuration = (item: CallEvidence, value: number) => callEvidenceState(item).available ? formatDuration(value) : '—';
   return (
     <div className={`t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}`}>
       <div className="sc-section-heading slr-page-heading">
         <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2></div>
-        <div className="slr-heading-tools"><Button type="button" variant={view === 'shared' ? 'secondary' : 'outline'} onClick={() => setView('shared')}>协作档案</Button><span className="slr-scope">{scopeText}</span><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost">更多视图<ChevronDown size={15} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setView('leads')}>联系进展</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('calls')}>通话数据</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('handoffs')}>成交与交接</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}</div>
+        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图">更多视图<ChevronDown size={15} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}</div>
       </div>
 
       {listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
-      {dataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{dataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
+      {visibleDataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{visibleDataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => void loadData()} />
+      <nav className="slr-primary-views" aria-label="销售主要视图">{([{value:'leads',label:'联系进展'},{value:'calls',label:'通话数据'},{value:'handoffs',label:'成交与交接'}] as const).map(item => <button key={item.value} type="button" aria-current={view === item.value ? 'page' : undefined} onClick={() => setView(item.value)}>{item.label}</button>)}</nav>
+      <p className="slr-current-scope" role="status">当前范围：{scopeText} · {view === 'calls' ? `最近 ${callReportDays} 天 · 北京时间` : view === 'handoffs' ? '成交与交接记录' : '已授权销售资料'}</p>
       {(view === 'leads' || view === 'calls') && <div className="slr-utilities">
         <details className="slr-overview"><summary><BarChart3 size={15} />数据一览<ChevronDown size={14} /></summary><SalesLeadPulse stats={stats} report={callReport} days={callReportDays} onCalls={() => setView('calls')} loading={!statsReady} /></details>
         {view === 'leads' && canManage && recoveryOverview && <details className="sl-recovery">
@@ -623,7 +634,7 @@ function SalesLeadWorkspace() {
       {view === 'shared' && <SalesSharedDossiers onOpen={setDossierId} />}
       {view === 'handoffs' && <SalesDealHandoffQueue key={handoffQueueVersion} onOpenLead={setDealLeadId} />}
       {view === 'calls' && <SalesPhoneConnections periodDays={callReportDays} onSyncComplete={() => void loadData({ background: true })} />}
-      {view === 'calls' && !callReport && <div className="sc-panel sc-empty">通话数据暂不可用，请刷新后重试。</div>}
+      {view === 'calls' && (callReportError || !callReport) && <div className="slr-call-retry" role={callReportError ? 'alert' : 'status'}><span>{loading && !callReport ? '正在读取通话数据…' : `通话数据暂时无法更新${callReport ? '，下方保留上次成功读取的期间。' : '，尚无可展示结果。'}`}</span><Button size="sm" variant="outline" disabled={loading} onClick={() => void loadData({ background: true })}>重新读取通话数据</Button></div>}
       {view === 'performance' && !dashboard && !performanceDashboard && <div className="sc-panel sc-empty">跟进参考暂不可用，请刷新后重试。</div>}
       {view === 'calls' && callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
         <CardContent className="p-0">
@@ -645,12 +656,12 @@ function SalesLeadWorkspace() {
             {callReport.sync_coverage && <p className="mt-2 text-xs leading-5 text-blue-100">同步期间核对：{callReport.sync_coverage.window_fetched_employees} 位所选期间已有分页拉取记录，{callReport.sync_coverage.unverified_employees} 位仍有未核验区间，{callReport.sync_coverage.failed_or_partial_employees} 位最近补同步未完成。展开上方电话接入可查看区间并由本人处理；分页记录不证明历史完整。</p>}
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               {[
-                { label: '已同步拨出', value: callReport.summary.provider_calls, helper: 'RingCentral', icon: PhoneCall },
-                { label: '已接通', value: callReport.summary.connected, helper: callReport.summary.provider_calls ? `${callReport.summary.connection_rate}%` : '接通率待确认', icon: Phone },
-                { label: '未接通', value: callReport.summary.not_connected, helper: '官方结果', icon: PhoneOff },
+                { label: '已同步拨出', value: callEvidence?.available ? callReport.summary.provider_calls : callEvidence?.label || '待同步', helper: '仅已同步官方记录', icon: PhoneCall },
+                { label: '已接通', value: providerValue(callReport.summary.connected), helper: callReport.summary.provider_calls ? `${callReport.summary.connection_rate}%` : '接通率待确认', icon: Phone },
+                { label: '未接通', value: providerValue(callReport.summary.not_connected), helper: '官方结果', icon: PhoneOff },
                 { label: '接通率', value: callReport.summary.provider_calls ? `${callReport.summary.connection_rate}%` : '—', helper: `${callReport.summary.connected}/${callReport.summary.provider_calls}`, icon: BarChart3 },
-                { label: '接通总时长', value: formatDuration(callReport.summary.total_talk_seconds), helper: '仅已接通', icon: Timer },
-                { label: '平均通话', value: formatDuration(callReport.summary.average_talk_seconds), helper: '每次接通', icon: Clock3 },
+                { label: '接通总时长', value: providerDuration(callReport.summary.total_talk_seconds), helper: '仅已接通', icon: Timer },
+                { label: '平均通话', value: providerDuration(callReport.summary.average_talk_seconds), helper: '每次接通', icon: Clock3 },
               ].map(item => <div key={item.label} className="rounded-2xl border border-white/10 bg-white/10 p-3"><div className="flex items-center justify-between"><p className="text-[11px] text-blue-100">{item.label}</p><item.icon className="h-4 w-4 text-cyan-300" /></div><p className="mt-2 text-xl font-bold tracking-tight">{item.value}</p><p className="mt-1 text-[10px] text-blue-200">{item.helper}</p></div>)}
             </div>
           </div>
@@ -672,18 +683,19 @@ function SalesLeadWorkspace() {
 
               <section className="rounded-2xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">未接通原因</h4><p className="mt-1 text-xs text-slate-500">直接采用RingCentral返回结果。</p>
-                <div className="mt-3 space-y-2">{callReport.result_breakdown.filter(item => item.label !== '已接通').map(item => <div key={item.label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="text-slate-600">{item.label}</span><span className="font-semibold text-slate-900">{item.count} <small className="font-normal text-slate-400">· {item.rate}%</small></span></div>)}{callReport.result_breakdown.filter(item => item.label !== '已接通').length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">统计期内暂无未接通官方记录</p>}</div>
+                <div className="mt-3 space-y-2">{callReport.result_breakdown.filter(item => item.label !== '已接通').map(item => <div key={item.label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span className="text-slate-600">{item.label}</span><span className="font-semibold text-slate-900">{item.count} <small className="font-normal text-slate-400">· {item.rate}%</small></span></div>)}{callReport.result_breakdown.filter(item => item.label !== '已接通').length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-6 text-center text-xs text-slate-400">{callEvidence?.available ? '统计期内暂无未接通官方记录' : '官方记录待同步，暂无法判断未接通情况'}</p>}</div>
               </section>
             </div>
 
             <section>
               <div className="flex items-end justify-between gap-3"><div><h4 className="font-semibold text-slate-900">销售员工数据</h4><p className="mt-1 text-xs text-slate-500">比较工作量、接通质量、通话时长和客户推进结果。</p></div><span className="text-xs text-slate-400">{callReport.employees.length} 位销售</span></div>
-              <div className="mt-3 space-y-3 md:hidden">{callReport.employees.map(item => <article key={item.sales_employee_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><div><p className="font-semibold text-slate-950">{item.salesperson}</p><p className="mt-1 text-xs text-slate-500">分机 {item.extension_number || '未绑定'}{item.needs_attention ? ' · 接入需处理' : ''}</p><p className="mt-1 text-xs text-slate-500">任务完成 {item.completed}/{item.assigned} · CRM记录 {item.crm_records}</p></div><div className="text-right"><p className="text-2xl font-bold text-blue-700">{item.provider_calls ? `${item.connection_rate}%` : '—'}</p><p className="text-[10px] text-slate-400">接通率</p></div></div><div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-xl bg-blue-50 p-2"><p className="font-bold text-blue-800">{item.provider_calls}</p><p className="mt-1 text-slate-500">拨出</p></div><div className="rounded-xl bg-emerald-50 p-2"><p className="font-bold text-emerald-800">{item.connected}</p><p className="mt-1 text-slate-500">接通</p></div><div className="rounded-xl bg-rose-50 p-2"><p className="font-bold text-rose-700">{item.not_connected}</p><p className="mt-1 text-slate-500">未接通</p></div></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600"><p>总时长 <strong className="text-slate-900">{formatDuration(item.total_talk_seconds)}</strong></p><p>平均 <strong className="text-slate-900">{formatDuration(item.average_talk_seconds)}</strong></p><p>意向 <strong className="text-slate-900">{item.interested}</strong></p><p>预约 / 转客户 <strong className="text-slate-900">{item.appointments} / {item.conversions}</strong></p></div></article>)}{callReport.employees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">暂无可统计销售</p>}</div>
-              <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block"><CompactFinanceTable label="销售员工通话数据" legacyClassName="w-full min-w-[1080px] text-left text-sm" expectedHeaders={['销售', '真实拨出', '接通 / 未接通', '接通率', '总时长 / 平均', '意向 / 预约', '转客户', '任务完成', '匹配覆盖']} columns={[
-                { label: '销售', indexes: [0], width: 20 }, { label: '已同步拨出', indexes: [1], width: 12, align: 'right' },
-                { label: '接通 / 未接通', indexes: [2], width: 17, align: 'right' }, { label: '接通率', indexes: [3], width: 12, align: 'right' },
-                { label: '意向 / 预约', indexes: [5], width: 16, align: 'right', priority: 2 }, { label: '任务完成', indexes: [7], width: 17, summaryMode: 'first', priority: 2 },
-              ]}><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-3">销售</th><th>已同步拨出</th><th>接通 / 未接通</th><th>接通率</th><th>总时长 / 平均</th><th>意向 / 预约</th><th>转客户</th><th>任务完成</th><th>匹配覆盖</th></tr></thead><tbody className="divide-y divide-slate-100">{callReport.employees.map(item => <tr key={item.sales_employee_id}><td className="px-4 py-3 font-semibold text-slate-900">{item.salesperson}<p className="mt-1 text-xs font-normal text-slate-500">分机 {item.extension_number || '未绑定'}{item.needs_attention ? ' · 接入需处理' : ''}</p></td><td>{item.provider_calls}</td><td><span className="text-emerald-700">{item.connected}</span> / <span className="text-rose-600">{item.not_connected}</span></td><td className="font-semibold text-blue-700">{item.provider_calls ? `${item.connection_rate}%` : '—'}</td><td>{formatDuration(item.total_talk_seconds)}<p className="text-xs text-slate-400">平均 {formatDuration(item.average_talk_seconds)}</p></td><td>{item.interested} / {item.appointments}</td><td>{item.conversions}</td><td>{item.completed}/{item.assigned}<p className="text-xs text-slate-400">{item.completion_rate}%</p></td><td>{item.linked_records}/{item.provider_calls}<p className="text-xs text-slate-400">{item.link_rate}%</p></td></tr>)}{callReport.employees.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">暂无可统计销售</td></tr>}</tbody></CompactFinanceTable></div>
+              <div className="mt-3 space-y-3 md:hidden">{callReport.employees.map(item => <article key={item.sales_employee_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-center justify-between"><div><p className="font-semibold text-slate-950">{item.salesperson}</p><p className="mt-1 text-xs text-slate-500">分机 {item.extension_number || '未绑定'}{item.needs_attention ? ' · 接入需处理' : ''}</p><p className="mt-1 text-xs text-slate-500">任务完成 {item.completed}/{item.assigned} · CRM记录 {item.crm_records}</p></div><div className="text-right"><p className="text-2xl font-bold text-blue-700">{item.provider_calls ? `${item.connection_rate}%` : '—'}</p><p className="text-[10px] text-slate-400">接通率</p></div></div><div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-xl bg-blue-50 p-2"><p className="font-bold text-blue-800">{callEvidenceState(item).available ? item.provider_calls : callEvidenceState(item).label}</p><p className="mt-1 text-slate-500">拨出</p></div><div className="rounded-xl bg-emerald-50 p-2"><p className="font-bold text-emerald-800">{employeeValue(item, item.connected)}</p><p className="mt-1 text-slate-500">接通</p></div><div className="rounded-xl bg-rose-50 p-2"><p className="font-bold text-rose-700">{employeeValue(item, item.not_connected)}</p><p className="mt-1 text-slate-500">未接通</p></div></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600"><p>总时长 <strong className="text-slate-900">{employeeDuration(item, item.total_talk_seconds)}</strong></p><p>平均 <strong className="text-slate-900">{employeeDuration(item, item.average_talk_seconds)}</strong></p><p>意向 <strong className="text-slate-900">{item.interested}</strong></p><p>预约 / 转客户 <strong className="text-slate-900">{item.appointments} / {item.conversions}</strong></p></div></article>)}{callReport.employees.length === 0 && <p className="py-8 text-center text-sm text-slate-400">暂无可统计销售</p>}</div>
+              <div className="mt-3 hidden overflow-x-auto rounded-2xl border border-slate-200 md:block"><CompactFinanceTable label="销售员工通话数据" legacyClassName="w-full min-w-[1080px] text-left text-sm" expectedHeaders={['销售', '已同步拨出', '接通 / 未接通', '接通率', '总时长 / 平均', '意向 / 预约', '转客户', '任务完成', '匹配覆盖']} columns={[
+                { label: '销售', indexes: [0], width: 18 }, { label: '已同步拨出', indexes: [1], width: 12, align: 'right' },
+                { label: '接通 / 未接通', indexes: [2], width: 14, align: 'right' }, { label: '接通率', indexes: [3], width: 10, align: 'right' },
+                { label: '总时长 / 平均', indexes: [4], width: 18, align: 'right' },
+                { label: '意向 / 预约', indexes: [5], width: 14, align: 'right', priority: 2 }, { label: '任务完成', indexes: [7], width: 14, summaryMode: 'first', priority: 2 },
+              ]}><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-3">销售</th><th>已同步拨出</th><th>接通 / 未接通</th><th>接通率</th><th>总时长 / 平均</th><th>意向 / 预约</th><th>转客户</th><th>任务完成</th><th>匹配覆盖</th></tr></thead><tbody className="divide-y divide-slate-100">{callReport.employees.map(item => <tr key={item.sales_employee_id}><td className="px-4 py-3 font-semibold text-slate-900">{item.salesperson}<p className="mt-1 text-xs font-normal text-slate-500">分机 {item.extension_number || '未绑定'}{item.needs_attention ? ' · 接入需处理' : ''}</p></td><td>{callEvidenceState(item).available ? item.provider_calls : callEvidenceState(item).label}</td><td><span className="text-emerald-700">{employeeValue(item, item.connected)}</span> / <span className="text-rose-600">{employeeValue(item, item.not_connected)}</span></td><td className="font-semibold text-blue-700">{item.provider_calls ? `${item.connection_rate}%` : '—'}</td><td>{employeeDuration(item, item.total_talk_seconds)}<p className="text-xs text-slate-400">平均 {employeeDuration(item, item.average_talk_seconds)}</p></td><td>{item.interested} / {item.appointments}</td><td>{item.conversions}</td><td>{item.completed}/{item.assigned}<p className="text-xs text-slate-400">{item.completion_rate}%</p></td><td>{callEvidenceState(item).available ? `${item.linked_records}/${item.provider_calls}` : '—'}<p className="text-xs text-slate-400">{item.provider_calls ? `${item.link_rate}%` : '待核对'}</p></td></tr>)}{callReport.employees.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-400">暂无可统计销售</td></tr>}</tbody></CompactFinanceTable></div>
             </section>
 
             <section>

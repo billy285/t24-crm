@@ -112,3 +112,8 @@
 @media (pointer: coarse) {
   .management-action-page .mgt-main-tabs button, .management-action-page .mgt-inbox-tabs button, .management-action-page .mgt-action-row > button, .management-action-page .mgt-disclosure > summary { min-height: 44px; }
 }
+
+/* One disclosure opens the complete analysis; its subsections remain directly readable. */
+.management-action-page .mgt-analysis-block + .mgt-analysis-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--mgt-line); }
+.management-action-page .mgt-analysis-block-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 14px; line-height: 22px; font-weight: 600; color: var(--mgt-ink); }
+.management-action-page .mgt-analysis-block-heading > span:last-child:not(:first-child) { display: none; }

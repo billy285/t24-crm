@@ -6,8 +6,8 @@
   --t24-aux-line: 18px;
   --t24-section-size: 16px;
   --t24-section-line: 24px;
-  --t24-control-height: 38px;
-  --t24-control-compact: 36px;
+  --t24-control-height: 36px;
+  --t24-control-compact: 32px;
   --t24-control-radius: 9px;
 }
 .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .app-page-title {
@@ -43,8 +43,8 @@
   line-height: 32px;
 }
 .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-input, .t24-native-select, .t24-select-trigger) {
-  min-height: 38px;
-  height: 38px;
+  min-height: 36px;
+  height: 36px;
   border-radius: 9px;
   font-size: 14px;
   line-height: 21px;
@@ -98,7 +98,7 @@
   overflow: hidden;
 }
 .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-results th {
-  height: 38px;
+  height: 36px;
   padding: 8px 12px;
   color: var(--crm-muted);
   background: #f8fafc;
@@ -172,7 +172,7 @@ body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-wo
   font-weight: 500;
 }
 .t24-system.app-shell[data-crm-polish="20261026"] .calm-system-settings .calm-settings-group [role="tab"] {
-  min-height: 38px;
+  min-height: 36px;
   padding: 8px 12px;
   border-radius: 8px;
   color: var(--crm-secondary);
@@ -308,4 +308,24 @@ body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-wo
   body:has(.t24-system.app-shell[data-crm-polish="20261026"]):not(:has(.private-workspace-shell)) .t24-crm-form-dialog.crm-employee-form {
     width: calc(100vw - 16px);
   }
+}
+
+/* The employee directory uses one compact summary row on touch screens. */
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .calm-employee-summary.employee-directory-summary {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 8px 0; min-height: 0; border-radius: 10px;
+  }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .employee-directory-summary > .t24-card { min-height: 0; height: auto; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .employee-directory-summary > .t24-card + .t24-card { border-left: 1px solid var(--crm-border); }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .employee-directory-summary .t24-card-content { display: grid; min-height: 0; gap: 2px; padding: 0 10px; text-align: left; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .employee-directory-summary p:first-child { font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .employee-directory-summary p:last-child { margin: 0; font-size: 20px; line-height: 24px; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .employee-directory-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .calm-employees-page .t24-directory-toolbar .employee-directory-filters > .relative:first-child { flex: 1 1 0; width: auto; min-width: 0; }
+}
+
+@media (min-width: 768px) {
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish :is(.t24-input, .t24-native-select, .t24-select-trigger) { height: 36px; min-height: 36px; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-button:not(.t24-button-link):not(.t24-button-compact) { min-height: 36px; }
+  .t24-system.app-shell[data-crm-polish="20261026"] .crm-org-polish .t24-button.t24-button-compact { min-height: 32px; }
 }

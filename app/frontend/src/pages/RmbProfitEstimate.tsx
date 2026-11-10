@@ -101,6 +101,7 @@ export default function RmbProfitEstimate() {
   const defaultEnd = localDate(today);
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
+  const [activePreset, setActivePreset] = useState<'month' | 'quarter' | 'year' | 'all' | 'custom'>('year');
   const [appliedRange, setAppliedRange] = useState({ start: defaultStart, end: defaultEnd });
   const [fallbackRate, setFallbackRate] = useState('6.7');
   const [appliedRate, setAppliedRate] = useState(6.7);
@@ -151,6 +152,7 @@ export default function RmbProfitEstimate() {
     } else if (preset === 'all') {
       nextStart = '2026-01-01';
     }
+    setActivePreset(preset);
     setStartDate(nextStart);
     setEndDate(nextEnd);
     setAppliedRange({ start: nextStart, end: nextEnd });
@@ -166,6 +168,7 @@ export default function RmbProfitEstimate() {
       toast.error('预估汇率必须在 0.1 到 20 之间');
       return;
     }
+    setActivePreset('custom');
     setAppliedRate(parsedRate);
     setAppliedRange({ start: startDate, end: endDate });
   };
@@ -204,10 +207,10 @@ export default function RmbProfitEstimate() {
         <CardContent className="p-5">
           <div className="flex flex-col items-stretch gap-3 md:flex-row md:flex-wrap md:items-end">
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => applyPreset('month')}>本月</Button>
-              <Button size="sm" variant="outline" onClick={() => applyPreset('quarter')}>本季度</Button>
-              <Button size="sm" variant="outline" onClick={() => applyPreset('year')}>本年</Button>
-              <Button size="sm" variant="outline" onClick={() => applyPreset('all')}>2026 至今</Button>
+              <Button size="sm" variant={activePreset === 'month' ? 'default' : 'outline'} aria-pressed={activePreset === 'month'} onClick={() => applyPreset('month')}>本月</Button>
+              <Button size="sm" variant={activePreset === 'quarter' ? 'default' : 'outline'} aria-pressed={activePreset === 'quarter'} onClick={() => applyPreset('quarter')}>本季度</Button>
+              <Button size="sm" variant={activePreset === 'year' ? 'default' : 'outline'} aria-pressed={activePreset === 'year'} onClick={() => applyPreset('year')}>本年</Button>
+              <Button size="sm" variant={activePreset === 'all' ? 'default' : 'outline'} aria-pressed={activePreset === 'all'} onClick={() => applyPreset('all')}>2026 至今</Button>
             </div>
             <div className="min-w-[150px] flex-1 lg:max-w-[190px]">
               <Label htmlFor="rmb-profit-start" className="text-xs">开始日期</Label>
@@ -242,7 +245,7 @@ export default function RmbProfitEstimate() {
           </div></details>
 
           <Card>
-            <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">利润趋势</CardTitle><p className="mt-1 text-xs text-slate-500">绿色为盈利，红色为亏损。</p></div><div className="flex rounded-lg border bg-slate-50 p-1">{([['month', '按月'], ['quarter', '按季度'], ['year', '按年']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setViewMode(key)} className={`min-h-11 rounded-md px-3 text-sm md:min-h-9 ${viewMode === key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div></div></CardHeader>
+            <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">利润趋势</CardTitle><p className="mt-1 text-xs text-slate-500">绿色为盈利，红色为亏损。</p></div><div className="flex rounded-lg border bg-slate-50 p-1">{([['month', '按月'], ['quarter', '按季度'], ['year', '按年']] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setViewMode(key)} aria-pressed={viewMode === key} className={`min-h-11 rounded-md px-3 text-sm md:min-h-9 ${viewMode === key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-500'}`}>{label}</button>)}</div></div></CardHeader>
             <CardContent>
               <div className="h-[270px] w-full">
                 <ResponsiveContainer width="100%" height="100%">

@@ -153,8 +153,8 @@ for (const owner of [false, true]) test(`空目录只阻止登记，不合成价
 
 test('登记草稿取消关闭保留，再确认放弃；无写入', async ({ page }) => {
   const { writes } = await fixture(page); const dialog = await openRegistration(page); await dialog.getByLabel('统一套餐', { exact: true }).selectOption('9');
-  page.once('dialog', prompt => prompt.dismiss()); await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(dialog.getByLabel('统一套餐', { exact: true })).toHaveValue('9');
-  page.once('dialog', prompt => prompt.accept()); await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(writes).toEqual([]);
+  page.once('dialog', prompt => prompt.dismiss()); await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(dialog.getByLabel('统一套餐', { exact: true })).toHaveValue('9');
+  page.once('dialog', prompt => prompt.accept()); await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(dialog).toHaveCount(0); expect(writes).toEqual([]);
 });
 
 test('运营delivery-only只见交付摘要，不见联系人/历史/财务；本人填备注确认接收', async ({ page }) => {
@@ -187,7 +187,7 @@ test('真实等待响应期间不能重复登记或关闭', async ({ page }) => 
   const data = await fixture(page, { holdRegistration: true }); const dialog = await openRegistration(page); await fillToConfirm(dialog);
   try {
     await dialog.getByRole('button', { name: '确认登记成交', exact: true }).click(); await expect(dialog.getByRole('button', { name: '正在登记…', exact: true })).toBeDisabled();
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click(); await expect(dialog).toBeVisible(); expect(data.writes).toHaveLength(1);
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(dialog).toBeVisible(); expect(data.writes).toHaveLength(1);
   } finally { data.releaseRegistration(); }
   await expect(dialog.getByText('成交已登记', { exact: true })).toBeVisible(); expect(data.writes).toHaveLength(1);
 });

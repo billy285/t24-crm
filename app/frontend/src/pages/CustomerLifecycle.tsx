@@ -115,6 +115,7 @@ const stopReasonOptions = [
   ['payment', '付款问题'], ['owner_change', '老板变更'], ['data_correction', '历史数据修正'], ['other', '其他'],
 ];
 
+const actionConfirmationLabels: Record<string, string> = { pause: '确认暂停合作', pending_stop: '确认标记待停止', resume: '确认恢复合作', stop: '确认停止合作', reactivate: '确认重新合作', adjust_start: '保存开始日期' };
 const actionLabels: Record<string, string> = {
   pause: '暂停合作', pending_stop: '标记待确认停止', resume: '恢复合作', stop: '确认停止合作',
   reactivate: '确认重新合作', adjust_start: '修正开始日期',
@@ -454,9 +455,9 @@ export default function CustomerLifecycle() {
       </div>
 
       <Card className="calm-lifecycle-period border-slate-200">
-        <CardContent className="flex flex-col items-stretch gap-3 p-4 md:flex-row md:flex-wrap md:items-end">
-          <div><Label>统计开始</Label><Input type="date" value={startDate} min="2026-01-01" onChange={event => setStartDate(event.target.value)} className="mt-1 w-full md:w-44" /></div>
-          <div><Label>统计截止</Label><Input type="date" value={asOf} max={today} onChange={event => setAsOf(event.target.value)} className="mt-1 w-full md:w-44" /></div>
+        <CardContent className="grid grid-cols-2 items-end gap-2 p-3 md:flex md:flex-wrap md:gap-3 md:p-4">
+          <div><Label htmlFor="lifecycle-period-start">统计开始</Label><Input id="lifecycle-period-start" type="date" value={startDate} min="2026-01-01" onChange={event => setStartDate(event.target.value)} className="mt-1 w-full md:w-44" /></div>
+          <div><Label htmlFor="lifecycle-period-end">统计截止</Label><Input id="lifecycle-period-end" type="date" value={asOf} max={today} onChange={event => setAsOf(event.target.value)} className="mt-1 w-full md:w-44" /></div>
           <Button variant="outline" onClick={() => void loadData()} disabled={loading}><CalendarDays className="mr-2 h-4 w-4" />应用时间</Button>
           <details className="calm-stat-definition"><summary>统计口径</summary><p>合作起点来自第一笔金额大于0且有实际收款日期的记账；套餐到期不会自动判定客户流失。</p></details>
         </CardContent>
@@ -636,7 +637,7 @@ export default function CustomerLifecycle() {
           <CrmFormDialogHeader><DialogTitle>{actionLabels[actionType] || '生命周期操作'}</DialogTitle></CrmFormDialogHeader>
           <CrmFormDialogBody><div className="space-y-4"><div className="rounded-lg bg-slate-50 p-3 text-sm"><p className="font-semibold">{actionTarget?.business_name}</p><p className="mt-1 text-xs text-slate-500">当前状态：{statusLabels[actionTarget?.status || ''] || '-'}</p></div>{actionType === 'stop' && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-700"><strong>停止合作将同步完成状态闭环：</strong>所有仍在合作的项目会停止，关联续费会关闭自动续费和未来扣款；历史成交、收款和服务记录全部保留。</div>}<div><Label>{actionType === 'adjust_start' ? '新的合作开始日期' : '生效日期'} · 北京时间</Label><Input type="date" value={actionDate} max={today} onChange={event => setActionDate(event.target.value)} className="mt-1" /></div>{actionType === 'stop' && <div><Label>停止合作原因 *</Label><select value={actionReason} onChange={event => setActionReason(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">请选择原因</option>{stopReasonOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>}<div><Label>{actionType === 'adjust_start' ? '修正原因 *' : '备注'}</Label><Textarea value={actionNote} onChange={event => setActionNote(event.target.value)} rows={3} className="mt-1" placeholder={actionType === 'reactivate' ? '系统将使用停止合作后的第一笔有效收款作为新周期起点' : '填写业务背景，方便以后复盘'} /></div>{actionType === 'reactivate' && <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">重新合作必须已经存在停止日期之后的新收款；新周期开始日期自动取该笔收款日期。</p>}</div>
           </CrmFormDialogBody>
-          <CrmFormDialogFooter><Button variant="outline" disabled={actionSaving} onClick={() => { if (actionDraft.confirmDiscard()) setActionTarget(null); }}>取消</Button><Button onClick={() => void submitAction()} disabled={actionSaving}>{actionSaving ? '处理中…' : '确认'}</Button></CrmFormDialogFooter>
+          <CrmFormDialogFooter><Button variant="outline" disabled={actionSaving} onClick={() => { if (actionDraft.confirmDiscard()) setActionTarget(null); }}>取消</Button><Button onClick={() => void submitAction()} disabled={actionSaving}>{actionSaving ? '处理中…' : actionConfirmationLabels[actionType] || '确认操作'}</Button></CrmFormDialogFooter>
         </CrmFormDialogContent>
       </Dialog>}
 

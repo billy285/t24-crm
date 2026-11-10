@@ -3,6 +3,9 @@ import { useListScroll } from '@/lib/use-list-scroll';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
 import './delivery-workspace.css';
+import './crm-delivery-refinement.css';
+import './delivery-records-refined.css';
+import { DeliveryFilterSummary, DeliveryPagination, type DeliveryAppliedFilter } from '@/components/DeliveryListTools';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { buildReturnLink } from '@/lib/navigation-state';
@@ -269,6 +272,18 @@ export default function Callbacks() {
     });
   }, [businessToday, callbacks, customerMap, search, filterStatus, filterType, filterCustomerId, filterEmployeeId, filterSchedule]);
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
+  const clearCallbackFilters = () => {
+    setSearch(''); setFilterStatus('all'); setFilterType('all'); setFilterCustomerId('');
+    setFilterEmployeeId('all'); setFilterSchedule('all'); setPage(1);
+  };
+  const callbackFilters: DeliveryAppliedFilter[] = [
+    ...(search.trim() ? [{key:'search',label:`搜索：${search.trim()}`,onClear:() => setSearch('')}] : []),
+    ...(filterStatus !== 'all' ? [{key:'status',label:`状态：${callbackStatusLabels[filterStatus] || filterStatus}`,onClear:() => setFilterStatus('all')}] : []),
+    ...(filterType !== 'all' ? [{key:'type',label:`类型：${callbackTypeLabels[filterType] || filterType}`,onClear:() => setFilterType('all')}] : []),
+    ...(filterSchedule !== 'all' ? [{key:'schedule',label:`时间：${filterSchedule === 'today' ? '今日待办' : '已逾期'}`,onClear:() => setFilterSchedule('all')}] : []),
+    ...(filterCustomerId ? [{key:'customer',label:`客户：${customerMap[filterCustomerId]?.business_name || `客户 #${filterCustomerId}`}`,onClear:() => setFilterCustomerId('')}] : []),
+    ...(filterEmployeeId !== 'all' ? [{key:'employee',label:`负责人：${employeeOptions.find(option => option.value === filterEmployeeId)?.label || `员工 #${filterEmployeeId}`}`,onClear:() => setFilterEmployeeId('all')}] : []),
+  ];
 
   useEffect(() => {
     if (firstFilterRender.current) { firstFilterRender.current = false; return; }
@@ -569,31 +584,7 @@ export default function Callbacks() {
 
   const activeReminder = searchParams.get('reminder') || '';
   const activeReminderMessage = callbackReminderMessages[activeReminder];
-  const PaginationFooter = () => {
-    if (paginated.total === 0) return null;
-    return (
-      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
-          {filtered.length !== callbacks.length ? `（筛选自 ${callbacks.length} 条）` : ''}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400">每页</span>
-          <NativeSelect
-            value={String(pageSize)}
-            onChange={value => setPageSize(Number(value))}
-            options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-            className="h-8 w-24 text-xs"
-          />
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
-          <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-          <Button size="sm" variant="outline" className="min-h-11 md:h-8 md:min-h-0" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
-        </div>
-      </div>
-    );
-  };
+  const PaginationFooter = () => <DeliveryPagination label="回访记录" info={paginated} pageSize={pageSize} sizes={PAGE_SIZE_OPTIONS} onPage={setPage} onPageSize={setPageSize} />;
 
   if (loading && callbacks.length === 0) {
     return <PageLoadState loading message="正在加载电话回访记录…" />;
@@ -603,7 +594,7 @@ export default function Callbacks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-callbacks app-page calm-delivery-page">
+    <div className="t24-work-page delivery-center-ui dc-callbacks app-page calm-delivery-page crm-delivery-refined">
       {/* Header */}
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div><p className="app-page-kicker">T24 Marketing · Customer Care</p><h2 className="app-page-heading flex items-center gap-2">
@@ -778,6 +769,8 @@ export default function Callbacks() {
           </div>
         </CardContent>
       </Card>
+
+      <DeliveryFilterSummary scope={dataScope === 'self' ? `${employee?.name || '本人'}的回访` : '当前授权回访'} count={filtered.length} loading={loading} stale={Boolean(loadError)} filters={callbackFilters} onClearAll={clearCallbackFilters} />
 
       {/* Callback list */}
       <Card className="dc-callback-list border-slate-200">

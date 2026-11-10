@@ -13,6 +13,12 @@ class Employees(Base):
     phone = Column(String, nullable=True)
     email = Column(String, nullable=True)
     password = Column(String, nullable=True)
+
+    @property
+    def has_login_password(self) -> bool:
+        """Credential presence only; never serialize the credential itself."""
+        return bool(self.password and self.password.strip())
+
     status = Column(String, nullable=True)
     employee_code = Column(String, nullable=True)
     department = Column(String, nullable=True)

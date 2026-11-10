@@ -36,7 +36,10 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      onOpenAutoFocus={(e) => e.preventDefault()}
+      onOpenAutoFocus={(event) => {
+        event.preventDefault();
+        (event.target as HTMLElement).focus({ preventScroll: true });
+      }}
       onPointerDownOutside={(e) => {
         // Prevent dialog from closing when interacting with native select dropdowns
         const target = e.target as HTMLElement;
@@ -53,7 +56,7 @@ const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-xl opacity-70 ring-offset-background transition-opacity hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground sm:right-4 sm:top-4">
         <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>

@@ -1,4 +1,6 @@
 import './crm-customer-delivery-compact.css';
+import './crm-delivery-refinement.css';
+import { operationsMetric, operationsReadState } from '@/lib/operations-read-state';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { buildReturnLink } from '@/lib/navigation-state';
 import { Input } from '@/components/ui/input';
@@ -113,6 +115,9 @@ export default function OperationsWorkbench() {
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [incompleteSources, setIncompleteSources] = useState<string[]>([]);
+  const [actionsIncomplete, setActionsIncomplete] = useState(false);
   const [filter, setFilter] = useState<ActionFilter>('all');
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(30);
@@ -132,6 +137,7 @@ export default function OperationsWorkbench() {
 
   const loadData = async () => {
     const request = ++loadSequence.current;
+    setRefreshing(true);
     const results = await Promise.allSettled([
       client.entities.tasks.query({ limit: 1000, sort: '-created_at' }),
       client.apiCall.invoke({ url: '/api/v1/entities/customer_callbacks', method: 'GET', data: { limit: 1000, sort: '-callback_date' } }),
@@ -139,19 +145,24 @@ export default function OperationsWorkbench() {
       client.entities.customers.query({ limit: 1000 }),
     ]);
     if (request !== loadSequence.current) return;
+    const readState = operationsReadState(results);
+    setIncompleteSources([...readState.missing]);
+    setActionsIncomplete(readState.actionsIncomplete);
     const succeeded = results.filter(result => result.status === 'fulfilled').length;
     if (succeeded === 0) {
       setLoadError('运营数据暂时无法读取，请稍后重试。');
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     const valueAt = (index: number) => results[index].status === 'fulfilled' ? (results[index] as PromiseFulfilledResult<any>).value : null;
-    setTasks(valueAt(0)?.data?.items || []);
-    setCallbacks(valueAt(1)?.data?.items || []);
-    setProgresses(valueAt(2)?.data?.items || []);
-    setCustomers(valueAt(3)?.data?.items || []);
-    setLoadError(succeeded < results.length ? '部分关联数据暂未加载，已保留可用的今日事项。' : '');
+    if (results[0].status === 'fulfilled') setTasks(valueAt(0)?.data?.items || []);
+    if (results[1].status === 'fulfilled') setCallbacks(valueAt(1)?.data?.items || []);
+    if (results[2].status === 'fulfilled') setProgresses(valueAt(2)?.data?.items || []);
+    if (results[3].status === 'fulfilled') setCustomers(valueAt(3)?.data?.items || []);
+    setLoadError(readState.message);
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
@@ -355,7 +366,7 @@ export default function OperationsWorkbench() {
   } as const;
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-today calm-operations-page app-page">
+    <div className="t24-work-page delivery-center-ui dc-today calm-operations-page crm-delivery-refined app-page">
       <ServiceFollowThroughNav view="today" onChange={changeView} />
       {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
@@ -364,25 +375,25 @@ export default function OperationsWorkbench() {
           <h2 className="app-page-heading">运营今日工作台</h2>
           <p className="app-page-description">先处理逾期和今天必须完成的事项；任务与服务问题可在本页直接闭环。</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading || refreshing} aria-busy={refreshing}>
           <RefreshCw className={`mr-1.5 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新
         </Button>
       </div>
 
-      <MediaOperationsEntry />
-      {loadError && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{loadError}</div>}
+      {isMobile ? <details className="dc-media-entry"><summary>代运营内容与发布待办</summary><MediaOperationsEntry /></details> : <MediaOperationsEntry />}
+      {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => void loadData()} disabled={refreshing}>重新读取</Button></div>}
 
       <div className="calm-operations-metrics"><DeliveryMetrics label="今日事项概览" items={[
-        { key: 'overdue', label: '逾期未处理', value: stats.overdue, note: '优先推动，避免继续延误', tone: 'rose', active: filter === 'overdue', onClick: () => setFilter('overdue') },
-        { key: 'today', label: '今天必须做', value: stats.today, note: '今日需要完成的事项', active: filter === 'today', onClick: () => setFilter('today') },
-        { key: 'waiting', label: '等待客户', value: stats.waiting, note: '资料或反馈尚未到位', tone: 'amber', active: filter === 'waiting', onClick: () => setFilter('waiting') },
-        { key: 'issue', label: '服务问题', value: stats.issues, note: '需要协调处理的卡点', tone: 'green', active: filter === 'issue', onClick: () => setFilter('issue') },
+        { key: 'overdue', label: '逾期未处理', value: operationsMetric(stats.overdue, actionsIncomplete), note: '优先推动，避免继续延误', tone: 'rose', active: filter === 'overdue', onClick: () => setFilter('overdue') },
+        { key: 'today', label: '今天必须做', value: operationsMetric(stats.today, actionsIncomplete), note: '今日需要完成的事项', active: filter === 'today', onClick: () => setFilter('today') },
+        { key: 'waiting', label: '等待客户', value: operationsMetric(stats.waiting, actionsIncomplete), note: '资料或反馈尚未到位', tone: 'amber', active: filter === 'waiting', onClick: () => setFilter('waiting') },
+        { key: 'issue', label: '服务问题', value: operationsMetric(stats.issues, actionsIncomplete), note: '需要协调处理的卡点', tone: 'green', active: filter === 'issue', onClick: () => setFilter('issue') },
       ]} /></div>
-      <div className="dc-today-toolbar"><div><h3>下一步动作 <span>{filteredActions.length} 项</span></h3><p>{usePersonalScope ? '我的待办' : '团队待办'} · 按逾期、今日、等待客户排序</p></div><nav aria-label="今日事项筛选">{([{ key: 'all', label: '全部' }, { key: 'overdue', label: '已逾期' }, { key: 'today', label: '今日' }, { key: 'waiting', label: '等待客户' }, { key: 'issue', label: '服务问题' }] as const).map(item => <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>)}</nav></div>
+      <div className="dc-today-toolbar"><div><h3>下一步动作 <span>{actionsIncomplete ? `已载入 ${filteredActions.length} 项 · 待核对` : `${filteredActions.length} 项`}</span></h3><p>{usePersonalScope ? '我的待办' : '团队待办'} · 按逾期、今日、等待客户排序</p></div><nav aria-label="今日事项筛选">{([{ key: 'all', label: '全部' }, { key: 'overdue', label: '已逾期' }, { key: 'today', label: '今日' }, { key: 'waiting', label: '等待客户' }, { key: 'issue', label: '服务问题' }] as const).map(item => <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>)}</nav></div>
 
       <div className="calm-execution-workspace"><section className="min-w-0">
       {filteredActions.length === 0 ? (
-        <DeliveryEmpty title="当前分类没有待处理事项" description="新任务和提醒会自动进入这里，也可以切换分类查看其他事项。" />
+        <DeliveryEmpty title={actionsIncomplete ? '部分事项尚未读取' : '当前分类没有待处理事项'} description={actionsIncomplete ? `${incompleteSources.join('、')}需要重新读取，当前不能据此判断没有待办。` : '新任务和提醒会自动进入这里，也可以切换分类查看其他事项。'}>{actionsIncomplete && <Button variant="outline" onClick={() => void loadData()} disabled={refreshing}>重新读取</Button>}</DeliveryEmpty>
       ) : (
         <div className="dc-action-list">
           {visibleActions.map(action => {
@@ -395,7 +406,7 @@ export default function OperationsWorkbench() {
             const ownerLabel = action.description.replace(/^(负责人|回访负责人|问题负责人)：\s*/, '');
             const mobileActionTitle = action.title.replace(/^【[^】]+】\s*/, '');
             return (
-              <Card key={action.id} className={`dc-action-card ${selectedAction?.id === action.id ? 'calm-action-selected' : ''} dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
+              <Card key={action.id} onFocus={() => setSelectedActionId(action.id)} onMouseEnter={() => setSelectedActionId(action.id)} className={`dc-action-card ${selectedAction?.id === action.id ? 'calm-action-selected' : ''} dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
                 <CardContent className="p-0 md:p-4">
                   {isMobile && <div className="md:hidden">
                     <div className={`h-1 w-full ${style.bar}`} />
@@ -414,24 +425,13 @@ export default function OperationsWorkbench() {
 
                       {missingOwner && <div className="mt-3"><span className="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-bold text-orange-700">缺少负责人</span></div>}
 
-                      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200">
-                        <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="col-span-2 bg-slate-50 px-3 py-2.5 text-left disabled:cursor-default">
-                          <span className="block text-[10px] font-medium text-slate-400">客户</span>
-                          <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-slate-800"><span className="truncate">{action.customerName}</span>{action.customerId && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-blue-600" />}</span>
-                        </button>
-                        <div className="bg-slate-50 px-3 py-2.5">
-                          <span className="block text-[10px] font-medium text-slate-400">负责人</span>
-                          <span className={`mt-0.5 block truncate text-xs font-semibold ${missingOwner ? 'text-orange-700' : 'text-slate-800'}`}>{ownerLabel}</span>
-                        </div>
-                        <div className="bg-slate-50 px-3 py-2.5">
-                          <span className="block text-[10px] font-medium text-slate-400">截止时间</span>
-                          <span className={`mt-0.5 block text-xs font-semibold tabular-nums ${action.urgency === 'overdue' ? 'text-rose-600' : 'text-slate-800'}`}>{action.date || '未设置'}</span>
-                        </div>
+                      <div className="dc-action-context mt-3">
+                        <button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId} className="flex min-h-11 w-full items-center gap-1 text-left text-sm font-medium text-slate-700"><span className="truncate">{action.customerName}</span>{action.customerId && <ArrowRight className="h-3.5 w-3.5 shrink-0 text-blue-600" />}</button>
+                        <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500"><span className={missingOwner ? 'text-orange-700' : ''}>负责人：{ownerLabel}</span><span className={action.urgency === 'overdue' ? 'text-rose-600' : ''}>截止：{action.date || '未设置'}</span></p>
                       </div>
-
-                      <div className="mt-4 border-t border-slate-200/70 pt-3">
-                        <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold shadow-sm hover:bg-blue-700" onClick={() => openAction(action)}>{primaryActionLabel}</Button>
-                        {action.customerId && <Button className="mt-2 min-h-11 w-full rounded-xl bg-white text-slate-700 shadow-sm hover:bg-slate-50" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1.5 h-4 w-4" />客户 360</Button>}
+                      <div className="mt-3 flex gap-2 border-t border-slate-200/70 pt-3">
+                        <Button className="min-h-11 flex-1 rounded-xl bg-blue-600 font-semibold hover:bg-blue-700" onClick={() => openAction(action)}>{primaryActionLabel}</Button>
+                        {action.customerId && <Button className="min-h-11 rounded-xl bg-white text-slate-700" variant="outline" onClick={() => openCustomer(action)}><UserRound className="mr-1.5 h-4 w-4" />客户 360</Button>}
                       </div>
                     </div>
                   </div>}
@@ -440,11 +440,7 @@ export default function OperationsWorkbench() {
                     <div className="dc-action-main"><span className="dc-kind"><ActionIcon size={13} />{actionTypeLabel}</span><h4>{mobileActionTitle}</h4><button type="button" onClick={() => openCustomer(action)} disabled={!action.customerId}>{action.customerName}{action.customerId && <ArrowRight size={12} />}</button></div>
                     <div className="dc-action-owner"><small>负责人</small><span className={missingOwner ? 'dc-warning-text' : ''}>{ownerLabel}</span></div>
                     <div className="dc-action-due"><span className={`dc-status dc-status-${action.urgency === 'overdue' ? 'rose' : action.urgency === 'waiting' ? 'amber' : 'blue'}`}>{action.urgency === 'overdue' && overdueDays > 0 ? `逾期 ${overdueDays} 天` : style.label}</span><small>{action.date || '未设置截止时间'}</small></div>
-                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`查看事项 ${mobileActionTitle}`} onClick={event => {
-                      const frameWidth = event.currentTarget.closest<HTMLElement>('.crm-content-frame')?.getBoundingClientRect().width ?? window.innerWidth;
-                      if (window.matchMedia('(min-width: 1024px)').matches && frameWidth >= 1100) setSelectedActionId(action.id);
-                      else openAction(action);
-                    }}>查看事项</Button></div>
+                    <div className="dc-row-actions"><Button size="sm" variant="outline" aria-label={`${primaryActionLabel}：${mobileActionTitle}`} onClick={() => openAction(action)}>{primaryActionLabel}</Button></div>
                   </div>}
                 </CardContent>
               </Card>

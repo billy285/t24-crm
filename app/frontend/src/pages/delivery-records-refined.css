@@ -1,0 +1,30 @@
+.crm-delivery-refined .dc-filter-context { min-width:0; margin:10px 0; }
+.crm-delivery-refined .dc-result-summary { display:flex; justify-content:space-between; align-items:center; gap:8px 16px; flex-wrap:wrap; color:#64748b; font-size:12px; line-height:1.6; }
+.crm-delivery-refined .dc-result-summary strong { font-weight:500; color:#475569; font-variant-numeric:tabular-nums; }
+.crm-delivery-refined .dc-applied-filters button { display:inline-flex; align-items:center; gap:6px; max-width:100%; white-space:normal; }
+.crm-delivery-refined .dc-applied-filters button > span { min-width:0; overflow-wrap:anywhere; text-align:left; }
+.crm-delivery-refined .dc-applied-filters button > svg { flex-shrink:0; }
+.crm-delivery-refined .dc-list-pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px 16px; border-top:1px solid #e8edf4; padding:12px 16px; color:#64748b; font-size:12px; }
+.crm-delivery-refined .dc-pagination-summary,.crm-delivery-refined .dc-pagination-actions { display:flex; align-items:center; gap:8px; }
+.crm-delivery-refined .dc-pagination-summary { flex-wrap:wrap; }
+.crm-delivery-refined .dc-pagination-summary > .relative { width:112px; flex-shrink:0; }
+.crm-delivery-refined .dc-pagination-actions > span { min-width:64px; text-align:center; font-variant-numeric:tabular-nums; }
+.crm-delivery-refined .dc-task-secondary-filters { border-bottom:1px solid #e8edf4; padding-bottom:8px; }
+.crm-delivery-refined .dc-task-secondary-filters > summary { display:flex; align-items:center; gap:8px; min-height:36px; list-style:none; cursor:pointer; font-size:12px; color:#64748b; }
+.crm-delivery-refined .dc-task-secondary-filters > summary::-webkit-details-marker { display:none; }
+.crm-delivery-refined .dc-task-secondary-filters > summary svg { margin-left:auto; }
+.crm-delivery-refined .dc-task-secondary-filters[open] > summary svg { transform:rotate(180deg); }
+.crm-delivery-refined .dc-task-secondary-filters .dc-task-priorities { margin-top:6px; }
+.crm-delivery-refined .dc-task-secondary-filters .dc-clear-filter { display:none; }
+.crm-delivery-refined .dc-task-auxiliary { display:flex; flex-wrap:wrap; gap:4px 10px; color:#64748b; font-size:12px; line-height:1.7; }
+.crm-delivery-refined .dc-task-auxiliary .is-urgent { color:#b45309; }
+.crm-delivery-refined .dc-task-auxiliary .is-overdue { color:#be123c; }
+@media(max-width:767px) {
+  .crm-delivery-refined .dc-filter-context { margin:8px 0; }
+  .crm-delivery-refined .dc-list-pagination { display:grid; grid-template-columns:minmax(0,1fr); padding:12px; gap:10px; }
+  .crm-delivery-refined .dc-pagination-summary { justify-content:space-between; }
+  .crm-delivery-refined .dc-pagination-actions { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; }
+  .crm-delivery-refined .dc-pagination-actions .dc-pagination-edge { display:none; }
+  .crm-delivery-refined .dc-pagination-actions button { min-height:44px; }
+  .crm-delivery-refined .dc-task-auxiliary { font-size:12px; }
+}

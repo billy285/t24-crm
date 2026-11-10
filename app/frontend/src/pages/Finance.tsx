@@ -271,8 +271,8 @@ const pickColorByKey = (key: string, palette: string[], fixedColors?: Record<str
 };
 
 // ─── Helper: format currency ─────────────────────────────────────────
-const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-const fmtRMB = (n: number) => `¥${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtRMB = (n: number) => `¥${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 type CurrencyCode = 'USD' | 'CNY';
 const currencyLabels: Record<CurrencyCode, string> = { USD: '美元 USD', CNY: '人民币 CNY' };
 const normalizeCurrency = (currency?: string | null, fallback: CurrencyCode = 'USD'): CurrencyCode => (
@@ -2888,6 +2888,7 @@ function FinanceWorkspace() {
         actionDetail: closing ? `月度关账：${month}` : `重新打开月度账期：${month}`,
         operatorName,
       });
+      return true;
     } catch (err: any) {
       const detail = err?.data?.detail || err?.message || '保存关账状态失败';
       toast.error(detail);
@@ -4456,7 +4457,7 @@ function FinanceWorkspace() {
 
   return (
     <div className={isMobile ? 'financial-workspace financial-workspace--finance min-w-0' : `financial-workspace financial-workspace--finance t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
-      {canAccess('/finance-entry') && <div className="flex justify-end pb-2"><Button variant="outline" className="min-h-11 md:min-h-9" onClick={() => navigate('/finance-entry?status=submitted')}>登记待核对 <ArrowUpRight className="ml-1 h-4 w-4" /></Button></div>}
+      {isMobile && canAccess('/finance-entry') && <div className="flex justify-end pb-2"><Button variant="outline" className="min-h-11 md:min-h-9" onClick={() => navigate('/finance-entry?status=submitted')}>登记待核对 <ArrowUpRight className="ml-1 h-4 w-4" /></Button></div>}
       {contextCustomerId && <div className="finance-context-bar"><span>客户：{customerMap[contextCustomerId]?.business_name || `#${contextCustomerId}`} · 原始收支</span><div>{contextReturnTo?.startsWith('/finance') && <Button variant="outline" onClick={() => navigate(contextReturnTo)}>返回客户利润</Button>}<Button variant="ghost" onClick={() => { const params = new URLSearchParams(searchParams); params.delete('customer_id'); params.delete('returnTo'); setSearchParams(params); }}>查看全部客户</Button></div></div>}
       {isMobile && !contextCustomerId && contextReturnTo?.startsWith('/finance') && <Button variant="outline" className="mb-3" onClick={() => navigate(contextReturnTo)}>返回月度检查</Button>}
       {isMobile && financeIssueFilter && <div className="finance-context-bar"><span>正在查看：{financeIssueCopy[financeIssueFilter]?.label || '待处理明细'}</span><Button variant="ghost" onClick={() => { setFinanceIssueFilter(null); const params = new URLSearchParams(searchParams); params.delete('issue'); setSearchParams(params, { replace: true }); }}>清除检查条件</Button></div>}
@@ -4474,10 +4475,11 @@ function FinanceWorkspace() {
             </div>
           </details>
         </div>
+        <div className="flex flex-wrap items-center gap-2">{canAccess('/finance-entry') && <Button variant="outline" onClick={() => navigate('/finance-entry?status=submitted')}>登记待核对 <ArrowUpRight className="ml-1 h-4 w-4" /></Button>}
         {!isMobile && <details className="finance-export-tools"><summary>导出账本</summary><div className="finance-export-menu">
           <Button size="sm" variant="outline" className="whitespace-nowrap shadow-sm" onClick={() => doExport('csv')} disabled={exporting}>导出 CSV</Button>
           <Button size="sm" variant="outline" onClick={() => doExport('xlsx')} disabled={exporting} className="whitespace-nowrap">导出 Excel</Button>
-        </div></details>}
+        </div></details>}</div>
         {loadError && hasFinanceData && (
           <div role="alert" className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -5140,8 +5142,8 @@ function FinanceWorkspace() {
                               <span className="text-xs text-slate-400">已归档</span>
                             ) : (
                               <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditExpense(e)}><Edit className="w-3.5 h-3.5" /></Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteExpenseTarget(e)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" aria-label={`编辑客户支出 · ${e.expense_month}`} title="编辑客户支出" onClick={() => openEditExpense(e)}><Edit className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" aria-label={`删除客户支出 · ${e.expense_month}`} title="删除客户支出" onClick={() => setDeleteExpenseTarget(e)}><Trash2 className="w-3.5 h-3.5" /></Button>
                               </div>
                             )}
                           </td>
@@ -5263,8 +5265,8 @@ function FinanceWorkspace() {
                           <td className="px-3 py-2.5 text-slate-500 hidden md:table-cell max-w-[200px] truncate">{e.notes || '-'}</td>
                           <td className="px-3 py-2.5">
                             <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => openEditCompanyExpense(e)}><Edit className="w-3.5 h-3.5" /></Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" onClick={() => setDeleteCompanyExpenseTarget(e)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" aria-label={`编辑公司支出 · ${e.expense_month}`} title="编辑公司支出" onClick={() => openEditCompanyExpense(e)}><Edit className="w-3.5 h-3.5" /></Button>
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-red-600" aria-label={`删除公司支出 · ${e.expense_month}`} title="删除公司支出" onClick={() => setDeleteCompanyExpenseTarget(e)}><Trash2 className="w-3.5 h-3.5" /></Button>
                             </div>
                           </td>
                         </tr>
@@ -6904,7 +6906,7 @@ function FinanceWorkspace() {
         confirmLabel="确认" loadingLabel="保存中..." destructive={false}
         title={mobileMonthConfirmation && closedFinanceMonths.has(mobileMonthConfirmation) ? '重新打开月份' : '确认关账'}
         description={mobileMonthConfirmation && closedFinanceMonths.has(mobileMonthConfirmation) ? `重新打开 ${mobileMonthConfirmation} 后，可修改该月份账目。` : `确认 ${mobileMonthConfirmation || ''} 的账目已核对完成？关账后将锁定该月份的收支。`}
-        onConfirm={async () => { if (mobileMonthConfirmation) await handleToggleMonthClose(mobileMonthConfirmation); setMobileMonthConfirmation(null); }} loading={savingMonthClose} />
+        onConfirm={async () => mobileMonthConfirmation ? handleToggleMonthClose(mobileMonthConfirmation) : false} loading={savingMonthClose} />
       <ConfirmDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}
         title={deleteTarget?.type === 'payment' ? '确认删除收款记录' : '确认删除套餐记录'}
         description={`确定要删除「${deleteTarget?.item?.customer_name}」的${deleteTarget?.type === 'payment' ? '收款' : '套餐'}记录吗？`}

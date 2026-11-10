@@ -31,6 +31,9 @@ import { useRole } from '../lib/role-context';
 import { buildReturnLink, getReturnLabel, getSafeInternalPath } from '../lib/navigation-state';
 import { useIsMobile } from '@/hooks/use-mobile';
 import './delivery-workspace.css';
+import './crm-delivery-refinement.css';
+import './delivery-records-refined.css';
+import { DeliveryFilterSummary, DeliveryPagination, type DeliveryAppliedFilter } from '@/components/DeliveryListTools';
 
 const priorityColors: Record<string, string> = {
   high: 'bg-red-100 text-red-700', medium: 'bg-amber-100 text-amber-700', low: 'bg-slate-100 text-slate-600',
@@ -451,6 +454,16 @@ export default function Tasks() {
     return matchSearch && matchStatus && matchPriority && matchSource && matchQuick && matchPrimaryView;
   }), [employee?.name, filterPriority, filterSource, filterStatus, focusTaskId, primaryView, quickFilter, search, taskTypeLabels, tasks]);
   const paginated = useMemo(() => paginateList(filtered, page, pageSize), [filtered, page, pageSize]);
+  const clearTaskFilters = () => {
+    setSearch(''); setFilterStatus('all'); setFilterPriority('all'); setFilterSource('all'); setQuickFilter('all'); setPage(1);
+  };
+  const taskFilters: DeliveryAppliedFilter[] = [
+    ...(search.trim() ? [{key:'search',label:`搜索：${search.trim()}`,onClear:() => setSearch('')}] : []),
+    ...(filterStatus !== 'all' ? [{key:'status',label:`状态：${extendedStatusLabels[filterStatus] || filterStatus}`,onClear:() => setFilterStatus('all')}] : []),
+    ...(filterPriority !== 'all' ? [{key:'priority',label:`优先级：${priorityLabels[filterPriority] || filterPriority}`,onClear:() => setFilterPriority('all')}] : []),
+    ...(filterSource !== 'all' ? [{key:'source',label:`来源：${taskSourceLabels[filterSource] || filterSource}`,onClear:() => setFilterSource('all')}] : []),
+    ...(quickFilter !== 'all' ? [{key:'quick',label:quickFilterLabels[quickFilter] || quickFilter,onClear:() => setQuickFilter('all')}] : []),
+  ];
 
   useEffect(() => {
     setPage(1);
@@ -541,55 +554,7 @@ export default function Tasks() {
     return () => window.clearTimeout(timer);
   }, [paginated.page, filtered.length, focusTaskId]);
 
-  const PaginationFooter = () => {
-    if (paginated.total === 0) return null;
-    return (
-      <>
-        {isMobile && <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-3 md:hidden">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">显示 {paginated.start}-{paginated.end} 条</span>
-              <span> / 共 {paginated.total} 条</span>
-              {filtered.length !== tasks.length && <span className="block truncate text-[11px] text-slate-400">筛选自 {tasks.length} 条任务</span>}
-            </div>
-            <NativeSelect
-              value={String(pageSize)}
-              onChange={value => setPageSize(Number(value))}
-              options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条/页` }))}
-              className="h-10 w-28 shrink-0 rounded-xl text-xs"
-            />
-          </div>
-          {paginated.totalPages > 1 && (
-            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-              <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
-              <span className="min-w-16 text-center text-xs font-semibold text-slate-600">{paginated.page} / {paginated.totalPages}</span>
-              <Button size="sm" variant="outline" className="min-h-11 rounded-xl" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-            </div>
-          )}
-        </div>}
-        {!isMobile && <div className="hidden gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500 md:flex md:items-center md:justify-between">
-          <div>
-            显示 {paginated.start}-{paginated.end} 条 / 共 {paginated.total} 条
-            {filtered.length !== tasks.length ? `（筛选自 ${tasks.length} 条）` : ''}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-slate-400">每页</span>
-            <NativeSelect
-              value={String(pageSize)}
-              onChange={value => setPageSize(Number(value))}
-              options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
-              className="h-8 w-24 text-xs"
-            />
-            <Button size="sm" variant="outline" onClick={() => setPage(1)} disabled={paginated.page <= 1}>首页</Button>
-            <Button size="sm" variant="outline" onClick={() => setPage(paginated.page - 1)} disabled={paginated.page <= 1}>上一页</Button>
-            <span className="min-w-20 text-center text-xs text-slate-500">{paginated.page} / {paginated.totalPages} 页</span>
-            <Button size="sm" variant="outline" onClick={() => setPage(paginated.page + 1)} disabled={paginated.page >= paginated.totalPages}>下一页</Button>
-            <Button size="sm" variant="outline" onClick={() => setPage(paginated.totalPages)} disabled={paginated.page >= paginated.totalPages}>末页</Button>
-          </div>
-        </div>}
-      </>
-    );
-  };
+  const PaginationFooter = () => <DeliveryPagination label="任务列表" info={paginated} pageSize={pageSize} sizes={PAGE_SIZE_OPTIONS} onPage={setPage} onPageSize={setPageSize} />;
 
   const openEditTask = (t: any) => {
     if (!canEditTask) return;
@@ -723,7 +688,7 @@ export default function Tasks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-tasks app-page calm-delivery-page">
+    <div className="t24-work-page delivery-center-ui dc-tasks app-page calm-delivery-page crm-delivery-refined">
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           {returnTo && (
@@ -789,11 +754,11 @@ export default function Tasks() {
         const Icon = view.icon;
         return <button key={view.key} type="button" aria-pressed={primaryView === view.key} onClick={() => changePrimaryView(view.key)} title={view.hint}><Icon size={15} /><span>{view.label}</span><b>{view.count}</b></button>;
       })}</nav>
-      <section className="dc-task-priorities hidden md:block" aria-label="任务提醒">
+      <details className="dc-task-secondary-filters hidden md:block"><summary>快捷条件与团队工作量<span>{quickFilter !== 'all' ? quickFilterLabels[quickFilter] : '今日 · 逾期 · 等待客户'}</span><ChevronDown size={14}/></summary>      <section className="dc-task-priorities hidden md:block" aria-label="任务提醒">
         <div className="dc-priority-strip">{quickCards.map(card => <button key={card.key} type="button" aria-pressed={quickFilter === card.key} onClick={() => setQuickFilter(quickFilter === card.key ? 'all' : card.key)} title={card.hint}><span>{card.title}</span><b className={card.key === 'overdue' ? 'dc-danger-text' : ''}>{card.value}</b></button>)}</div>
         {workload.length > 0 && <details className="dc-workload"><summary><Users size={14} />团队工作量<span>{workload.length} 组负责人 · 展开查看分布</span></summary><div>{workload.map(([name, count]) => <span key={name}>{name}<b>{count}</b></span>)}</div></details>}
         {quickFilter !== 'all' && <button type="button" className="dc-clear-filter" onClick={() => setQuickFilter('all')}>清除筛选：{quickFilterLabels[quickFilter]}</button>}
-      </section>
+      </section></details>
 
       {/* Filters */}
       <div className="app-toolbar dc-task-toolbar">
@@ -818,6 +783,8 @@ export default function Tasks() {
             </div>
           </details>
       </div>
+
+      <DeliveryFilterSummary scope={`${taskScope === 'self' ? `${employee?.name || '本人'}的授权任务` : taskScope === 'team' ? '团队授权任务' : '全部授权任务'} · ${primaryViewLabels[primaryView] || '任务列表'}${focusTaskId ? ` · 保留定位任务 #${focusTaskId}` : ''}`} count={filtered.length} loading={loading} stale={Boolean(loadError)} filters={taskFilters} onClearAll={clearTaskFilters} />
 
       {/* Task list */}
       <Card className="dc-task-list border-slate-200">
@@ -858,19 +825,14 @@ export default function Tasks() {
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
                               <span>{taskSourceLabels[source]}</span>
-                              {t.automation_issue_id && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-violet-700">自动闭环</span>}
+                              {t.automation_issue_id && <span className="dc-muted-meta">· 自动闭环</span>}
                             </div>
                             <h3 className={`mt-1 line-clamp-2 text-[15px] font-bold leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-950'}`}>{mobileTitle}</h3>
                           </div>
                           <span className={`max-w-[88px] shrink-0 rounded-full px-2.5 py-1.5 text-center text-[10px] font-bold leading-4 ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</span>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${priorityColors[t.priority] || 'bg-slate-100 text-slate-600'}`}>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span>
-                          {overdue && <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700">已逾期</span>}
-                          {dueToday && <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-700">今日到期</span>}
-                          {stale && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700">3天未更新</span>}
-                        </div>
+                        <div className="dc-task-auxiliary mt-3"><span>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span>{overdue && <span className="is-overdue">已逾期</span>}{dueToday && <span className="is-urgent">今日到期</span>}{stale && <span>3天未更新</span>}</div>
 
                         <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200">
                           <div className="col-span-2 bg-slate-50 px-3 py-2.5">
@@ -929,13 +891,7 @@ export default function Tasks() {
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className={`font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
                           <Badge className={`text-xs ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
-                          <Badge className={`text-xs ${priorityColors[t.priority] || 'bg-slate-100 text-slate-600'}`}>{priorityLabels[t.priority] || t.priority || '普通'}</Badge>
-                          <Badge className={`dc-source-badge text-xs ${taskSourceColors[source] || taskSourceColors.manual}`}> {taskSourceLabels[source]}</Badge>
-                          {t.automation_issue_id && <Badge className="bg-violet-100 text-violet-700 text-xs">自动闭环</Badge>}
-                          {overdue && <Badge className="bg-red-100 text-red-700 text-xs">逾期</Badge>}
-                          {dueToday && <Badge className="bg-blue-100 text-blue-700 text-xs">今日到期</Badge>}
-                          {waitingClient && <Badge className="bg-purple-100 text-purple-700 text-xs">等待客户</Badge>}
-                          {stale && <Badge className="bg-amber-100 text-amber-700 text-xs">3天未更新</Badge>}
+                          <span className="dc-task-auxiliary"><span>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span><span>{taskSourceLabels[source]}</span>{t.automation_issue_id && <span>自动闭环</span>}{overdue && <span className="is-overdue">已逾期</span>}{dueToday && <span className="is-urgent">今日到期</span>}{waitingClient && t.status !== 'waiting_client' && <span>等待客户</span>}{stale && <span>3天未更新</span>}</span>
                         </div>
                         <div className="flex flex-wrap gap-3 text-xs text-slate-500">
                           {t.customer_name && <span>客户: {t.customer_name}</span>}

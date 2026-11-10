@@ -52,7 +52,7 @@ for (const viewport of [{ width: 1093, height: 824 }, { width: 390, height: 844 
       const prompts: string[] = [];
       page.on('dialog', async prompt => { prompts.push(prompt.type()); await prompt.dismiss(); });
       const { dialog, writes } = await openCustomerForm(page);
-      const close = dialog.getByRole('button', { name: 'Close', exact: true });
+      const close = dialog.getByRole('button', { name: '关闭', exact: true });
       await expectCloseCenterReceivesPointer(close);
       if (process.env.T24_CUSTOMERS_DIALOG_SCREENSHOT_DIR) {
         await page.screenshot({ path: `${process.env.T24_CUSTOMERS_DIALOG_SCREENSHOT_DIR}/customer-close-${viewport.width}.png`, animations: 'disabled' });
@@ -73,7 +73,7 @@ for (const viewport of [{ width: 1093, height: 824 }, { width: 390, height: 844 
         const phone = dialog.getByLabel('电话 *', { exact: true });
         await phone.fill('+1 (310) 555-0123');
         const dismiss = action === '关闭按钮'
-          ? dialog.getByRole('button', { name: 'Close', exact: true })
+          ? dialog.getByRole('button', { name: '关闭', exact: true })
           : dialog.getByTestId('customer-form-actions').getByRole('button', { name: '取消', exact: true });
         if (action === '关闭按钮') await expectCloseCenterReceivesPointer(dismiss);
         let promptCount = 0;

@@ -588,7 +588,8 @@ export default function Dashboard() {
   // ==================== ROLE-SPECIFIC DASHBOARDS ====================
 
   const renderStatCard = (label: string, value: string | number, icon: any, color: string, bgColor: string, link: string) => (
-    <Card key={label} className="border-slate-200 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all" onClick={() => navigate(link)}>
+    <Card key={label} className="border-slate-200 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all">
+      <button type="button" aria-label={"查看" + label} className="dashboard-stat-trigger w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2" onClick={() => navigate(link)}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -600,6 +601,7 @@ export default function Dashboard() {
           </div>
         </div>
       </CardContent>
+    </button>
     </Card>
   );
 
@@ -612,7 +614,7 @@ export default function Dashboard() {
             <Bell className="w-4 h-4 text-red-500" /> 智能提醒 ({reminders.length})
           </CardTitle>
           <p className="text-xs text-slate-500">
-            自动汇总跟进、回访、欠费、续费和延期任务。点击后会直接进入对应客户或待处理页面。
+            跟进、回访、到期和延期事项，点击继续处理。
           </p>
         </CardHeader>
         <CardContent className="pt-0">
@@ -620,7 +622,7 @@ export default function Dashboard() {
             {reminders.slice(0, 10).map((r) => {
               const Icon = reminderIcons[r.type] || Bell;
               return (
-                <div key={r.id} className={`flex items-start gap-3 p-2.5 rounded-lg border-l-4 cursor-pointer hover:opacity-80 transition-opacity ${urgencyColors[r.urgency]}`}
+                <button type="button" disabled={!r.link} key={r.id} className={`dashboard-object-link min-h-11 w-full text-left flex items-start gap-3 p-2.5 rounded-lg border-l-4 cursor-pointer hover:opacity-80 transition-opacity ${urgencyColors[r.urgency]}`}
                   onClick={() => r.link && navigate(r.link)}>
                   <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${urgencyTextColors[r.urgency]}`} />
                   <div className="flex-1 min-w-0">
@@ -629,7 +631,7 @@ export default function Dashboard() {
                   </div>
                   <span className="text-xs text-blue-600 font-medium flex-shrink-0 self-center">去处理</span>
                   {r.date && <span className="text-xs text-slate-400 flex-shrink-0">{r.date}</span>}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -724,12 +726,12 @@ export default function Dashboard() {
           <Card className="border-slate-200">
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Database className="h-4 w-4 text-blue-600" />自动化与数据可信度</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
+              {ownerCockpit.quality.open + ownerCockpit.quality.in_progress + ownerCockpit.quality.open_task_count + ownerCockpit.delivery.overdue_service_tasks + ownerCockpit.delivery.overdue_callbacks === 0 ? <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">当前没有开放问题、关联任务或逾期事项。<Button variant="link" size="sm" onClick={() => navigate('/management-decisions?section=quality')}>查看全部闭环</Button></p> : <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => navigate('/management-decisions?section=quality')} className="rounded-lg bg-rose-50 p-3 text-left"><p className="text-xs text-rose-600">开放问题</p><p className="mt-1 text-xl font-bold text-rose-800">{ownerCockpit.quality.open + ownerCockpit.quality.in_progress}</p></button>
                 <button type="button" onClick={() => navigate('/tasks?source=system')} className="rounded-lg bg-blue-50 p-3 text-left"><p className="text-xs text-blue-600">关联任务</p><p className="mt-1 text-xl font-bold text-blue-800">{ownerCockpit.quality.open_task_count}</p></button>
                 <button type="button" onClick={() => navigate('/service-board')} className="rounded-lg bg-amber-50 p-3 text-left"><p className="text-xs text-amber-600">交付逾期</p><p className="mt-1 text-xl font-bold text-amber-800">{ownerCockpit.delivery.overdue_service_tasks}</p></button>
                 <button type="button" onClick={() => navigate('/callbacks?status=pending&schedule=overdue')} className="rounded-lg bg-violet-50 p-3 text-left"><p className="text-xs text-violet-600">逾期回访</p><p className="mt-1 text-xl font-bold text-violet-800">{ownerCockpit.delivery.overdue_callbacks}</p></button>
-              </div>
+              </div>}
               <details className="calm-admin-disclosure text-xs text-slate-600"><summary><span>自动扫描状态</span><span className="text-xs font-normal text-slate-500">查看运行记录</span></summary><div className="border-t border-slate-200 p-3"><div className="flex items-center justify-between"><span>每日扫描</span><Badge className={ownerCockpit.automation.schedule.enabled ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-200 text-slate-600 hover:bg-slate-200'}>{ownerCockpit.automation.schedule.enabled ? '已开启' : '未开启'}</Badge></div><p className="mt-2">上次：{lastRunAt}</p><p className="mt-1">下次：{nextRunAt}</p><p className="mt-2 text-[11px] text-slate-400">只提醒、建任务和追踪结果，不会自动停止客户。</p></div></details>
             </CardContent>
           </Card>
@@ -883,10 +885,10 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {recentCustomers.map((c: any) => (
-                <div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/customers')}>
+                <button type="button" aria-label={`查看客户：${c.business_name}`} key={c.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/customers', { detail: c.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{c.business_name}</p><p className="text-xs text-slate-500">{c.contact_name} · {formatPhoneNumber(c.phone, c.country)}</p></div>
                   <Badge variant="secondary" className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status}</Badge>
-                </div>
+                </button>
               ))}
               {recentCustomers.length === 0 && <p className="text-sm text-slate-400 text-center py-4">暂无客户数据</p>}
             </div>
@@ -914,10 +916,10 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {myTasks.slice(0, 8).map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/tasks')}>
+                <button type="button" aria-label={`查看任务：${t.title}`} key={t.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/tasks', { task_id: t.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{t.title}</p><p className="text-xs text-slate-500">{t.due_date?.slice(0, 10) || '-'}</p></div>
                   <Badge variant="secondary" className="text-xs">{taskStatusLabels[t.status] || t.status}</Badge>
-                </div>
+                </button>
               ))}
               {myTasks.length === 0 && <p className="text-sm text-slate-400 text-center py-4">暂无待办任务</p>}
             </div>
@@ -947,10 +949,10 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {pending.slice(0, 8).map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/tasks')}>
+                <button type="button" aria-label={`查看任务：${t.title}`} key={t.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/tasks', { task_id: t.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{t.title}</p><p className="text-xs text-slate-500">{t.due_date?.slice(0, 10) || '-'}</p></div>
                   <Badge variant="secondary" className={`text-xs ${priorityColors[t.priority] || ''}`}>{priorityLabels[t.priority] || t.priority}</Badge>
-                </div>
+                </button>
               ))}
               {pending.length === 0 && <p className="text-sm text-slate-400 text-center py-4">暂无待处理任务</p>}
             </div>
@@ -1055,10 +1057,10 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {recentCustomers.map((c: any) => (
-                <div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/customers')}>
+                <button type="button" aria-label={`查看客户：${c.business_name}`} key={c.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/customers', { detail: c.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{c.business_name}</p><p className="text-xs text-slate-500">{c.contact_name}</p></div>
                   <Badge variant="secondary" className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status}</Badge>
-                </div>
+                </button>
               ))}
               {recentCustomers.length === 0 && <p className="text-sm text-slate-400 text-center py-4">暂无客户数据</p>}
             </div>
@@ -1071,10 +1073,10 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-3">
               {upcomingTasks.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate('/tasks')}>
+                <button type="button" aria-label={`查看任务：${t.title}`} key={t.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/tasks', { task_id: t.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{t.title}</p><p className="text-xs text-slate-500">{t.assignee_name} · {taskStatusLabels[t.status] || t.status}</p></div>
                   <Badge variant="secondary" className={`text-xs ${priorityColors[t.priority] || ''}`}>{priorityLabels[t.priority] || t.priority}</Badge>
-                </div>
+                </button>
               ))}
               {upcomingTasks.length === 0 && <p className="text-sm text-slate-400 text-center py-4">暂无待办任务</p>}
             </div>

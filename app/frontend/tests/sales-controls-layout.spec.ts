@@ -146,7 +146,7 @@ for (const viewport of viewports) {
       const select = queue.getByRole('combobox', { name: '筛选资料状态', exact: true });
       await select.selectOption('has_interest');
       await expectSelectTextFits(select);
-      await queue.getByRole('button', { name: 'Close', exact: true }).click();
+      await queue.getByRole('button', { name: '关闭', exact: true }).click();
     } else {
       const select = surface.getByRole('combobox', { name: '筛选资料状态', exact: true });
       if (await select.isVisible()) {

@@ -50,6 +50,7 @@ function fixture(page, handler, mobile = false, routeParams = {}) {
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name.endsWith('.css')) return {};
       if (name === '@/lib/commission-presentation') return load('lib/commission-presentation.ts');
+      if (name === '@/lib/employee-account-presentation') return load('lib/employee-account-presentation.ts');
       if (name === '@/lib/tokenStore') return { invokeWithAuth: async request => { requests.push(request); validateApiPayload(request); return { data: await handler(request) }; } };
       if (name === '@/hooks/use-mobile') return { useIsMobile: () => mobile };
       if (name === '@/lib/use-auto-refresh') return { useAutoRefresh: callback => { autoRefresh = callback; } };
@@ -198,4 +199,30 @@ test('historical renewal can preview without knowing the original first-service 
   await app.button('预览影响').props.onClick();await app.settle();
   const request=app.requests.find(row=>row.url.endsWith('/attributions/preview'));
   assert.equal(request.data.first_service_start,null);assert.equal(request.data.commission_mode,'renewal_only');
+});
+
+
+test('mobile commission filters have one search and one month input', async () => {
+  const app = fixture('Commissions', commissionResponse, true); app.render(); await app.settle();
+  assert.equal(app.all(node => node.props?.placeholder === '搜索渠道、客户或收款编号').length, 1);
+  assert.equal(app.all(node => node.props?.type === 'month').length, 1);
+  assert.equal(app.byLabel('结算月份'), undefined);
+  assert.ok(app.byLabel('手机分润月份'));
+});
+
+test('partner desktop pagination stays independent and filters reset the current range', async () => {
+  const data = portal();
+  data.customers = Array.from({length:45}, (_, i) => ({row_key:`customer-${i}`,customer_name:`门店${String(i+1).padStart(2,'0')}`,cooperation_status:'active',renewal_status:'active',is_active:true}));
+  data.entries = Array.from({length:45}, (_, i) => entry(i+1, {customer_name:`账本${String(i+1).padStart(2,'0')}`}));
+  const app = fixture('PartnerPortal', () => data); app.render(); await app.settle();
+  assert.match(app.text(app.tree()), /门店01/); assert.doesNotMatch(app.text(app.tree()), /门店21/);
+  assert.match(app.text(app.tree()), /账本01/); assert.doesNotMatch(app.text(app.tree()), /账本21/);
+  app.byLabel('客户合作状态下一页').props.onClick(); app.render();
+  assert.match(app.text(app.tree()), /门店21/); assert.doesNotMatch(app.text(app.tree()), /门店01/);
+  assert.match(app.text(app.tree()), /账本01/);
+  app.byLabel('分润明细下一页').props.onClick(); app.render();
+  assert.match(app.text(app.tree()), /账本21/); assert.doesNotMatch(app.text(app.tree()), /账本01/);
+  app.byLabel('搜索合伙人明细').props.onChange({target:{value:'门店45'}}); app.render(); app.render();
+  assert.match(app.text(app.tree()), /门店45/);
+  assert.equal(app.byLabel('客户合作状态上一页').props.disabled, true);
 });
