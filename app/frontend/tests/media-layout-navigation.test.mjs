@@ -46,6 +46,9 @@ function harness({ path = '/media-ops', width = 1280, preference = '0', canAcces
   const sections = [{ label: '任务与交付', railLabel: '交付', description: 'Synthetic navigation', paths: ['/media-ops'], icon: 'Icon', items: [{ label: '代运营中心', path: '/media-ops', group: '运营', icon: 'Icon' }] }, { label: '销售中心', railLabel: '销售', paths: ['/sales-workbench', '/merchant-pool'], icon: 'Icon', items: [{ label: '今日拨打', path: '/sales-workbench', group: '销售', icon: 'Icon' }] }];
   const fallback = new Proxy({ __esModule: true, default: 'Stub' }, { get: (object, key) => object[key] || String(key) });
   const imports = new Proxy({ react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-router-dom': { Link: 'Link', Navigate: 'Navigate', useLocation: () => location, useNavigate: () => () => {} }, '../lib/role-context': { useRole: () => roleState, roleLabels: { ops: '运营', super_admin: '老板' } }, '../lib/permissions': { pageLabels: {} }, '@/lib/app-navigation': { appNavigationItems: [{ path: '/media-ops', label: '代运营中心' }, { path: '/customers', label: '客户' }], getDesktopNavigationSections: allow => sections.filter(section => section.items.some(item => allow(item.path))), getRoleTodayPath: () => '/today', getDesktopNavigationHref: item => item.path, isDesktopNavigationItemActive: (item, pathname) => item.path === pathname }, '@/components/DesktopBusinessNavigation': { __esModule: true, default: 'DesktopBusinessNavigation' }, '@/components/SalesCenterNavigation': { __esModule: true, default: 'SalesCenterNavigation', salesWorkspacePaths: ['/sales-workbench', '/merchant-pool'] }, '@/lib/navigation-state': { getSafeInternalPath: value => value || '' }, '@/lib/finance-navigation': { getFinanceNavigationItem: () => ({ tab: 'income', label: '收入管理' }) }, '@/lib/auth-storage': { getAuthSessionEpoch: () => 'synthetic' }, '@/lib/tokenStore': { getToken: () => 'synthetic' }, './crm-route-modules': { prefetchCrmRoute: (...args) => prefetched.push(args) }, '@/lib/api': { client: { apiCall: { invoke: value => api.push(value) } } } }, { get: (object, key) => object[key] || fallback });
+  // Navigation tests use no DOM theme engine; its behavior is covered separately.
+  imports['@/lib/use-crm-theme'] = { useCrmTheme: () => ({ themeId: 'blue', setTheme: () => true }) };
+  imports['@/lib/crm-theme'] = { getCrmTheme: () => ({ name: '经典蓝' }) };
   function compile(name) { const module = { exports: {} }; vm.runInNewContext(ts.transpileModule(source(name), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, { module, exports: module.exports, require: key => imports[key], window, document, navigator: { onLine: true }, HTMLElement: Element, Element, Map, Set, URL, URLSearchParams, Date, console }); return module.exports.default; }
   const Layout = compile('Layout.tsx'), Desktop = compile('DesktopBusinessNavigation.tsx');
   const renderComponent = (Component, props) => { si = ri = ei = ci = 0; return Component(props); };
@@ -130,4 +133,40 @@ test('real secondary navigation modal semantics and focus return apply only to e
 test('private-space chrome bypass is preserved and creates no media navigation', () => {
   const h = harness({ path: '/private-workspace' }); const tree = h.settle();
   assert.equal(tree.props.className, 'private-workspace-shell'); assert.equal(label(tree), 'AUTHORIZED_CHILD'); assert.equal(nodes(tree).some(node => node.type === 'DesktopBusinessNavigation'), false); assert.equal(h.api.length, 0);
+});
+
+test('desktop theme dialog suppresses closing menu focus and returns to its account entry', () => {
+  const h = harness(); let tree = h.settle();
+  h.document.querySelectorAll = () => [];
+  const account = find(tree, node => node.props?.title === '我的账户').props.ref.current;
+  account.isConnected = true;
+  find(tree, node => node.props?.onSelect && label(node).startsWith('颜色主题')).props.onSelect();
+  tree = h.settle();
+  const menu = find(tree, node => node.props?.align === 'end' && node.props.onCloseAutoFocus);
+  const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  menu.props.onCloseAutoFocus(event); assert.equal(event.defaultPrevented, true);
+  const theme = find(tree, node => typeof node.props?.onReturnFocus === 'function');
+  assert.equal(theme.props.open, true);
+  theme.props.onOpenChange(false); h.settle(); h.outside.focus(); theme.props.onReturnFocus();
+  assert.equal(h.document.activeElement, account);
+});
+
+for (const path of ['/more', '/apps']) test(`${path} theme dialog returns to the original profile opener or a visible account fallback`, () => {
+  const h = harness({ path, width: 390 }); let tree = h.settle();
+  h.outside.isConnected = true; h.first.isConnected = true;
+  h.document.querySelectorAll = () => [h.first];
+  h.outside.focus();
+  find(tree, node => typeof node.props?.onOpenProfile === 'function').props.onOpenProfile();
+  tree = h.settle();
+  find(tree, node => node.type === 'Button' && label(node).startsWith('颜色主题')).props.onClick();
+  tree = h.settle();
+  const profile = find(tree, node => node.props?.className?.includes('rounded-t-[28px]') && node.props.onCloseAutoFocus);
+  const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  profile.props.onCloseAutoFocus(event); assert.equal(event.defaultPrevented, true);
+  const theme = find(tree, node => typeof node.props?.onReturnFocus === 'function');
+  theme.props.onOpenChange(false); h.settle(); h.first.focus(); theme.props.onReturnFocus();
+  assert.equal(h.document.activeElement, h.outside);
+  // The saved opener can disappear or become hidden after a viewport change.
+  h.outside.visible = false; theme.props.onReturnFocus();
+  assert.equal(h.document.activeElement, h.first);
 });

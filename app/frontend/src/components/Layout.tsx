@@ -5,6 +5,10 @@ import './crm-desktop-refined-type.css';
 import './crm-desktop-compact.css';
 import './crm-visual-polish.css';
 import './media-layout-navigation.css';
+import './crm-color-themes.css';
+import CrmThemePicker from './CrmThemePicker';
+import { useCrmTheme } from '@/lib/use-crm-theme';
+import { getCrmTheme } from '@/lib/crm-theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useRole, roleLabels } from '../lib/role-context';
@@ -12,7 +16,7 @@ import AuthVerificationState from './AuthVerificationState';
 import { pageLabels } from '../lib/permissions';
 import {
   ArrowLeft, LayoutDashboard, LogOut, Menu, ChevronDown, User,
-  Lock, KeyRound, ChevronRight,
+  Lock, KeyRound, ChevronRight, Palette,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -66,7 +70,7 @@ export default function Layout({ children }: LayoutProps) {
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (max-width: 1359px)').matches,
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1',
+    () => { try { return typeof window !== 'undefined' && window.localStorage.getItem('t24_sidebar_collapsed') === '1'; } catch { return false; } },
   );
   const navigationScope = isSalesWorkspace ? 'sales-center' : currentPath;
   const navigationCollapsed = isSalesWorkspace || isFocusedWorkspace ? !expandedWorkRoutes[navigationScope] : sidebarCollapsed;
@@ -74,6 +78,27 @@ export default function Layout({ children }: LayoutProps) {
   const mediaSecondaryOverlayOpen = isMediaWorkspace && mediaSecondaryFloats && !navigationCollapsed;
   const secondaryOverlayOpen = salesSecondaryOverlayOpen || mediaSecondaryOverlayOpen;
   const { employee, role, loading, authError, retryAuth, isLoggedIn, isDisabled, logout, canAccess } = useRole();
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const desktopAccountTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileProfileReturnRef = useRef<HTMLElement | null>(null);
+  const themeReturnFocusRef = useRef<HTMLElement | null>(null);
+  const openingThemeRef = useRef(false);
+  const { themeId, setTheme } = useCrmTheme(employee?.id, isLoggedIn && !loading && !authError && !isDisabled && currentPath !== '/private-workspace');
+
+  const openMobileProfile = () => {
+    mobileProfileReturnRef.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    setMobileProfileOpen(true);
+  };
+  const openThemePicker = (returnTarget: HTMLElement | null) => {
+    themeReturnFocusRef.current = returnTarget;
+    openingThemeRef.current = true;
+    setThemePickerOpen(true);
+  };
+  const returnThemeFocus = () => {
+    openingThemeRef.current = false;
+    const candidates = [themeReturnFocusRef.current, desktopAccountTriggerRef.current, ...document.querySelectorAll<HTMLElement>('[aria-label="打开我的账户"], [aria-label="查看账户与设置"]')];
+    candidates.find(target => target?.isConnected && target.getClientRects().length > 0 && !target.hasAttribute('disabled'))?.focus({ preventScroll: true });
+  };
 
   const prefetchAllowedLink = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return;
@@ -126,7 +151,7 @@ export default function Layout({ children }: LayoutProps) {
   }, [secondaryOverlayOpen, closeBusinessNavigation]);
 
   useEffect(() => {
-    window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+    try { window.localStorage.setItem('t24_sidebar_collapsed', sidebarCollapsed ? '1' : '0'); } catch { /* Navigation stays usable without persisted preferences. */ }
   }, [sidebarCollapsed]);
 
   const mobileDetailKey = currentPath === '/customers'
@@ -398,7 +423,7 @@ export default function Layout({ children }: LayoutProps) {
             <MobileModuleMenu currentPath={currentPath} />
             {!isSalesWorkspace && <button
               type="button"
-              onClick={() => setMobileProfileOpen(true)}
+              onClick={openMobileProfile}
               className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-blue-600 shadow-sm md:hidden"
               aria-label="打开我的账户"
             >
@@ -420,20 +445,24 @@ export default function Layout({ children }: LayoutProps) {
             <div className="hidden md:block">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" className="gap-2" aria-label="打开我的账户" title="我的账户">
+                <Button ref={desktopAccountTriggerRef} type="button" variant="ghost" size="sm" className="gap-2" aria-label="打开我的账户" title="我的账户">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
                     <User className="w-4 h-4 text-blue-600" />
                   </div>
                   <ChevronDown className="w-3 h-3 text-slate-400" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" onCloseAutoFocus={event => { if (openingThemeRef.current) event.preventDefault(); }}>
                 {employee && (
                   <div className="px-2 py-1.5 text-xs text-slate-500">
                     {employee.name} · {displayRole}
                   </div>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => openThemePicker(desktopAccountTriggerRef.current)}>
+                  <Palette className="w-4 h-4 mr-2" />颜色主题
+                  <span className="ml-auto pl-4 text-xs text-slate-500">{getCrmTheme(themeId).name}</span>
+                </DropdownMenuItem>
                 <PrivateWorkspaceEntry variant="menu" />
                 <DropdownMenuItem onClick={() => setShowChangePwd(true)}>
                   <KeyRound className="w-4 h-4 mr-2" />
@@ -454,9 +483,9 @@ export default function Layout({ children }: LayoutProps) {
         <main ref={mainScrollRef} data-crm-page={currentPath} className={`${isMorePage ? 'app-main-more ' : ''}app-main crm-desktop-main min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden ${isNavigationPage ? 'app-main-launcher p-0 md:p-4 lg:p-6' : 'px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom))] pt-3 md:p-4 lg:p-6'}`}>
           {hasPageAccess ? (
             isMorePage
-              ? <MobileMorePage onOpenProfile={() => setMobileProfileOpen(true)} />
+              ? <MobileMorePage onOpenProfile={openMobileProfile} />
               : isAppLauncher
-              ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={() => setMobileProfileOpen(true)} />
+              ? <MobileAppLauncher key={`${employee?.id || 'unknown'}:${role}`} onOpenProfile={openMobileProfile} />
               : <div key={currentPath} className="mobile-route-stage crm-content-frame">{children}</div>
           ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -473,7 +502,7 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       <Dialog open={mobileProfileOpen} onOpenChange={setMobileProfileOpen}>
-        <DialogContent className={`bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 ${isNavigationPage ? 'md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-[28px] md:border' : 'md:hidden'}`}>
+        <DialogContent onCloseAutoFocus={event => { if (openingThemeRef.current) event.preventDefault(); }} className={`bottom-0 top-auto w-full max-w-lg translate-y-0 rounded-b-none rounded-t-[28px] border-x-0 border-b-0 px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-6 ${isNavigationPage ? 'md:bottom-auto md:top-1/2 md:-translate-y-1/2 md:rounded-[28px] md:border' : 'md:hidden'}`}>
           <DialogHeader className="text-left">
             <DialogTitle>我的账户</DialogTitle>
           </DialogHeader>
@@ -501,6 +530,9 @@ export default function Layout({ children }: LayoutProps) {
             >
               <KeyRound className="mr-2 h-4 w-4" />修改密码
             </Button>
+            <Button type="button" variant="outline" className="min-h-12 justify-start rounded-2xl" onClick={() => { openThemePicker(mobileProfileReturnRef.current); setMobileProfileOpen(false); }}>
+              <Palette className="mr-2 h-4 w-4" />颜色主题<span className="ml-auto text-xs text-slate-500">{getCrmTheme(themeId).name}</span>
+            </Button>
             <PwaInstallAction />
             <Button
               type="button"
@@ -513,6 +545,8 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <CrmThemePicker open={themePickerOpen} onOpenChange={setThemePickerOpen} value={themeId} onReturnFocus={returnThemeFocus} onChange={id => { if (!setTheme(id)) toast.info('当前浏览器暂不能保存偏好，本次会话仍可使用。'); }} />
 
       {/* Change Password Dialog */}
       <Dialog open={showChangePwd} onOpenChange={setShowChangePwd}>
