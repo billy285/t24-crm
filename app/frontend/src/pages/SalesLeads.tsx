@@ -169,6 +169,7 @@ function SalesLeadWorkspace() {
   const [insightRetry, setInsightRetry] = useState(0);
   const [compactRows, setCompactRows] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [auxiliaryLoading, setAuxiliaryLoading] = useState(true);
   const [listError, setListError] = useState(false);
   const [dataErrors, setDataErrors] = useState<string[]>([]);
   const [initialParams] = useState(() => new URLSearchParams(window.location.search));
@@ -228,14 +229,31 @@ function SalesLeadWorkspace() {
     const requestId = ++loadRequestSeqRef.current;
     const requestPage = options?.page ?? page;
     if (!options?.background) setLoading(true);
+    setAuxiliaryLoading(true);
     const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
     if (search.trim()) params.set('search', search.trim());
     if (statusFilter) params.set('status', statusFilter);
     if (contactFilter) params.set('contact_rule', contactFilter);
     if (dueRange) params.set('due_range', dueRange);
     try {
+      // The working list can be ready before call reports or management totals.
+      // Keep all reads live, but do not hold the rows behind the slowest report.
+      const listRequest = invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }).then(response => {
+        if (requestId !== loadRequestSeqRef.current) return response;
+        const nextItems = response.data?.items || [];
+        setItems(nextItems);
+        setListError(false);
+        setTotal(response.data?.total || 0);
+        setSelectedLeadIds(current => current.filter(id => nextItems.some((item: SalesLead) => item.id === id)));
+        return response;
+      }, error => {
+        if (requestId === loadRequestSeqRef.current) { setListError(true); setSelectedLeadIds([]); }
+        throw error;
+      }).finally(() => {
+        if (requestId === loadRequestSeqRef.current) setLoading(false);
+      });
       const coreRequests = [
-        invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }),
+        listRequest,
         invokeWithAuth({ url: '/api/v1/sales-leads/stats', method: 'GET' }),
         invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/call-report?days=${callReportDays}`, method: 'GET' }),
       ];
@@ -253,17 +271,7 @@ function SalesLeadWorkspace() {
 
       const [listResult, statsResult, callReportResult] = coreResults;
       const failedSections: string[] = [];
-      if (listResult.status === 'fulfilled') {
-        const nextItems = listResult.value.data?.items || [];
-        setItems(nextItems);
-        setListError(false);
-        setTotal(listResult.value.data?.total || 0);
-        setSelectedLeadIds(current => current.filter(id => nextItems.some((item: SalesLead) => item.id === id)));
-      } else {
-        setListError(true);
-        setSelectedLeadIds([]);
-        failedSections.push('线索列表');
-      }
+      if (listResult.status !== 'fulfilled') failedSections.push('线索列表');
       if (statsResult.status === 'fulfilled') { setStats(statsResult.value.data || stats); setStatsReady(true); }
       else failedSections.push('统计');
       if (callReportResult.status === 'fulfilled') { setCallReport(callReportResult.value.data || null); setCallReportError(false); }
@@ -284,7 +292,7 @@ function SalesLeadWorkspace() {
     } catch (error: any) {
       if (requestId === loadRequestSeqRef.current) { setListError(true); setSelectedLeadIds([]); }
     } finally {
-      if (requestId === loadRequestSeqRef.current) setLoading(false);
+      if (requestId === loadRequestSeqRef.current) { setLoading(false); setAuxiliaryLoading(false); }
     }
   };
 
@@ -634,7 +642,7 @@ function SalesLeadWorkspace() {
       {view === 'shared' && <SalesSharedDossiers onOpen={setDossierId} />}
       {view === 'handoffs' && <SalesDealHandoffQueue key={handoffQueueVersion} onOpenLead={setDealLeadId} />}
       {view === 'calls' && <SalesPhoneConnections periodDays={callReportDays} onSyncComplete={() => void loadData({ background: true })} />}
-      {view === 'calls' && (callReportError || !callReport) && <div className="slr-call-retry" role={callReportError ? 'alert' : 'status'}><span>{loading && !callReport ? '正在读取通话数据…' : `通话数据暂时无法更新${callReport ? '，下方保留上次成功读取的期间。' : '，尚无可展示结果。'}`}</span><Button size="sm" variant="outline" disabled={loading} onClick={() => void loadData({ background: true })}>重新读取通话数据</Button></div>}
+      {view === 'calls' && (callReportError || !callReport) && <div className="slr-call-retry" role={callReportError ? 'alert' : 'status'}><span>{auxiliaryLoading && !callReport ? '正在读取通话数据…' : `通话数据暂时无法更新${callReport ? '，下方保留上次成功读取的期间。' : '，尚无可展示结果。'}`}</span><Button size="sm" variant="outline" disabled={auxiliaryLoading} onClick={() => void loadData({ background: true })}>重新读取通话数据</Button></div>}
       {view === 'performance' && !dashboard && !performanceDashboard && <div className="sc-panel sc-empty">跟进参考暂不可用，请刷新后重试。</div>}
       {view === 'calls' && callReport && <Card className="overflow-hidden border-blue-200 bg-white shadow-sm">
         <CardContent className="p-0">

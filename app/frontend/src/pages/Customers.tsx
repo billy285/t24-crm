@@ -1512,8 +1512,7 @@ export default function Customers() {
   }, [employee?.id, employee?.name]);
 
   useAutoRefresh(async () => {
-    await loadCustomers();
-    await loadEmployees();
+    await Promise.all([loadCustomers(), loadEmployees()]);
     const detailCustomerId = activeDetailCustomerIdRef.current;
     if (detailCustomerId) {
       const fallbackCustomer = selectedCustomer?.id === detailCustomerId ? selectedCustomer : undefined;

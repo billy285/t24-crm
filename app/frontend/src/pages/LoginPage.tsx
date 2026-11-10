@@ -2,7 +2,6 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Login from './Login';
 import AuthVerificationState from '@/components/AuthVerificationState';
 import { useRole } from '@/lib/role-context';
-import { requestBusinessDataRefresh } from '@/lib/data-refresh';
 import { getDesktopLoginPath } from '@/lib/app-navigation';
 import { getSafeInternalPath } from '@/lib/navigation-state';
 
@@ -62,7 +61,6 @@ export default function LoginPage() {
         await login(token, employee, rememberMe);
         const nextPath = resolvePostLoginPath(employee?.role, requestedRedirect);
         navigate(nextPath, { replace: true });
-        window.setTimeout(() => requestBusinessDataRefresh('login'), 300);
       }}
     />
   );

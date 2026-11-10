@@ -334,9 +334,8 @@ export default function Dashboard() {
       .catch(() => setPayrollSummary(null));
   }, [isAdm, isFinance, showMoreOwnerDetails]);
 
-  useAutoRefresh(() => {
-    void loadDashboard();
-    if (isAdm) void loadOwnerCockpit();
+  useAutoRefresh(async () => {
+    await Promise.all([loadDashboard(), ...(isAdm ? [loadOwnerCockpit()] : [])]);
   }, { intervalMs: 30000 });
 
   const buildReminders = (customers: any[], followUps: any[], subs: any[], payments: any[], tasks: any[], now: Date, sevenDaysAgo: Date, callbacksList?: any[]) => {

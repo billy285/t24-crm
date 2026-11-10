@@ -2,7 +2,7 @@
    Only palette/interaction roles are changed: no layout, status palette,
    chart series, provider state, or private-workspace styling. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) {
   /* The older chrome defines these locally. Inherit the catalog values
      from html rather than shadowing them with the default blue palette. */
   --crm-canvas: inherit;
@@ -25,16 +25,21 @@ html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell
   --t24-ink-muted: var(--crm-muted);
   --t24-border: var(--crm-border);
   --t24-border-strong: var(--crm-border);
+  --t24-primary: var(--crm-accent);
+  --t24-primary-strong: var(--crm-accent-hover);
+  --t24-primary-soft: var(--crm-accent-soft);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .sales-center-ui,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .management-action-page,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .finance-owner-overview {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .sales-center-ui,
+html[data-crm-theme]:not([data-crm-theme="blue"]) .management-action-page,
+html[data-crm-theme]:not([data-crm-theme="blue"]) .finance-owner-overview {
   --sc-ink: var(--crm-ink);
   --sc-muted: var(--crm-muted);
   --sc-line: var(--crm-border);
   --sc-soft: var(--crm-surface-subtle);
+  --sc-blue: var(--crm-accent);
+  --sc-blue-soft: var(--crm-accent-soft);
   --mgt-ink: var(--crm-ink);
   --mgt-muted: var(--crm-muted);
   --mgt-line: var(--crm-border);
@@ -43,327 +48,800 @@ html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell
   --fo-line: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .t24-system.app-shell {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell {
   background: var(--crm-canvas);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-main,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .crm-desktop-main {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-main,
+  .crm-desktop-main
+) {
   background: var(--crm-canvas);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-sidebar,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-panel,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sales-center-mobile-navigation {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-sidebar,
+  .app-secondary-panel,
+  .app-topbar,
+  .sales-center-mobile-navigation
+) {
   background: var(--crm-surface);
   border-color: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-rail {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-rail {
   background: var(--crm-rail);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-navigation-brand,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-link,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-rail-control {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-navigation-brand,
+  .app-primary-link,
+  .app-rail-control
+) {
   color: var(--crm-rail-muted);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-link:hover,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-rail-control:hover {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-primary-link:hover,
+  .app-rail-control:hover
+) {
   color: var(--crm-rail-muted);
   background: rgb(255 255 255 / 7%);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-link.is-active,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-link.is-active:hover {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-primary-link.is-active,
+  .app-primary-link.is-active:hover
+) {
   background: var(--crm-rail-active);
   color: var(--crm-rail-active-text);
   box-shadow: none;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-primary-link svg,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-rail-control svg {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-primary-link svg,
+  .app-rail-control svg
+) {
   color: inherit;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-heading h2,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-page-heading,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-page-title h1,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-page-title h2,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-section-title,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mwr-page-title {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-secondary-heading h2,
+  .app-page-heading,
+  .app-page-title h1,
+  .app-page-title h2,
+  .t24-section-title,
+  .mwr-page-title
+) {
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-page-description,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-description,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-navigation-group-label,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-eyebrow,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-footer {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-page-description,
+  .app-secondary-description,
+  .app-navigation-group-label,
+  .app-secondary-eyebrow,
+  .app-secondary-footer
+) {
   color: var(--crm-muted);
   border-color: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-navigation-search,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-link:hover {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-navigation-search,
+  .app-secondary-link:hover
+) {
   background: var(--crm-surface-subtle);
   border-color: var(--crm-border);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-link.is-active {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-secondary-link.is-active {
   background: var(--crm-accent-soft);
   color: var(--crm-accent);
 }
 
 /* Buttons are selected by action variants, never by status text color. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600, .bg-blue-700) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600, .bg-blue-700) {
   background: var(--crm-accent) !important;
   border-color: var(--crm-accent) !important;
   color: hsl(var(--primary-foreground)) !important;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600, .bg-blue-700):hover:not(:disabled) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600, .bg-blue-700):hover:not(:disabled) {
   background: var(--crm-accent-hover) !important;
   border-color: var(--crm-accent-hover) !important;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.bg-secondary {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.bg-secondary {
   background: var(--crm-accent-soft);
   color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.border-input {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.border-input {
   background-color: var(--crm-surface);
   border-color: var(--crm-border);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.border-input:hover:not(:disabled) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button.border-input:hover:not(:disabled) {
   background-color: var(--crm-accent-soft);
   border-color: var(--crm-accent-border);
   color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button-link {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button-link {
   color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button-link:hover:not(:disabled) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button-link:hover:not(:disabled) {
   color: var(--crm-accent-hover);
 }
 
 /* Underlined location tabs retain their original transparent geometry. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sales-center-navigation a[aria-current="page"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-work-views > button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mgt-main-tabs button[aria-current],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sk-answer-tabs [role="tab"][data-state="active"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .sales-center-navigation a[aria-current="page"],
+  .mp-work-views > button[aria-pressed="true"],
+  .mgt-main-tabs button[aria-current],
+  .sk-answer-tabs [role="tab"][data-state="active"]
+) {
   color: var(--crm-accent) !important;
   border-bottom-color: var(--crm-accent) !important;
 }
 
 /* Explicit filter/navigation containers: selected business badges are excluded. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-industry-filters button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-timezone-filters button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-inspect-action[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-nav button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sl-quick-filters button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sl-due-views button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-view-nav button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-queue-filters button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sw-phone-queue-filters button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-categories nav button.is-active,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sk-pack-workspace > nav button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mgt-inbox-tabs button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mw-module nav button[aria-current="page"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mw-subnav button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .finance-segments button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .finance-mobile-nav button[aria-current="page"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .mp-industry-filters button[aria-pressed="true"],
+  .mp-timezone-filters button[aria-pressed="true"],
+  .mp-inspect-action[aria-pressed="true"],
+  .slr-view-nav button[aria-pressed="true"],
+  .sl-quick-filters button[aria-pressed="true"],
+  .sl-due-views button[aria-pressed="true"],
+  .sc-view-nav button[aria-pressed="true"],
+  .sc-queue-filters button[aria-pressed="true"],
+  .sw-phone-queue-filters button[aria-pressed="true"],
+  .knowledge-v4-categories nav button.is-active,
+  .sk-pack-workspace > nav button[aria-pressed="true"],
+  .mgt-inbox-tabs button[aria-pressed="true"],
+  .mw-module nav button[aria-current="page"],
+  .mw-subnav button[aria-pressed="true"],
+  .finance-segments button[aria-pressed="true"],
+  .finance-mobile-nav button[aria-current="page"]
+) {
   background: var(--crm-accent-soft) !important;
   border-color: var(--crm-accent-border) !important;
   color: var(--crm-accent) !important;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sw-mode-switch button[aria-pressed="true"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sw-mode-switch button[aria-pressed="true"] {
   background: var(--crm-accent) !important;
   color: hsl(var(--primary-foreground)) !important;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-tab[data-state="active"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .calm-settings-navigation [role="tab"][data-state="active"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .t24-tab[data-state="active"],
+  .mops-tabs button.active,
+  .mo-workspace-switch button.active,
+  .gbp-section-tabs button.active,
+  .gpm-nav button.active,
+  .mo-stages button.active,
+  .calm-settings-navigation [role="tab"][data-state="active"]
+) {
   background: var(--crm-accent-soft);
   color: var(--crm-accent);
   border-color: var(--crm-accent-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-list-item.is-active,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-queue-item[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sw-phone-queue-list > button[aria-pressed="true"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-table tr[data-state="selected"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .knowledge-v4-list-item.is-active,
+  .sc-queue-item[aria-pressed="true"],
+  .sw-phone-queue-list > button[aria-pressed="true"],
+  .t24-table tr[data-state="selected"]
+) {
   background: var(--crm-accent-soft) !important;
   border-color: var(--crm-accent-border);
   box-shadow: none;
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-list-item.is-active::before,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-queue-item[aria-pressed="true"]::before {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-list-item.is-active::before,
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-queue-item[aria-pressed="true"]::before {
   background: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-merchant-name,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) [data-customer-column="business_name"] > button,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-employee-directory td > button.text-blue-600,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mwr-merchant-name {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .mp-merchant-name,
+  [data-customer-column="business_name"] > button,
+  .t24-employee-directory td > button.text-blue-600,
+  .mwr-merchant-name
+) {
   color: var(--crm-accent);
 }
 
 /* Input focus retains validation/error colors and existing control dimensions. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]) {
   background-color: var(--crm-surface);
   border-color: var(--crm-border);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]):is(:focus, :focus-visible) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]):is(:focus, :focus-visible) {
   border-color: var(--crm-accent);
   outline-color: var(--crm-accent);
   box-shadow: 0 0 0 3px var(--crm-accent-soft);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-navigation-search:focus-within,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .mp-search-field:focus-within {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .app-navigation-search:focus-within,
+  .mp-search-field:focus-within
+) {
   border-color: var(--crm-accent-border);
   box-shadow: 0 0 0 3px var(--crm-accent-soft);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(button, a, summary, [role="tab"]):focus-visible {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(button, a, summary, [role="tab"]):focus-visible {
   outline-color: var(--crm-accent);
   --tw-ring-color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) input:is([type="checkbox"], [type="radio"]) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) input:is([type="checkbox"], [type="radio"]) {
   accent-color: var(--crm-accent);
 }
 
 /* Neutral surfaces/borders only. Warning/success cards keep their explicit palettes. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .bg-white:not(:is(button, a, [role="button"])),
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-card.bg-card,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-panel,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-list,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-detail {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .bg-white:not(:is(button, a, [role="button"])),
+  .t24-card.bg-card,
+  .sc-panel,
+  .knowledge-v4-list,
+  .knowledge-v4-detail
+) {
   background-color: var(--crm-surface);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-card[class*="border-slate-200"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-panel,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sc-table-card,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-list,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .knowledge-v4-detail {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .t24-card[class*="border-slate-200"],
+  .sc-panel,
+  .sc-table-card,
+  .knowledge-v4-list,
+  .knowledge-v4-detail
+) {
   border-color: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) table thead[class*="bg-slate-50"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .bg-slate-50 {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  table thead[class*="bg-slate-50"],
+  .bg-slate-50
+) {
   background-color: var(--crm-surface-subtle);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) table [class*="border-slate-"],
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) table [class*="divide-slate-"] > * + * {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  table [class*="border-slate-"],
+  table [class*="divide-slate-"] > * + *
+) {
   border-color: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .text-slate-700,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .text-slate-800,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .text-slate-900,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .text-slate-950 {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .text-slate-700,
+  .text-slate-800,
+  .text-slate-900,
+  .text-slate-950
+) {
   color: var(--crm-ink);
 }
 
-/* Radix portals are outside app-shell; the same explicit CRM guard is required. */
+/* Portals share the opt-in html attribute. useCrmTheme clears it before paint
+   on private routes, logout and account changes; no document-wide :has scan. */
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .t24-ui-surface:is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .t24-dialog-content) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface:is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], .t24-dialog-content) {
   background: var(--crm-surface);
   border-color: var(--crm-border);
   color: var(--crm-ink);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .t24-ui-surface :is(.t24-crm-form-dialog-header, .t24-crm-form-dialog-footer) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface :is(.t24-crm-form-dialog-header, .t24-crm-form-dialog-footer) {
   background: var(--crm-surface-subtle);
   border-color: var(--crm-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .t24-ui-surface .t24-menu-item:not([data-disabled]):is(:focus, [data-highlighted]) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface .t24-menu-item:not([data-disabled]):is(:focus, [data-highlighted]) {
   background: var(--crm-accent-soft);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) .t24-ui-surface [role="option"][data-state="checked"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface [role="option"][data-state="checked"] {
   background: var(--crm-accent-soft);
   color: var(--crm-accent);
 }
 
 /* The account avatar is chrome, not a status indicator. Keep its inner ring
    and the mobile account shortcut in the active palette as well. */
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] {
   color: var(--crm-accent);
   border-color: var(--crm-border);
   background-color: var(--crm-surface);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] > [class*="bg-blue-50"] {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] > [class*="bg-blue-50"] {
   background: var(--crm-accent-soft);
   --tw-ring-color: var(--crm-accent-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] svg {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"] svg {
   color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"]:hover {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .app-topbar [aria-label="打开我的账户"]:hover {
   background-color: var(--crm-accent-soft);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):is(:disabled, [aria-disabled="true"]) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(.t24-input, .t24-native-select, .t24-textarea, .t24-select-trigger):is(:disabled, [aria-disabled="true"]) {
   background-color: var(--crm-surface-subtle);
   color: var(--crm-muted);
 }
 
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) table thead[class*="bg-slate-50"] > tr > th {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) table thead[class*="bg-slate-50"] > tr > th {
   background-color: var(--crm-surface-subtle);
 }
 
 /* These exact surfaces are brand chrome. Keep the report's white metrics,
    semantic badges and chart series intact while replacing its blue backdrop. */
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 {
   background: var(--crm-rail);
   border-color: var(--crm-accent-border);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 :is(.text-blue-100, .text-blue-200) {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 :is(.text-blue-100, .text-blue-200) {
   color: var(--crm-rail-muted);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 button.bg-white.text-blue-800 {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-calls .bg-gradient-to-br.from-slate-950.via-blue-950.to-blue-800 button.bg-white.text-blue-800 {
   color: var(--crm-accent);
 }
 
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-performance .t24-card.bg-gradient-to-r.from-indigo-50.via-white.to-blue-50 {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .slr-view-performance .t24-card.bg-gradient-to-r.from-indigo-50.via-white.to-blue-50 {
   background: var(--crm-surface-subtle);
   border-color: var(--crm-border);
 }
 
 /* Decorative rails only; hidden pseudo-elements stay hidden. No chart or
    general gradient selector is reset by this opt-in palette. */
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sales-v3-topbar::before,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .customer-360-hero::before,
-html[data-crm-theme]:not([data-crm-theme="blue"]) body:has(.t24-system.app-shell):not(:has(.private-workspace-shell)) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .merchant-hero::before {
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .sales-v3-topbar::before,
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .customer-360-hero::before,
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .merchant-hero::before {
   background: var(--crm-accent);
+}
+
+/* Module roots shadow their old local neutral tokens. Keep series/status tokens
+   (fo-blue cash chart, dc-status-*, semantic badges) outside these aliases. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(.delivery-center-ui, .dc-tasks, .dc-service, .dc-callbacks, .calm-operations-page) {
+  --dc-ink: var(--crm-ink) !important;
+  --dc-muted: var(--crm-muted) !important;
+  --dc-line: var(--crm-border) !important;
+  --dc-border: var(--crm-border) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(.merchant-review-page, .mw-shell, .media-operations, .gbo-workspace, .gbp-workspace) {
+  --mp-ink: var(--crm-ink);
+  --mp-muted: var(--crm-muted);
+  --mp-border: var(--crm-border);
+  --mw-ink: var(--crm-ink);
+  --mw-muted: var(--crm-muted);
+  --mw-line: var(--crm-border);
+  --mw-blue: var(--crm-accent);
+  --mo-ink: var(--crm-ink);
+  --mo-muted: var(--crm-muted);
+  --mo-line: var(--crm-border);
+  --mo-blue: var(--crm-accent);
+  --gbo-border: var(--crm-border);
+  --gbo-muted: var(--crm-muted);
+  --gbo-blue: var(--crm-accent);
+  --gbp-border: var(--crm-border);
+  --gbp-ink: var(--crm-ink);
+  --gbp-muted: var(--crm-muted);
+}
+
+/* Underlined views are locations. Their backgrounds stay transparent. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .slr-primary-views button[aria-current="page"],
+  .dc-task-views button[aria-pressed="true"],
+  .sd-tabs > button[aria-pressed="true"],
+  .sle-tabs > button[aria-pressed="true"],
+  .commission-view-button[aria-pressed="true"],
+  .commission-mobile-tabs button[aria-pressed="true"]
+) {
+  color: var(--crm-accent) !important;
+  border-bottom-color: var(--crm-accent) !important;
+}
+
+/* Filled selections are interaction roles, independent of the business state
+   represented by their labels. Do not target status badge blue utilities. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .t24-tab[data-state="active"],
+  .sf-nav button[aria-current="page"],
+  .sf-filters button[aria-pressed="true"],
+  .si-tabs button[aria-pressed="true"],
+  .shr-nav button[aria-current="page"],
+  .shr-filters button[aria-pressed="true"],
+  .shr-review-groups > button[aria-pressed="true"],
+  .mpl-tabs button[aria-pressed="true"],
+  .mas-tabs > button[aria-pressed="true"],
+  .mas-kinds > button[aria-pressed="true"],
+  .mas-weekdays > button[aria-pressed="true"],
+  .mw-filter-chips button[aria-pressed="true"],
+  .portal-view-tabs button[aria-pressed="true"],
+  .sdh-steps button[aria-current="step"],
+  .gbo-groups button[aria-pressed="true"],
+  .mp-quality-queue > button[aria-pressed="true"],
+  .slr-deal-steps > button[aria-pressed="true"],
+  .sd-timeline-tabs button[aria-pressed="true"],
+  .sc-outcomes button[aria-pressed="true"],
+  .sales-v3-assistant-scenarios button.is-active,
+  .dc-quick-filters > button[aria-pressed="true"],
+  .dc-priority-strip button[aria-pressed="true"],
+  .dc-today-toolbar nav button[aria-pressed="true"],
+  .calm-renewal-workbench button[aria-pressed="true"],
+  .mfd-date-shortcuts button[aria-pressed="true"],
+  .mfd-segments button[aria-pressed="true"],
+  .fo-task-switch button[aria-pressed="true"],
+  .mm-steps button[aria-current="step"]
+) {
+  background: var(--crm-accent-soft) !important;
+  border-color: var(--crm-accent-border) !important;
+  color: var(--crm-accent) !important;
+  box-shadow: none;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .mas-kinds > button[aria-pressed="true"] strong,
+  .gbo-groups button[aria-pressed="true"] > span,
+  .shr-review-groups > button[aria-pressed="true"] > span
+) {
+  color: inherit;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .dc-metric.is-active,
+  .calm-action-selected,
+  .calm-lifecycle-metrics > button[aria-pressed="true"]
+) {
+  background: var(--crm-accent-soft) !important;
+  border-color: var(--crm-accent-border) !important;
+  box-shadow: inset 0 -2px 0 var(--crm-accent) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .dc-metric.is-active :is(.dc-metric-label, strong):not(.dc-danger-text):not(.dc-warning-text) {
+  color: var(--crm-accent) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .dc-task-views button[aria-pressed="true"] b {
+  color: var(--crm-accent);
+  background: var(--crm-accent-soft);
+}
+
+/* Native action buttons also appear in task cards, service-board view switches
+   and mobile page sizing; component-only selectors miss these controls. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  button.bg-blue-600,
+  button.bg-blue-700,
+  .home-primary-button,
+  .mm-steps button[aria-current="step"] span
+) {
+  background: var(--crm-accent) !important;
+  border-color: var(--crm-accent) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(button.bg-blue-600, button.bg-blue-700, .home-primary-button):hover:not(:disabled) {
+  background: var(--crm-accent-hover) !important;
+  border-color: var(--crm-accent-hover) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  button.text-blue-600,
+  button.text-blue-700,
+  a.text-blue-600,
+  a.text-blue-700,
+  .dc-clear-filter,
+  .finance-closing-checklist .fcc-toggle,
+  .finance-closing-checklist .fcc-action,
+  .si-link,
+  .sf-link,
+  .sf-footer button:not([class*="border"]),
+  .sf-error button,
+  .shr-link,
+  .gpm-link,
+  .sle-section-heading > button,
+  .mw-section-heading > button,
+  .mw-workload-grid article > button,
+  .sw-dial-button > button,
+  .sw-enrichment-summary button,
+  .mp-row-actions > .mp-inspect-action,
+  .dc-applied-filters button,
+  section[aria-label="代运营待办"] > svg,
+  .slr-active-filters button,
+  .sd-safe-link,
+  .mw-link,
+  .fo-text-link,
+  .fo-customer-link,
+  .mfd-load-more,
+  .mfd-empty button,
+  .mfd-alert button,
+  .home-overview-button,
+  .home-recent-action,
+  .home-all-functions > summary,
+  .home-function-group > h3 svg,
+  .home-load-state button
+) {
+  color: var(--crm-accent);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .sf-owner-counts-active button :is(span, strong) {
+  color: var(--crm-accent) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .dc-callback-action-primary,
+  .dc-tasks [aria-label="手机任务重点"] button.bg-blue-50,
+  section[aria-label="代运营待办"],
+  .home-icon:not(.home-icon-amber),
+  .gbp-heading-icon
+) {
+  color: var(--crm-accent) !important;
+  background: var(--crm-accent-soft) !important;
+  border-color: var(--crm-accent-border) !important;
+}
+
+/* Shared table, tab and neutral module surfaces; explicit warning/success
+   wrappers and financial/chart color keys are deliberately absent. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .t24-tab-list,
+  .dc-progress-list,
+  .dc-action-list,
+  .dc-callback-row,
+  .dc-board-tools > .bg-card,
+  .dc-applied-filters button,
+  .dc-admin-menu-trigger,
+  .calm-current-action,
+  .calm-customer-preview,
+  .calm-tools-content,
+  .calm-maintenance-tools > div,
+  .slr-contact-content,
+  .mw-module,
+  .mw-scope,
+  .mw-metrics > div,
+  .mw-records,
+  .mw-merchant-list,
+  .mw-rule,
+  .mw-batchbar,
+  .mw-review-groups > section,
+  .mw-review-card,
+  .mwr-toolbar,
+  .mwr-priority-list,
+  .mwr-priority-metrics > button:not(.attention),
+  .mm-panel,
+  .mm-preview,
+  .mm-post,
+  .gbp-connections,
+  .sd-shared-card,
+  .workflow-data-card
+) {
+  background-color: var(--crm-surface);
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .dc-action-card:not(.calm-action-selected),
+  .dc-task-row:not([class*="bg-rose-"]):not([class*="bg-amber-"]),
+  .slr-mobile-card:not([class*="bg-rose-"]),
+  .mp-review-dialog,
+  .sd-contact,
+  .sd-person-row
+) {
+  background-color: var(--crm-surface);
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .dc-progress-table th,
+  .mp-queue-table th,
+  .sl-data-table th,
+  .dc-today-toolbar nav,
+  .dc-task-notes p,
+  .sd-snapshot,
+  .sd-summary-main,
+  .sd-empty,
+  .mw-full-copy,
+  .mw-review-groups h3,
+  .calm-renewal-workbench button[aria-pressed="false"],
+  .fo-task-switch,
+  .mfd-date-shortcuts,
+  .mfd-segments
+) {
+  background-color: var(--crm-surface-subtle);
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .t24-table-row:hover:not([data-state="selected"]),
+  .dc-action-card:hover:not(.calm-action-selected),
+  .dc-callback-row:hover,
+  button.dc-metric:hover:not(.is-active),
+  .sd-shared-card:hover,
+  .mw-records > article:hover,
+  .mw-merchant-list > article:hover,
+  .fo-task:hover,
+  .fo-button:hover,
+  .home-recent-item:hover,
+  .home-app-tile:hover,
+  .home-outline-button:hover,
+  .home-shortcut-button:hover,
+  .home-header-button:hover
+) {
+  background-color: var(--crm-surface-subtle);
+  border-color: var(--crm-accent-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .mp-queue-table tr.is-selected > td,
+  .calm-customer-page tbody tr[class*="bg-blue-50"] > td,
+  .calm-customer-page tbody tr[class*="hover:bg-blue-"]:hover > td
+) {
+  background-color: var(--crm-accent-soft);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .sales-center-navigation a:hover,
+  .dc-customer-name:hover,
+  .dc-action-main > button:enabled:hover,
+  .fo-text-link:hover,
+  .sf-link:hover,
+  .shr-link:hover,
+  .sw-note-templates button:hover:enabled,
+  .calm-owner-shortcuts button:hover,
+  .crm-form-section-nav > button:hover,
+  .dc-applied-filters button:hover,
+  .dc-callback-action-primary:hover,
+  .dc-admin-menu-trigger:is(:hover, [data-state="open"]),
+  .fo-row-detail:hover
+) {
+  color: var(--crm-accent) !important;
+  border-color: var(--crm-accent-border) !important;
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .dc-applied-filters button:hover,
+  .dc-callback-action-primary:hover,
+  .dc-admin-menu-trigger:is(:hover, [data-state="open"]),
+  .fo-row-detail:hover
+) {
+  background: var(--crm-accent-soft) !important;
+}
+
+/* Raw inputs inside module dialogs need the same focus contract as the shared
+   Input component. Invalid controls retain their error border and focus ring. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]),
+  select,
+  textarea
+):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]) {
+  background-color: var(--crm-surface);
+  border-color: var(--crm-border);
+  color: var(--crm-ink);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]),
+  select,
+  textarea
+):not([aria-invalid="true"]):not([class*="border-red-"]):not([class*="border-rose-"]):not([class*="border-destructive"]):is(:focus, :focus-visible) {
+  border-color: var(--crm-accent) !important;
+  outline-color: var(--crm-accent) !important;
+  --tw-ring-color: var(--crm-accent-soft);
+  box-shadow: 0 0 0 3px var(--crm-accent-soft);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) :is(
+  .mobile-more-search,
+  .mw-search,
+  .mwr-month,
+  .mfd-month
+):focus-within {
+  border-color: var(--crm-accent-border);
+  outline-color: var(--crm-accent);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface:is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper] > *) {
+  background-color: var(--crm-surface);
+  color: var(--crm-ink);
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-ui-surface :is(.t24-menu-item[data-highlighted], [cmdk-item][aria-selected="true"]):not([data-disabled]):not([class*="text-red-"]):not([class*="text-rose-"]):not([class*="text-destructive"]) {
+  background: var(--crm-accent-soft);
+  color: var(--crm-accent);
+}
+
+/* /apps and /more use custom controls rather than the desktop component kit. */
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(.homepage-refined.mobile-app-home, .mobile-more-page) {
+  background: var(--crm-canvas);
+  color: var(--crm-ink);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(
+  .mobile-bottom-nav,
+  .mobile-more-header,
+  .mobile-more-profile,
+  .mobile-more-list,
+  .mobile-more-search,
+  .home-topbar,
+  .home-panel,
+  .home-recent-item,
+  .home-app-tile,
+  .home-function-group,
+  .home-favorite-grid button,
+  .home-outline-button,
+  .home-more-entry
+) {
+  background-color: var(--crm-surface);
+  color: var(--crm-ink);
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(
+  .mobile-bottom-nav button[aria-current="page"],
+  .mobile-more-brand,
+  .mobile-more-back,
+  .mobile-more-home,
+  .mobile-more-row:not(.mobile-more-utility) > .mobile-more-icon,
+  .mobile-more-favorite-button[aria-pressed="true"],
+  .mobile-more-favorite-tools button
+) {
+  color: var(--crm-accent);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(
+  .mobile-more-section-label,
+  .mobile-more-profile-role,
+  .mobile-more-meta,
+  .mobile-more-row-label small,
+  .home-page-heading time,
+  .home-recent-meta,
+  .home-today-copy p
+) {
+  color: var(--crm-muted);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(.home-page-heading h1, .homepage-refined h2, .homepage-refined h3, .home-priority-count) {
+  color: var(--crm-ink);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .mobile-more-feature-wrap {
+  border-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .mobile-more-row + .mobile-more-row::before {
+  background-color: var(--crm-border);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] :is(
+  .mobile-more-page a:active,
+  .mobile-more-page button:active,
+  .mobile-more-page a:hover,
+  .mobile-more-page button:hover,
+  .mobile-bottom-nav button:active,
+  .home-favorite-grid button:hover
+) {
+  background-color: var(--crm-accent-soft);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .sc-dial-primary:hover:not(:disabled) {
+  background-color: var(--crm-accent-hover);
 }

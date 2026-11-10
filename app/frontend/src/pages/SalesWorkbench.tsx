@@ -519,7 +519,9 @@ function SalesWorkspace() {
     removeSessionValue(scopedStorageKey('pending-dial', employee?.id));
     if (!activeTask && task && task.lead.id === pending.leadId && task.task_status !== 'completed' && (requestedLead === null || requestedLead === task.lead.id)) openCall(task);
   }, [activeTask, loading, workbench, employee?.id, date, requestedLead]);
-  useAutoRefresh(async () => { await loadWorkbench({ background: true }); await loadRecoveryAlerts(); await loadPersonalPerformance(); await loadRingCentral(); }, { intervalMs: 30000, enabled: !teamView && !saving && !enrichment.open && !enrichment.draft && !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
+  useAutoRefresh(async () => {
+    await Promise.all([loadWorkbench({ background: true }), loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()]);
+  }, { intervalMs: 30000, enabled: !teamView && !saving && !enrichment.open && !enrichment.draft && !activeTask && !historyTask && !analysisTask && (!canManage || !!selectedSalesId) });
 
   const overdueFollowUpCount = useMemo(() => (workbench?.items || []).filter(task => (
     task.task_status !== 'completed'

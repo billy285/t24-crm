@@ -86,6 +86,92 @@ async def contact_protection_summary(db, lead):
         "protected_phones": sorted(blocked)}
 
 
+async def contact_protection_summaries(db, leads):
+    """Batch the existing read-only summaries for an already-scoped queue.
+
+    Dial/save guards deliberately keep their individual authoritative checks.
+    Missing suppression ledger entries retain the complete legacy fallback,
+    including enrichment history and prior dialed numbers, read once per batch.
+    """
+    by_id = {lead.id: lead for lead in leads}
+    if not by_id:
+        return {}
+    profiles = {row.lead_id: row for row in (await db.execute(
+        select(SalesLeadEnrichment).where(SalesLeadEnrichment.lead_id.in_(by_id)))).scalars()}
+    keys_by_id = {}
+    for lead_id, lead in by_id.items():
+        keys = {key for key in [phone_match_key(lead.phone, lead.country)] if key}
+        profile = profiles.get(lead_id)
+        if profile:
+            keys |= snapshot_phone_keys({"contacts": profile.contacts}, lead.country)
+        keys_by_id[lead_id] = keys
+    all_keys = set().union(*keys_by_id.values())
+    ledger = {}
+    if all_keys:
+        ledger = {row.phone_key: row.blocked for row in (await db.execute(
+            select(SalesPhoneSuppression).where(SalesPhoneSuppression.phone_key.in_(all_keys)))).scalars()}
+    blocked = {key for key, value in ledger.items() if value}
+    missing = all_keys - set(ledger)
+    if missing:
+        protected_filter = or_(SalesLeads.do_not_contact.is_(True), SalesLeads.is_blacklisted.is_(True),
+                               SalesLeads.status == "blocked")
+        protected = {lead.id: lead for lead in (await db.execute(
+            select(SalesLeads).where(protected_filter))).scalars()}
+        if protected:
+            # Subqueries avoid binding every protected lead ID when the legacy
+            # fallback covers a large history. Full historical keys are kept.
+            protected_ids = select(SalesLeads.id).where(protected_filter)
+            protected_profiles = {row.lead_id: row for row in (await db.execute(
+                select(SalesLeadEnrichment).where(SalesLeadEnrichment.lead_id.in_(protected_ids)))).scalars()}
+            legacy_keys = set()
+            for lead_id, lead in protected.items():
+                legacy_keys |= {key for key in [phone_match_key(lead.phone, lead.country)] if key}
+                profile = protected_profiles.get(lead_id)
+                if profile:
+                    legacy_keys |= snapshot_phone_keys({"contacts": profile.contacts}, lead.country)
+            audits = (await db.execute(select(SalesLeadEnrichmentAudit).where(
+                SalesLeadEnrichmentAudit.lead_id.in_(protected_ids)))).scalars()
+            for row in audits:
+                if row.lead_id not in protected:
+                    continue
+                country = protected[row.lead_id].country
+                legacy_keys |= snapshot_phone_keys(row.before, country)
+                legacy_keys |= snapshot_phone_keys(row.after, country)
+            attempts = (await db.execute(select(SalesDialAttempt.lead_id, SalesDialAttempt.dial_phone).where(
+                SalesDialAttempt.lead_id.in_(protected_ids)))).all()
+            for lead_id, raw in attempts:
+                if lead_id not in protected:
+                    continue
+                key = phone_match_key(raw, protected[lead_id].country)
+                if key:
+                    legacy_keys.add(key)
+            # An explicit ledger release takes precedence over legacy history,
+            # exactly as in blocked_phone_keys for each individual lead.
+            blocked |= missing & legacy_keys
+    now = datetime.now(timezone.utc)
+    summaries = {}
+    pending_candidates = []
+    for lead_id, lead in by_id.items():
+        cooldown = lead.cooldown_until
+        if cooldown and cooldown.tzinfo is None:
+            cooldown = cooldown.replace(tzinfo=timezone.utc)
+        protected_phones = sorted(keys_by_id[lead_id] & blocked)
+        reason = PROTECTION_NOTICE if lead_is_blocked(lead) or protected_phones else None
+        if not reason and cooldown and cooldown > now:
+            reason = "仍在联系冷却期，请到期后按原计划联系"
+        if not reason:
+            pending_candidates.append(lead_id)
+        summaries[lead_id] = {"can_contact": reason is None, "reason": reason,
+                              "cooldown_until": cooldown, "protected_phones": protected_phones}
+    if pending_candidates:
+        pending = set((await db.execute(select(SalesDossierHandoff.lead_id, SalesDossierHandoff.to_sales_id).where(
+            SalesDossierHandoff.lead_id.in_(pending_candidates), SalesDossierHandoff.status == "pending"))).all())
+        for lead_id in pending_candidates:
+            if (lead_id, by_id[lead_id].assigned_sales_id) in pending:
+                summaries[lead_id].update(can_contact=False, reason="请先确认接收交接摘要，再继续联系商家")
+    return summaries
+
+
 async def has_pending_handoff(db, lead):
     return (await db.execute(select(SalesDossierHandoff.id).where(
         SalesDossierHandoff.lead_id == lead.id,

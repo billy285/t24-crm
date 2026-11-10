@@ -42,7 +42,7 @@ from services.ringcentral_team import team_connection_statuses
 from services.sales_workflow_locks import lock_sales_workflow
 from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_contact_protection import (
-    contact_protection_summary, ensure_lead_contact_allowed, ensure_phone_contact_allowed,
+    contact_protection_summaries, ensure_lead_contact_allowed, ensure_phone_contact_allowed,
     lead_is_blocked, persist_lead_suppression, release_phone_suppression,
 )
 from schemas.sales_enrichment import SalesEnrichmentUpdate, SalesDialStartedInput
@@ -917,6 +917,7 @@ async def get_daily_call_workbench(
     queue_now = datetime.now(timezone.utc)
     contexts = {lead.id: contact_queue_context(lead, now=queue_now, profile=profiles.get(lead.id),
         start=contact_start, end=contact_end) for _, lead in tasks}
+    contact_protections = await contact_protection_summaries(db, [lead for _, lead in tasks])
     tasks.sort(key=lambda pair: queue_sort_key(pair[1], contexts[pair[1].id], completed=pair[0].status == "completed"))
     items = []
     categories = {"unfinished": 0, "callback": 0, "interested": 0, "appointment": 0, "new": 0, "retry": 0, "recycled": 0, "follow_up": 0}
@@ -942,7 +943,7 @@ async def get_daily_call_workbench(
             "contact_queue": contexts[lead.id],
             "lead": {**SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
                      "prospect_quality": qualities[lead.id],
-                     "contact_protection": await contact_protection_summary(db, lead),
+                     "contact_protection": contact_protections[lead.id],
                      **({"enrichment_summary": summaries[lead.id]} if lead.id in summaries else {})},
         })
     completed = sum(1 for task, _lead in tasks if task.status == "completed")
