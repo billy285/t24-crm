@@ -1,0 +1,24 @@
+{
+  "source_sha": "34917180e0d811d720e6bbba44355dfb69b6adee",
+  "baseline_runtime": {
+    "config": "aece28d499fd74e6c4abfd4c39fdc2f36fc3a070ef3f30932517ee25608cc6d6",
+    "id": "4a81be38b526008b93dd26ab2f753dbfaa60bd4b94031c4477d0378d0d1e543a",
+    "image": "sha256:5ec19f11c845cd386bbe699ee3d4b76234b6bc5be742fe01184602acec86252f",
+    "started": "2026-11-10T13:05:45.18541659Z"
+  },
+  "runtime_paths": [
+    "models/employees.py",
+    "routers/employees.py",
+    "routers/finance_entry_drafts.py",
+    "services/finance_entry_drafts.py"
+  ],
+  "frontend_version": "80ed5befe7f2",
+  "payload_bytes": 2337344,
+  "static_members": 146,
+  "source_commit_bytes_verified": true,
+  "fresh_build_passed": true,
+  "business_data_import_in_release": false,
+  "provider_or_publication_actions": false,
+  "manifest_sha256": "e41879ea470dd87aec1651fdeb6fed4c8f9033a3af902c8a8476ca0685259817",
+  "helper_sha256": "54baac38f4c95977890d3bf31d6d549d7649eae2f37781ed345bc842bfb26ef4"
+}

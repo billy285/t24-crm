@@ -1,0 +1,51 @@
+{
+  "backend_file_count": 443,
+  "backend_inventory": {
+    "models/employees.py": "04c049ccf54e8b3dc431b780acec0ed0db1038c400a83ab532e5212eb2568699",
+    "routers/employees.py": "f06e723df1e26ea0a8a39a58aa6028609df04f838186fc6ddea124cc86a182db"
+  },
+  "backend_inventory_sha256": "444d8d6591718bc3ecfb7a6f568be0835616db2e7801449a7b665054bf3665ae",
+  "counts": {
+    "employees": 9,
+    "merchant_pool": 7510,
+    "sales_knowledge_articles": 84
+  },
+  "database_identity": [
+    64515,
+    262854
+  ],
+  "database_writes": false,
+  "frontend_version": "a8cce266e74e",
+  "private_runtimes": {
+    "t24-private-api": {
+      "config": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+      "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "started": "2026-10-11T23:58:43.773320701Z"
+    },
+    "t24-private-worker": {
+      "config": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+      "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "started": "2026-10-11T23:58:58.055948866Z"
+    }
+  },
+  "public_root": "/var/www/t24-crm-public/beautyos-sales-knowledge-f89031f4818e-20261110",
+  "runtime": {
+    "config": "aece28d499fd74e6c4abfd4c39fdc2f36fc3a070ef3f30932517ee25608cc6d6",
+    "id": "4a81be38b526008b93dd26ab2f753dbfaa60bd4b94031c4477d0378d0d1e543a",
+    "image": "sha256:5ec19f11c845cd386bbe699ee3d4b76234b6bc5be742fe01184602acec86252f",
+    "started": "2026-11-10T13:05:45.18541659Z"
+  },
+  "schema_revision": "j65bc789b025",
+  "schema_sha256": "ca15d3cb51c5cb99a68865c6a0c0d5aadd32ee1c5a5cfbc70dee7bfbbf4baa6a",
+  "stage": "CRM_UI_READONLY_BASELINE",
+  "source_sha": "f89031f4818ec2114594b73a9c3d750ee88014fd",
+  "backend_before": {
+    "models/employees.py": "04c049ccf54e8b3dc431b780acec0ed0db1038c400a83ab532e5212eb2568699",
+    "routers/employees.py": "f06e723df1e26ea0a8a39a58aa6028609df04f838186fc6ddea124cc86a182db",
+    "routers/finance_entry_drafts.py": "56830b23579e8b43faf90476a8bfe3e1d94c8a7177bc3b7a38b3228d639b2f6f",
+    "services/finance_entry_drafts.py": "6339009f168d97023b7e68ce3432d4e921df4e165dad8f71cae9481b7aff0486"
+  },
+  "pins_source": "live-preflight.json plus baseline commit bytes; capture verifies exact full live inventory"
+}
