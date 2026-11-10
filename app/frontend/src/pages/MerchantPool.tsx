@@ -143,13 +143,27 @@ function MerchantTimezone({ merchant, now }: { merchant: Merchant; now: Date }) 
   </span>;
 }
 
+type MerchantListView = { page: number; pageSize: number; search: string; poolStatus: string; regions: string[]; industry: string; qualityStatus: string; source: string; timezoneGroup: string; batchId?: string };
+function merchantListParams(view: MerchantListView) {
+  const params = new URLSearchParams({ skip: String((view.page - 1) * view.pageSize), limit: String(view.pageSize) });
+  if (view.search.trim()) params.set('search', view.search.trim());
+  if (view.poolStatus) params.set('pool_status', view.poolStatus);
+  if (view.regions.length) params.set('region', view.regions.join(','));
+  if (view.industry.trim()) params.set('industry', view.industry.trim());
+  if (view.qualityStatus) params.set('quality_status', view.qualityStatus);
+  if (view.source) params.set('source', view.source);
+  if (view.timezoneGroup) params.set('timezone_group', view.timezoneGroup);
+  if (view.batchId) params.set('batch_id', view.batchId);
+  return params;
+}
+
 export default function MerchantPool() {
   const navigate = useNavigate();
-  const { isAdmin, role } = useRole();
+  const { isAdmin, role, employee } = useRole();
   const isMobile = useIsMobile();
   const [dossierId, setDossierId] = useState<number | null>(null);
   const canManagePool = isAdmin || role === 'sales_manager';
-  const [items, setItems] = useState<Merchant[]>([]);
+  const [loadedItems, setItems] = useState<Merchant[]>([]);
   const [assignees, setAssignees] = useState<{ id: number; name: string }[]>([]);
   const [selectedMerchantIds, setSelectedMerchantIds] = useState<number[]>([]);
   const selectionStatuses = useRef<Record<number,string>>({});
@@ -161,8 +175,9 @@ export default function MerchantPool() {
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [stats, setStats] = useState({ total: 0, pending: 0, isolated: 0, converted: 0, duplicates: 0, archived: 0 });
-  const [loading, setLoading] = useState(true);
-  const [listError, setListError] = useState(false);
+  const [requestLoading, setLoading] = useState(true);
+  const [failedViewKey, setFailedViewKey] = useState<string | null>(null);
+  const [acceptedViewKey, setAcceptedViewKey] = useState<string | null>(null);
   const [batchScope, setBatchScope] = useState<MerchantImportReceipt | null>(() => { const id = new URLSearchParams(window.location.search).get('batch_id'); return id && /^[a-zA-Z0-9-]{1,36}$/.test(id) ? { id, filename: '本批导入' } : null; });
   const [assignmentReceipt, setAssignmentReceipt] = useState<{ name: string; id: number; count: number } | null>(null);
   const [search, setSearch] = useState('');
@@ -171,17 +186,17 @@ export default function MerchantPool() {
   const [reviewing, setReviewing] = useState<Merchant | null>(null);
   const [regions, setRegions] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
-  const [industryFacets, setIndustryFacets] = useState<IndustryFacet[] | null>(null);
-  const [facetTotal, setFacetTotal] = useState<number | null>(null);
+  const [loadedIndustryFacets, setIndustryFacets] = useState<IndustryFacet[] | null>(null);
+  const [loadedFacetTotal, setFacetTotal] = useState<number | null>(null);
   const [source, setSource] = useState('');
   const [timezoneGroup, setTimezoneGroup] = useState('');
   const [qualityStatus, setQualityStatus] = useState('');
-  const [qualityFacets, setQualityFacets] = useState<Record<string,number> | null>(null);
+  const [loadedQualityFacets, setQualityFacets] = useState<Record<string,number> | null>(null);
   const [localTimeNow, setLocalTimeNow] = useState(() => new Date());
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [total, setTotal] = useState(0);
+  const [loadedTotal, setTotal] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Merchant | null>(null);
   const [editForm, setEditForm] = useState(emptyEdit);
@@ -193,68 +208,99 @@ export default function MerchantPool() {
   const [enrichmentSelected, setEnrichmentSelected] = useState<Record<number, Record<string, boolean>>>({});
   const [applyingEnrichment, setApplyingEnrichment] = useState(false);
   const loadRequestSeqRef = useRef(0);
+  const pendingListLoad = useRef<{ key: string; id: number; done: Promise<void> } | null>(null);
   const editBaseline = useRef('');
   const editGuard = useUnsavedChanges(Boolean(editing) && JSON.stringify(editForm) !== editBaseline.current);
 
+  const authScope = `${employee?.id || ''}:${role}`;
+  const viewParams = merchantListParams({ page, pageSize, search, poolStatus, regions, industry, qualityStatus, source, timezoneGroup, batchId: batchScope?.id });
+  const viewKey = JSON.stringify([authScope, viewParams.toString()]);
+  const currentView = useRef({ key: viewKey, params: viewParams.toString(), page });
+  // Invalidate during render: an older reply/focus refresh can arrive before
+  // passive effects start the newly selected view's request.
+  if (currentView.current.key !== viewKey) loadRequestSeqRef.current++;
+  currentView.current = { key: viewKey, params: viewParams.toString(), page };
+  const listError = failedViewKey === viewKey;
+  const hasCurrentList = acceptedViewKey === viewKey && !listError;
+  const loading = requestLoading || (!hasCurrentList && !listError);
+  const items = hasCurrentList ? loadedItems : [];
+  const total = hasCurrentList ? loadedTotal : 0;
+  const industryFacets = hasCurrentList ? loadedIndustryFacets : null;
+  const facetTotal = hasCurrentList ? loadedFacetTotal : null;
+  const qualityFacets = hasCurrentList ? loadedQualityFacets : null;
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => () => { loadRequestSeqRef.current++; }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setLocalTimeNow(new Date()), 60000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const loadData = async (options?: { page?: number }) => {
+  const loadData = async (options?: { page?: number; coalesce?: boolean }) => {
+    // Read the latest render's view even when useAutoRefresh still holds the
+    // previous callback, or an earlier search debounce is completing.
+    const requestedView = currentView.current;
+    if (options?.page != null && options.page !== requestedView.page) return;
+    const pending = pendingListLoad.current;
+    // Mutation callbacks call loadData() without coalescing: a read started
+    // before their save must never satisfy the post-save refresh.
+    if (options?.coalesce && pending?.key === requestedView.key && pending.id === loadRequestSeqRef.current) return pending.done;
     const requestId = ++loadRequestSeqRef.current;
-    const requestPage = options?.page ?? page;
-    setLoading(true);
-    const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
-    if (search.trim()) params.set('search', search.trim());
-    if (poolStatus) params.set('pool_status', poolStatus);
-    if (regions.length) params.set('region', regions.join(','));
-    if (industry.trim()) params.set('industry', industry.trim());
-    if (qualityStatus) params.set('quality_status', qualityStatus);
-    if (source) params.set('source', source);
-    if (timezoneGroup) params.set('timezone_group', timezoneGroup);
-    if (batchScope) params.set('batch_id', batchScope.id);
+    let complete!: () => void;
+    const done = new Promise<void>(resolve => { complete = resolve; });
+    pendingListLoad.current = { key: requestedView.key, id: requestId, done };
+    const isCurrent = () => requestId === loadRequestSeqRef.current && requestedView.key === currentView.current.key;
+    const clearUnavailableList = () => {
+      setFailedViewKey(requestedView.key); setAcceptedViewKey(null);
+      setItems([]); setTotal(0); setIndustryFacets(null); setFacetTotal(null); setQualityFacets(null);
+      setSelectedMerchantIds([]); setSelectedSalesId(''); selectionStatuses.current = {}; selectionQualities.current = {};
+      setReviewing(null); setClassifyOpen(false); setDispatchOpen(false);
+    };
+    setLoading(true); setFailedViewKey(null);
     try {
       const [listResult, statsResult] = await Promise.allSettled([
-        invokeWithAuth({ url: `/api/v1/merchant-pool?${params.toString()}`, method: 'GET' }),
+        invokeWithAuth({ url: `/api/v1/merchant-pool?${requestedView.params}`, method: 'GET' }),
         invokeWithAuth({ url: '/api/v1/merchant-pool/stats', method: 'GET' }),
       ]);
-      if (requestId !== loadRequestSeqRef.current) return;
+      if (!isCurrent()) return;
       const failedSections: string[] = [];
-      if (listResult.status === 'fulfilled') {
+      if (listResult.status === 'fulfilled' && Array.isArray(listResult.value.data?.items) && typeof listResult.value.data?.total === 'number') {
         const nextItems = listResult.value.data?.items || [];
         setItems(nextItems);
         setTotal(listResult.value.data?.total || 0);
         setQualityFacets(listResult.value.data?.quality_facets || null);
         setIndustryFacets(Array.isArray(listResult.value.data?.industry_facets) ? listResult.value.data.industry_facets : null);
         setFacetTotal(typeof listResult.value.data?.facet_total === 'number' ? listResult.value.data.facet_total : null);
-        setListError(false);
+        setAcceptedViewKey(requestedView.key); setFailedViewKey(null);
         nextItems.forEach((item: Merchant) => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; });
         setSelectedMerchantIds(current => current.filter(id => !nextItems.some((item: Merchant) => item.id === id && ['converted','archived'].includes(item.pool_status))));
       } else {
-        setListError(true);
+        clearUnavailableList();
         failedSections.push('商家列表');
       }
-      if (statsResult.status === 'fulfilled') setStats(statsResult.value.data || stats);
+      if (statsResult.status === 'fulfilled') setStats(current => statsResult.value.data || current);
       else failedSections.push('统计');
-      if (failedSections.length) toast.error(`${failedSections.join('、')}加载失败，已保留其他可用数据`);
+      if (failedSections.includes('商家列表')) toast.error('当前筛选加载失败，请重新加载后再分配商家。');
+      else if (failedSections.length) toast.error('全局统计加载失败，当前商家列表仍可查看。');
     } catch (error: any) {
-      if (requestId === loadRequestSeqRef.current) toast.error(error?.data?.detail || error?.message || '商家池数据加载失败');
+      if (isCurrent()) { clearUnavailableList(); toast.error(error?.response?.data?.detail || error?.data?.detail || error?.message || '商家池数据加载失败'); }
     } finally {
-      if (requestId === loadRequestSeqRef.current) setLoading(false);
+      if (isCurrent()) setLoading(false);
+      if (pendingListLoad.current?.id === requestId) pendingListLoad.current = null;
+      complete();
     }
   };
 
   useEffect(() => {
-    void loadData();
+    void loadData({ coalesce: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, poolStatus, regions, industry, source, timezoneGroup, qualityStatus, batchScope?.id]);
+  }, [page, pageSize, poolStatus, regions, industry, source, timezoneGroup, qualityStatus, batchScope?.id, authScope]);
 
   useEffect(() => {
-    if (!loading && page > totalPages) setPage(totalPages);
-  }, [loading, page, totalPages]);
+    if (hasCurrentList && !loading && page > totalPages) setPage(totalPages);
+  }, [hasCurrentList, loading, page, totalPages]);
 
   useEffect(() => {
     setSelectedMerchantIds([]);
@@ -273,7 +319,7 @@ export default function MerchantPool() {
     if (previousSearchRef.current === search) return;
     previousSearchRef.current = search;
     setPage(1);
-    const timer = window.setTimeout(() => void loadData({ page: 1 }), 300);
+    const timer = window.setTimeout(() => void loadData({ page: 1, coalesce: true }), 300);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
@@ -285,7 +331,7 @@ export default function MerchantPool() {
       .catch(() => toast.error('电话销售人员列表加载失败'));
   }, [canManagePool]);
 
-  useAutoRefresh(loadData, { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing && !classifyOpen && !bulkAssigning && !bulkUpdating });
+  useAutoRefresh(() => loadData({ coalesce: true }), { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing && !classifyOpen && !dispatchOpen && !bulkAssigning && !bulkUpdating });
 
   const openEdit = (merchant: Merchant) => {
     if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
@@ -385,6 +431,7 @@ export default function MerchantPool() {
   };
 
   const toggleCurrentPageSelection = (checked: boolean) => {
+    if (listError || loading) return;
     const selectableIds = items.filter(item => !['converted','archived'].includes(item.pool_status)).map(item => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; return item.id; });
     setSelectedMerchantIds(current => checked
       ? Array.from(new Set([...current, ...selectableIds])).slice(0, 200)
@@ -632,9 +679,9 @@ export default function MerchantPool() {
       <div className={`mp-workspace${reviewing && !isMobile ? ' has-review' : ''}`}>
         <Card className="merchant-results-card sc-table-card overflow-hidden border-slate-200/80 bg-white"><CardContent className="p-0">
           {poolStatus && !['pending', 'converted'].includes(poolStatus) && <div className="mp-active-status">当前筛选：{viewTitle}</div>}
-          {listError && <div className="mp-list-error" role="alert">商家列表暂不可用，分配已暂停<Button size="sm" variant="ghost" onClick={() => void loadData()}>重新加载</Button></div>}
+          {listError && <div className="mp-list-error" role="alert">当前筛选加载失败，请重新加载后再分配商家。<Button size="sm" variant="ghost" onClick={() => void loadData()}>重新加载</Button></div>}
           {isMobile ? <div data-testid="merchant-pool-mobile-list" aria-label={viewTitle} className="divide-y divide-slate-100">
-            {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">{poolStatus === 'pending' && !search && !industry && !regions.length && !source && !timezoneGroup && !qualityStatus ? '暂无待分配商家；已分配的数据可在“已转线索”中查看。' : '当前筛选下没有商家，可调整行业、地区、时区或搜索内容。'}</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
+            {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载商家池...</p> : listError ? <p className="px-4 py-12 text-center text-sm text-slate-500">当前筛选尚未加载成功，请重新加载后查看商家。</p> : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">{poolStatus === 'pending' && !search && !industry && !regions.length && !source && !timezoneGroup && !qualityStatus ? '暂无待分配商家；已分配的数据可在“已转线索”中查看。' : '当前筛选下没有商家，可调整行业、地区、时区或搜索内容。'}</p> : items.map(merchant => <article key={merchant.id} data-testid="merchant-mobile-card" className={`mp-merchant-card${selectedMerchantIds.includes(merchant.id) ? ' is-selected' : ''}`}>
               <div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" aria-label={`查看资料：${merchant.business_name}`} onClick={() => openMerchant(merchant)}>{merchant.business_name}</button><MerchantQuality merchant={merchant} /><p className="mp-merchant-meta"><span className={`mp-industry-label${!merchant.industry ? ' is-unclassified' : ''}`}>{merchant.industry || '待分类'}</span><span title={formatRegion(merchant)}>{formatRegionCode(merchant)}</span></p></div>
               <p className="mp-card-phone">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : '无电话'}</p>
               <MerchantTimezone merchant={merchant} now={localTimeNow} />
@@ -643,7 +690,7 @@ export default function MerchantPool() {
               {selectedMerchantIds.includes(merchant.id) && <p className="mp-merchant-meta">已加入待分配</p>}
             </article>)}
           </div> : <div data-testid="merchant-pool-desktop-table"><table className="mp-queue-table"><caption className="sr-only">{viewTitle}</caption><thead><tr>{canManagePool && <th className="mp-select-column"><label><input aria-label="选择本页可操作商家" type="checkbox" disabled={listError || loading} checked={items.filter(item => !['converted','archived'].includes(item.pool_status)).length > 0 && items.filter(item => !['converted','archived'].includes(item.pool_status)).every(item => selectedMerchantIds.includes(item.id))} onChange={event => toggleCurrentPageSelection(event.target.checked)} /></label></th>}<th>商家</th><th className="mp-phone-column">商家电话</th><th className="mp-region-column">地区</th><th className="mp-industry-column">行业</th>{showStatusColumn && <th className="mp-state-column" aria-label="当前状态">状态</th>}<th className="mp-action-column">操作</th></tr></thead><tbody>
-            {loading ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : items.length === 0 ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">{poolStatus === 'pending' && !search && !industry && !regions.length && !source && !timezoneGroup && !qualityStatus ? '暂无待分配商家；已分配的数据可在“已转线索”中查看。' : '当前筛选下没有商家，可调整行业、地区、时区或搜索内容。'}</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
+            {loading ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">正在加载商家池...</td></tr> : listError ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-500">当前筛选尚未加载成功，请重新加载后查看商家。</td></tr> : items.length === 0 ? <tr><td colSpan={tableColumnCount} className="py-12 text-center text-slate-400">{poolStatus === 'pending' && !search && !industry && !regions.length && !source && !timezoneGroup && !qualityStatus ? '暂无待分配商家；已分配的数据可在“已转线索”中查看。' : '当前筛选下没有商家，可调整行业、地区、时区或搜索内容。'}</td></tr> : items.map(merchant => <tr key={merchant.id} className={selectedMerchantIds.includes(merchant.id) || reviewing?.id === merchant.id ? 'is-selected' : ''}>
               {canManagePool && <td className="mp-select-column"><label><input aria-label={`选择 ${merchant.business_name}`} type="checkbox" disabled={listError || loading || ['converted','archived'].includes(merchant.pool_status)} checked={selectedMerchantIds.includes(merchant.id)} onChange={event => toggleMerchantSelection(merchant.id, event.target.checked)} /></label></td>}
               <td><div className="mp-merchant-identity"><button type="button" className="mp-merchant-name" title={merchant.business_name} aria-label={`查看资料：${merchant.business_name}`} onClick={() => openMerchant(merchant)}>{merchant.business_name}</button><MerchantQuality merchant={merchant} /></div></td>
               <td className="mp-phone-column">{merchant.phone ? formatPhoneNumber(merchant.phone, merchant.country) : <span className="text-rose-600">无电话</span>}</td>
@@ -653,7 +700,7 @@ export default function MerchantPool() {
               <td className="mp-action-column"><div className="mp-row-actions">{merchantAction(merchant)}{merchantMenu(merchant)}</div></td>
             </tr>)}
           </tbody></table></div>}
-          <div className="mp-list-pagination flex flex-col gap-3 border-t bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">显示 {total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, total)} 条 / 共 {total} 条</p><div className="flex flex-wrap items-center gap-2"><label><span className="sr-only">每页显示</span><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /></label><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { if (confirmDiscardAllChanges()) setPage(page - 1); }}>上一页</Button><span className="text-xs text-slate-500">{page}/{totalPages}</span><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { if (confirmDiscardAllChanges()) setPage(page + 1); }}>下一页</Button></div></div>
+          <div className="mp-list-pagination flex flex-col gap-3 border-t bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-slate-500">{hasCurrentList ? `显示 ${total ? (page - 1) * pageSize + 1 : 0}–${Math.min(page * pageSize, total)} 条 / 共 ${total} 条` : listError ? '当前筛选数量暂不可用' : '正在核对当前筛选数量…'}</p><div className="flex flex-wrap items-center gap-2"><label><span className="sr-only">每页显示</span><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /></label><Button variant="outline" size="sm" disabled={loading || listError || !hasCurrentList || page <= 1} onClick={() => { if (confirmDiscardAllChanges()) setPage(page - 1); }}>上一页</Button><span className="text-xs text-slate-500">{page}/{hasCurrentList ? totalPages : '—'}</span><Button variant="outline" size="sm" disabled={loading || listError || !hasCurrentList || page >= totalPages} onClick={() => { if (confirmDiscardAllChanges()) setPage(page + 1); }}>下一页</Button></div></div>
         </CardContent></Card>
         {reviewing && !isMobile && <aside className="mp-review-panel" aria-label="商家资料"><div className="mp-review-header"><span>商家资料</span><Button variant="ghost" size="sm" aria-label="关闭资料" onClick={() => { if (confirmDiscardAllChanges()) setReviewing(null); }}><X className="h-4 w-4" /></Button></div>{reviewDetails}</aside>}
       </div>
