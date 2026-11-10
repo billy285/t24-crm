@@ -1,0 +1,34 @@
+{
+  "baseline_backend_source_sha": "34917180e0d811d720e6bbba44355dfb69b6adee",
+  "baseline_git_commit": "7db737e0e692dd0325050897feaf6f66e8143770",
+  "baseline_static_source_sha": "00f851323f98c50e484205e380cd4feb78938b1b",
+  "build_receipt_sha256": "4c75a638fab82156292510e5757ad14c16408e75d5dd95a66696d46eba901710",
+  "changed_source_files": {
+    "app/backend/routers/sales_leads.py": "5842cd67af54eb71c974718e636877a1ed556e40e5ddcbad1996f53659efdac8",
+    "app/backend/services/sales_contact_protection.py": "c8cc5a04e895155067efa13e4656f4e4bf380a5354931cb5fa37a2ebb163cb0f",
+    "app/backend/tests/test_sales_contact_protection_batch.py": "2810c2725de3d729e878c6e8b9fccd34d130b9642b3d4df3d53a456ab3a64194",
+    "app/frontend/src/components/crm-color-themes.css": "ae44015578c85c7a747117930ab243f0d057bbbddd1929ed3975ed3e9ef9dc0a",
+    "app/frontend/src/pages/Customers.tsx": "92758ac58f4c8669d6186d2cf93826ccb708c154ac97e3a4c3ca4022ea8e5364",
+    "app/frontend/src/pages/Dashboard.tsx": "5ce35502bb09d2691820e3a041fcedd0bde175ef9763aa6da513267a61ef43c0",
+    "app/frontend/src/pages/LoginPage.tsx": "77db6c66207a2d7b0f97c4837ff40f58d6da67c0ad0c36e464122194172f560e",
+    "app/frontend/src/pages/SalesLeads.tsx": "ed372b93f27270d5101135f20fc138e1d44d3f4a86c0e630477db2e1b44b0897",
+    "app/frontend/src/pages/SalesWorkbench.tsx": "4b04cc302bdd7947384727ba50cae83dec55b69973a735acef997bbd0f3ad05b",
+    "app/frontend/tests/crm-color-themes.test.mjs": "21cae6513c7449a29fb36e2fc44d5db989782f9d6f7e9e24b56ac3a7f9a2bc30",
+    "app/frontend/tests/frontend-read-performance.test.mjs": "0af064ad7e0387a645261a5dd88ab41f0a1326836012419f85576f3a32f6f31b"
+  },
+  "database_migration": false,
+  "database_writes_by_release": false,
+  "dist_inventory_sha256": "745509a0842042e5dd6e658feb6d0aa0685e28cb18ccf94e7a147096250bf7cf",
+  "fresh_build_passed": true,
+  "frontend_version": "3fc89c04359b",
+  "helper_sha256": "9fc7979eac14d6616894a96d6f9d0270a8318b47bb313026d81841ac039315ce",
+  "payload_sha256": "447d0c7451f60db17958103c8f718a3fdddf3ef59ec917f2ae63e17af155b2b6",
+  "preflight_sha256": "9a2a92f9ff2cb854900878724fee9d1404f49e94b3d0b92e7af39296fa44f3aa",
+  "runtime_paths": [
+    "routers/sales_leads.py",
+    "services/sales_contact_protection.py"
+  ],
+  "source_commit_bytes_verified": true,
+  "source_sha": "ced537b14f9ed479b995c3f432cfdd8c32410589",
+  "stage": "CRM_THEME_PERFORMANCE_SOURCE_FREEZE"
+}
