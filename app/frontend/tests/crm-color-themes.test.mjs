@@ -23,6 +23,7 @@ const element = (tag, classes = '', attrs = {}, parent = null, states = []) => {
   return node;
 };
 const pseudoMatches = (node, pseudo) => {
+  if (pseudo.value.startsWith('::')) return node.pseudo === pseudo.value.slice(2);
   if (pseudo.value === ':is' || pseudo.value === ':where') return pseudo.nodes.some(selector => matches(node, selector));
   if (pseudo.value === ':not') return !pseudo.nodes.some(selector => matches(node, selector));
   if (pseudo.value === ':has') return false; // No :has is allowed in this color layer.
@@ -50,6 +51,8 @@ const compoundMatches = (node, parts) => parts.every(part => {
   return false;
 });
 function matches(node, selector) {
+  const pseudoElement = selector.nodes.find(part => part.type === 'pseudo' && part.value.startsWith('::'));
+  if (node.pseudo !== pseudoElement?.value.slice(2)) return false;
   function from(candidate, end) {
     if (!candidate) return false;
     let split = end;
@@ -119,6 +122,24 @@ test('sales primary view follows the palette with the current aria-current marku
   const css = cssFor(['pages/sales-ui-clarity.css']);
   assert.equal(cascade(button, css, 'color'), 'var(--crm-accent)');
   assert.equal(cascade(button, css, 'border-bottom-color'), 'var(--crm-accent)');
+});
+
+test('desktop secondary navigation themes its active marker and icon while default blue stays unchanged', () => {
+  const css = cssFor(['index.css', 'components/crm-visual-polish.css']);
+  assert.match(read('components/DesktopBusinessNavigation.tsx'), /className=\{`app-secondary-link/);
+  for (const themeId of ['obsidian', 'ocean', 'forest', 'amethyst', 'copper', null, 'blue']) {
+    const { shell } = fixture(themeId);
+    const nav = element('nav', 'app-sidebar-nav app-secondary-links', {}, shell);
+    const link = element('a', 'app-secondary-link is-active', { 'aria-current': 'page' }, nav);
+    const icon = element('svg', 'lucide', {}, link);
+    const marker = { ...link, pseudo: 'before' };
+    const themed = themeId && themeId !== 'blue';
+    assert.equal(cascade(icon, css, 'color'), themed ? 'var(--crm-accent)' : '#3570e6', `${themeId}: active icon`);
+    assert.equal(cascade(marker, css, 'background-color'), themed ? 'var(--crm-accent)' : '#3774ef', `${themeId}: active marker`);
+    const inactive = element('a', 'app-secondary-link', {}, nav);
+    const inactiveIcon = element('svg', 'lucide', {}, inactive);
+    assert.equal(cascade(inactiveIcon, css, 'color'), '#93a1b6', `${themeId}: inactive icon`);
+  }
 });
 
 test('operations active metric, filter and selected action beat the existing desktop and mobile overrides', () => {

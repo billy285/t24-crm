@@ -142,6 +142,14 @@ html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data
   color: var(--crm-accent);
 }
 
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .app-secondary-link.is-active svg {
+  color: var(--crm-accent);
+}
+
+html[data-crm-theme]:not([data-crm-theme="blue"]) .t24-system.app-shell[data-crm-polish] .app-secondary-link.is-active::before {
+  background: var(--crm-accent);
+}
+
 /* Buttons are selected by action variants, never by status text color. */
 
 html[data-crm-theme]:not([data-crm-theme="blue"]) :is(.t24-system.app-shell[data-crm-polish], .t24-ui-surface) .t24-button:is(.bg-primary, .bg-blue-600, .bg-blue-700) {
