@@ -1,0 +1,33 @@
+{
+  "source_sha": "9878ca0654b82e7cd9150e7b8628c04aa3cc5eae",
+  "baseline_runtime": {
+    "id": "8e756b94792e47390ca44d251c845948e058a01fb278f05ccdd093dec6ce1778",
+    "image": "sha256:c3f85deed39ba0055b30f5301382517bb9fdafefcedf8b809429345c8f8365d2",
+    "config": "0a21e494507b5d707403596f5640768435871560b7a7f79a1a376b6052e42e80",
+    "started": "2026-11-10T09:46:28.683361703Z"
+  },
+  "runtime_paths": [
+    "routers/merchant_imports.py",
+    "routers/merchant_pool.py",
+    "routers/prospect_verification.py",
+    "routers/ringcentral.py",
+    "routers/sales_leads.py",
+    "routers/sales_pool_dispatch.py",
+    "schemas/prospect_verification.py",
+    "services/merchant_identity.py",
+    "services/merchant_imports.py",
+    "services/prospect_verification.py",
+    "services/ringcentral.py",
+    "services/ringcentral_coverage.py",
+    "services/ringcentral_team.py",
+    "services/sales_lead_cycle.py",
+    "services/sales_pool_dispatch.py",
+    "services/sales_queue_policy.py"
+  ],
+  "frontend_version": "206ef6fe0fe7",
+  "payload_bytes": 2378788,
+  "static_members": 143,
+  "source_commit_bytes_verified": true,
+  "manifest_sha256": "955cfd155263a7c720efe9b09df67b342de2093cd9fa80dbc5801d79b2c22f99",
+  "helper_sha256": "440347fddb4a696eab68eb28de94ba8a9701b6b5b64c69014ca70715bd12d6d4"
+}

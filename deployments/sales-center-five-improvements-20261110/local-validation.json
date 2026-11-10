@@ -1,0 +1,34 @@
+{
+  "source_sha": "9878ca0654b82e7cd9150e7b8628c04aa3cc5eae",
+  "production_base_source": "d41e33dcb617384b73ef9277c16717d7cc099bdd",
+  "frontend_version": "206ef6fe0fe7",
+  "backend_related_tests": {
+    "passed": 365,
+    "failures": 0,
+    "errors": 0,
+    "junit_sha256": "3c761966323691056dbe6f2e0b339ecc9957b1109732eacbc7dbe262513b88b1"
+  },
+  "frontend_browser_tests": {
+    "passed": 16,
+    "skipped": 0,
+    "flaky": 0,
+    "mocked_apis": true,
+    "report_sha256": "7fc6fdbdcc3522ad4b374149606daf67f5d341a3bdac19c627c3a73df077de7b"
+  },
+  "frontend_action_lifecycle_tests": {
+    "passed": 10
+  },
+  "release_guard_tests": {
+    "passed": 17
+  },
+  "production_build": {
+    "exit_code": 0,
+    "frontend_version": "206ef6fe0fe7"
+  },
+  "targeted_lint_exit_code": 0,
+  "typescript_app_check": "Known pre-existing Finance.tsx:5778 TS2322 only; no changed-file type errors",
+  "schema_changes": false,
+  "real_sales_oauth_and_calls": "Deferred by user; no calls placed, no real per-sales end-to-end acceptance claimed",
+  "provider_reference": "https://developers.ringcentral.com/guide/voice/call-log/api",
+  "read_only_candidate_quality_query_probe": "Must pass on actual candidate before PREPARED"
+}
