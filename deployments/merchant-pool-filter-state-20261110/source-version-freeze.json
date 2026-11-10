@@ -1,0 +1,15 @@
+{
+  "stage": "LOCAL_STATIC_PACKAGE_VERIFIED",
+  "source_sha": "dcccb1227b917cdc29d96c5a1c96f5f8e5ca8031",
+  "backend_source_sha": "9878ca0654b82e7cd9150e7b8628c04aa3cc5eae",
+  "baseline_carrier": "05b7ecdd932d7e2046e6e664aafc4c7fbefe6d12",
+  "frontend_version": "a298ad75553b",
+  "static_members": 143,
+  "manifest_sha256": "a2f9e5af5cce6780f210ce95e99726f9e8786fcaff908457fbf356551bf6eb75",
+  "payload_sha256": "697db23f300f0ead22e47c34eab125ce931a104b5e60d53ff10a18258ad9d63b",
+  "helper_sha256": "ae94128165daedd82ba09b070cf9617247f87ae1f24dbd96058b1af35aba64ea",
+  "backend_unchanged": true,
+  "container_restart_required": false,
+  "database_migration": false,
+  "fresh_build_passed": true
+}
