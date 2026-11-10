@@ -1,0 +1,51 @@
+{
+  "backend_timezone_tests_passed": true,
+  "backend_import_and_timezone_tests_passed": 110,
+  "git_diff_check_passed": true,
+  "release_helper_tests_passed": 18,
+  "router_delta_verified_exact_state_only_parser": true,
+  "city_delta": [
+    {
+      "state": "FL",
+      "city": "Hallandale Beach",
+      "timezone": "America/New_York"
+    },
+    {
+      "state": "FL",
+      "city": "Plantation",
+      "timezone": "America/New_York"
+    },
+    {
+      "state": "TX",
+      "city": "Bellaire",
+      "timezone": "America/Chicago"
+    },
+    {
+      "state": "TX",
+      "city": "Coppell",
+      "timezone": "America/Chicago"
+    },
+    {
+      "state": "TX",
+      "city": "Corsicana",
+      "timezone": "America/Chicago"
+    },
+    {
+      "state": "TX",
+      "city": "Grapevine",
+      "timezone": "America/Chicago"
+    },
+    {
+      "state": "TX",
+      "city": "League City",
+      "timezone": "America/Chicago"
+    }
+  ],
+  "deployment_performed": false,
+  "live_baseline_preflight_pending_browser_reconnection": false,
+  "no_database_migration": true,
+  "no_credentials_in_package": true,
+  "import_tests_passed": 29,
+  "timezone_tests_passed": 81,
+  "authenticated_read_only_preflight_passed": true
+}

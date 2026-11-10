@@ -1,0 +1,122 @@
+{
+  "actual_runtime_changes": [
+    "services/sales_timezones.py",
+    "routers/merchant_pool.py"
+  ],
+  "authenticated_preflight_sha256": "fa559ac2d5ad8f16be2ca1978562689f57a4a07d9dbb005a49733b2120199c64",
+  "backend_after": {
+    "routers/merchant_pool.py": "0923a506e37f9d9631a4209f883fd3f864da73175412ee1071867ced4cde5f73",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "06d500c8bf23397cd05d925d5b403b1b44047d253d738d82c8e6a624e1d5ded0"
+  },
+  "backend_before": {
+    "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_timezones.py": "52bbd3931dfb65d060fdb64eab1f7edda0a1cfba1687f4b666c063a230806cfc"
+  },
+  "baseline_source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+  "city_delta": [
+    {
+      "city": "Hallandale Beach",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Plantation",
+      "state": "FL",
+      "timezone": "America/New_York"
+    },
+    {
+      "city": "Bellaire",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Coppell",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Corsicana",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "Grapevine",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    },
+    {
+      "city": "League City",
+      "state": "TX",
+      "timezone": "America/Chicago"
+    }
+  ],
+  "frontend_bytes_unchanged": true,
+  "frontend_source_unchanged": true,
+  "frontend_version": "e49b66b8c1d2",
+  "helper_sha256": "459ad3ccc17e4429bbc1afe790c0af6a5fc9ebc0ac215ecc7d0801e70d788023",
+  "helper_size_bytes": 19546,
+  "manifest_sha256": "20f71342bc3dc7bbf77d0656e92171c2b9e4027f4ed9b5bc432b44122a490574",
+  "no_raw_merchant_dataset_in_artifacts": true,
+  "payload_sha256": "0177182d2b6cf75cd62974a1bf9ccb3ac4a81d6063408784957ffac723d38fc8",
+  "payload_size_bytes": 2317166,
+  "release_helper_tests": 18,
+  "runtime_paths": [
+    "routers/merchant_pool.py",
+    "services/sales_intelligence.py",
+    "services/sales_timezones.py"
+  ],
+  "source_sha": "d41e33dcb617384b73ef9277c16717d7cc099bdd",
+  "validation": {
+    "authenticated_read_only_preflight_passed": true,
+    "backend_import_and_timezone_tests_passed": 110,
+    "backend_timezone_tests_passed": true,
+    "city_delta": [
+      {
+        "city": "Hallandale Beach",
+        "state": "FL",
+        "timezone": "America/New_York"
+      },
+      {
+        "city": "Plantation",
+        "state": "FL",
+        "timezone": "America/New_York"
+      },
+      {
+        "city": "Bellaire",
+        "state": "TX",
+        "timezone": "America/Chicago"
+      },
+      {
+        "city": "Coppell",
+        "state": "TX",
+        "timezone": "America/Chicago"
+      },
+      {
+        "city": "Corsicana",
+        "state": "TX",
+        "timezone": "America/Chicago"
+      },
+      {
+        "city": "Grapevine",
+        "state": "TX",
+        "timezone": "America/Chicago"
+      },
+      {
+        "city": "League City",
+        "state": "TX",
+        "timezone": "America/Chicago"
+      }
+    ],
+    "deployment_performed": false,
+    "git_diff_check_passed": true,
+    "import_tests_passed": 29,
+    "live_baseline_preflight_pending_browser_reconnection": false,
+    "no_credentials_in_package": true,
+    "no_database_migration": true,
+    "release_helper_tests_passed": 18,
+    "router_delta_verified_exact_state_only_parser": true,
+    "timezone_tests_passed": 81
+  }
+}

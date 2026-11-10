@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "reviewer": "directories_5000",
+  "reviewed_at_utc": "2026-11-10T09:18:24.363Z",
+  "decision": "PASS_LOCAL_SCOPE_NO_BLOCKING_FINDINGS",
+  "source_sha": "d41e33dcb617384b73ef9277c16717d7cc099bdd",
+  "baseline_source_sha": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+  "review_scope": "Read-only local source/helper/package review; only this review report was authored. No browser, server, CRM, deployment, migration, external messages, or production database action.",
+  "blocking_findings": [],
+  "source_review": {
+    "committed_scope": [
+      "app/backend/routers/merchant_pool.py",
+      "app/backend/services/sales_timezones.py",
+      "app/backend/tests/test_merchant_imports.py",
+      "app/backend/tests/test_sales_timezones.py"
+    ],
+    "parser_behavior": "Only a single remaining explicit US region token recognized as a state code or full state name is moved to state; no city is fabricated. Existing country/city parsing remains byte-identical outside the added branch and import.",
+    "city_delta": [
+      {
+        "state": "FL",
+        "city": "Hallandale Beach",
+        "timezone": "America/New_York"
+      },
+      {
+        "state": "FL",
+        "city": "Plantation",
+        "timezone": "America/New_York"
+      },
+      {
+        "state": "TX",
+        "city": "Bellaire",
+        "timezone": "America/Chicago"
+      },
+      {
+        "state": "TX",
+        "city": "Coppell",
+        "timezone": "America/Chicago"
+      },
+      {
+        "state": "TX",
+        "city": "Corsicana",
+        "timezone": "America/Chicago"
+      },
+      {
+        "state": "TX",
+        "city": "Grapevine",
+        "timezone": "America/Chicago"
+      },
+      {
+        "state": "TX",
+        "city": "League City",
+        "timezone": "America/Chicago"
+      }
+    ],
+    "runtime_changed": [
+      "routers/merchant_pool.py",
+      "services/sales_timezones.py"
+    ],
+    "unchanged_runtime_carried": [
+      "services/sales_intelligence.py"
+    ],
+    "schema_auth_ringcentral_frontend_changes": false,
+    "backend_before": {
+      "routers/merchant_pool.py": "cad852d7aa1de26b3467cfff5f2e60f4467d3c841efeaf8b575357403cf34730",
+      "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+      "services/sales_timezones.py": "52bbd3931dfb65d060fdb64eab1f7edda0a1cfba1687f4b666c063a230806cfc"
+    },
+    "backend_after": {
+      "routers/merchant_pool.py": "0923a506e37f9d9631a4209f883fd3f864da73175412ee1071867ced4cde5f73",
+      "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+      "services/sales_timezones.py": "06d500c8bf23397cd05d925d5b403b1b44047d253d738d82c8e6a624e1d5ded0"
+    }
+  },
+  "independently_executed_checks": {
+    "working_bytes_match_commit:routers/merchant_pool.py": true,
+    "router_exact_bytes": true,
+    "reject_router_append": true,
+    "reject_router_logic": true,
+    "working_bytes_match_commit:services/sales_intelligence.py": true,
+    "sales_intelligence_unchanged": true,
+    "working_bytes_match_commit:services/sales_timezones.py": true,
+    "reject_timezone_outside_rows": true,
+    "reject_timezone_existing_city_change": true,
+    "pin_receipt_equals_prior_deployed": true,
+    "pins_match_git_baseline": true,
+    "live_runtime_equals_pins": true,
+    "live_backend_equals_pins": true,
+    "legacy_helper_hash_fixed": true,
+    "prior_static_manifests_equal": true
+  },
+  "validation": {
+    "helper_unittest": {
+      "passed": 18,
+      "exit_code": 0,
+      "command": "python3 -m unittest discover -s work/5000-import-geography-deploy -p test_release.py -v"
+    },
+    "backend_pytest": {
+      "passed": 110,
+      "warnings": 28,
+      "seconds": 28.38,
+      "exit_code": 0,
+      "files": [
+        "tests/test_merchant_imports.py",
+        "tests/test_sales_timezones.py"
+      ],
+      "python": "/Users/billyli/Documents/Codex/2026-10-07/sites-plugin-sites-openai-curated-remote-3/work/standardization/backend-venv/bin/python",
+      "pythonpath_requires_both_app_and_backend": true
+    },
+    "git_diff_check": {
+      "base": "26ef27d41fab9bc871e9f3df5303d312b4e567b4",
+      "source": "d41e33dcb617384b73ef9277c16717d7cc099bdd",
+      "exit_code": 0
+    },
+    "negative_package_guard_checks": [
+      "Router appended unrelated bytes rejected",
+      "Router state-recognition logic mutation rejected",
+      "Timezone runtime code outside _CITY_ROWS rejected",
+      "Existing city mapping removal/change rejected"
+    ]
+  },
+  "guard_review": {
+    "legacy_helper": "The on-disk local legacy helper SHA256 equals 922e0ed7d3fbde5d2985a5ea2a02b90b9622262f1969c8146535665133589f85; runtime load requires this exact protected helper and legacy SOURCE/schema. No legacy helper edits.",
+    "baseline": "Adapter constants, baseline-pins prior receipt, actual Git baseline file hashes, and saved authenticated read-only preflight match source 26ef27d, runtime 17e3170f..., image sha256:6ae9f98..., configuration b04f37e..., StartedAt 2026-11-09T15:03:57.555322683Z, schema j65bc789b025 and unchanged frontend version e49b66b8c1d2.",
+    "mount_order": "Private service normalization permutes complete two-mount dictionaries until the frozen exact configuration hash matches and preserves ID/image/start/running checks. CRM only sorts the known baseline/candidate three complete mounts, requires the baseline b04f37e hash, leaves actual ID/image/start visible, and records equivalence without rewriting raw baseline. These guards are unchanged from the prior adapter apart from new exact baseline pins.",
+    "package": "Committed Git object inputs must match local runtime bytes. Router guard reverses the one exact import and exact added branch then requires byte equality to baseline. Timezone guard requires identical AST outside _CITY_ROWS and preserves every existing mapping. sales_intelligence bytes unchanged. No frontend source changes; complete static hash map equals prior manifests. Exact tar member set, canonical regular files, sizes and hashes are verified.",
+    "runtime_scope": "Exactly three backend payload paths, two required actual changes, unchanged sales_intelligence, exact same static bytes/version, old==new schema, and both migration/write flags false. Inherited extract and full backend inventory guards remain; image build uses retained exact original image and --network=none --pull=false.",
+    "commands": "Generator accepts only carrier-committed exact release.py/manifest/payload bytes; generated capture fetches source-pinned raw GitHub URLs, validates sizes/hash before exclusive nofollow root-private writes, and every phase rechecks all three pinned files. Exact root hostname, isolated Python -I -S -B, umask077, namespace and nonblocking lock remain. Capture/prepare and activation remain separate commands.",
+    "activation": "Current exact original runtime, full inventory, schema, DB file identity, nginx bytes/root and private runtimes are checked before activation. Candidate config/env/network and full backend inventory are checked, and successful receipt requires stopped retained original, exact labeled candidate, unchanged schema/DB identity/private runtimes and exact static root. Retry repeats observation only.",
+    "recovery": "Recovery requires this release's prepared receipt and activation marker, exact retained original configuration, unchanged schema, and only this recorded candidate ID/image may be stopped/renamed. It restores original container and captured nginx bytes, verifies original full inventory and private runtimes, and performs no database restore/migration. Other containers/services are outside this rollback scope.",
+    "no_guard_weakening_found": true
+  },
+  "inspected_local_package": {
+    "source_sha": "d41e33dcb617384b73ef9277c16717d7cc099bdd",
+    "manifest_sha256": "20f71342bc3dc7bbf77d0656e92171c2b9e4027f4ed9b5bc432b44122a490574",
+    "payload_sha256": "0177182d2b6cf75cd62974a1bf9ccb3ac4a81d6063408784957ffac723d38fc8",
+    "payload_hash_matches_manifest": true,
+    "archive_exact_members": true,
+    "archive_all_hashes_match": true,
+    "helper_matches_reviewed_work": true,
+    "generated_command_pins_present_at_package_inspection": false
+  },
+  "reviewed_file_sha256": {
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/release.py": "459ad3ccc17e4429bbc1afe790c0af6a5fc9ebc0ac215ecc7d0801e70d788023",
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/package_release.py": "54e2c92c72e22528efc9ffbd1dfd15df2d9ddd489fc30087c18246860b074e1c",
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/make_commands.py": "bcbb8c20284a22f406ec94d06a0441e443bac086223d999dcbac2c9b146ee4fa",
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/test_release.py": "fe60192457229328d93ff7932c96b6b1c4ef86cc42126f70109c1492a20db594",
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/baseline-pins.json": "0d4336a13715544e331038bb00b4056f21fb919276cda3d699cdb4c5c5880fd0",
+    "/Users/billyli/Documents/Codex/2026-11-08/t/work/5000-import-geography-deploy/live-read-only-preflight.json": "fa559ac2d5ad8f16be2ca1978562689f57a4a07d9dbb005a49733b2120199c64",
+    "/Users/billyli/Documents/Codex/2026-10-07/sites-plugin-sites-openai-curated-remote-3/work/t24-crm/work/release-ui/deployments/ringcentral-team-20261109/release.py": "922e0ed7d3fbde5d2985a5ea2a02b90b9622262f1969c8146535665133589f85"
+  },
+  "limitations": [
+    "Server state was not accessed or reproduced by this reviewer. The saved authenticated read-only preflight was cross-checked locally against baseline pins and Git objects.",
+    "Command generator source was reviewed; carrier-specific generated command files were not present at package inspection. This result applies only to the recorded source/helper/package hashes.",
+    "Local review is not an activation/deployment or post-deployment acceptance receipt."
+  ]
+}
