@@ -1,0 +1,63 @@
+{
+  "active_nginx_sha256": "9796cbc4c439451fe5a8c2deb916c9bdd1e7264d54caa5a33e54f0cb9d7ad1ef",
+  "backend_file_count": 443,
+  "backend_inventory_sha256": "283eae77666cee3f3572781ab9ea353ec6e43646f0c00620738c8755c880dfc5",
+  "baseline_source_sha": "eae1018a1da16d15b32deb18844d2b0536b28e4f",
+  "business_rows_read": false,
+  "captured_at_unix": 1794379473,
+  "content_security_policy_sha256": "ead64b09efe8c4f35648aa8eafe8855c5268ecf0999e0918b3642dd9dfbfe7a6",
+  "database_identity": [
+    64515,
+    262854
+  ],
+  "database_writes": false,
+  "frontend_version": "344e646b2fc5",
+  "helper_hashes": {
+    "/opt/t24-crm/releases/crm-order-list-7ff2deff1ed3-20261111/release.py": "5a702dc034f95392fdd7372014cba7db41b86880182ad909a6f983b7cf6cb270",
+    "/opt/t24-crm/releases/crm-order-list-contact-guard-eae1018a1da1-20261111/release.py": "e072b611d8a2c6f558d1f666de25caeed4e223e6cc94e3a8183e833f751474cc",
+    "/opt/t24-crm/releases/crm-theme-details-596687a9b9e7-20261111/release.py": "d70cf13f0b06335c2339d2dd05fc08054bcfdafc84fd49020ce94c63b8ab2262",
+    "/opt/t24-crm/releases/crm-theme-performance-ced537b14f9e-20261111/release.py": "9fc7979eac14d6616894a96d6f9d0270a8318b47bb313026d81841ac039315ce",
+    "/opt/t24-crm/releases/crm-ui-refinement-34917180e0d8-20261111/release.py": "54baac38f4c95977890d3bf31d6d549d7649eae2f37781ed345bc842bfb26ef4",
+    "/opt/t24-crm/releases/ringcentral-team-18240e28774a-20261109/release.py": "922e0ed7d3fbde5d2985a5ea2a02b90b9622262f1969c8146535665133589f85"
+  },
+  "nginx_path": "/etc/nginx/sites-enabled/t24-crm",
+  "nginx_sha256": "ae28818d2487417b643fa35517e1659695252b851a3635e5dcc1e69ac7b0bd0a",
+  "old_helpers_executed": false,
+  "private_runtimes": {
+    "t24-private-api": {
+      "canonical_mounts_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+      "config": "04160cf058e2e8b47b719e731a813af4bdb12144850680b50ed2ec00dd5491e2",
+      "environment_sha256": "52ec4efc6528bca46e7b31d1eeeacb426f3ffea4373acb54746a4437eb3e8732",
+      "id": "f8644b043b7f9d8e57190a8e7f411291ccb0814871428891e00e77cb74974d6b",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "restart_count": 0,
+      "started": "2026-10-11T23:58:43.773320701Z"
+    },
+    "t24-private-worker": {
+      "canonical_mounts_sha256": "f8e9b5779213f483cfc512cec1e32b82156b12c704b7d41c4417288c0aafa962",
+      "config": "7dba014c965ef1c4618a0a33546a5089edb27095a3c06ce05ab06d01a8ceb061",
+      "environment_sha256": "b412bc27ec885bca443730ceb68fedc63649ef21d1cec65f8e5ce6f8dd02cc48",
+      "id": "7f7930d5ea468765c404a163ecb0cb4d2935b793ad4435efc8ca8aa782772cab",
+      "image": "sha256:a82266de5af9ff84a957854f8dc7971415718278f0cf7342d037dde74dd518c5",
+      "restart_count": 0,
+      "started": "2026-10-11T23:58:58.055948866Z"
+    }
+  },
+  "public_inventory_sha256": "d56e87c8b71a89ae3764bdf98ddafb33ca10acdfa3fb1a2ec5be10c7c9196f14",
+  "public_root": "/var/www/t24-crm-public/crm-order-list-contact-guard-eae1018a1da1-20261111",
+  "runtime": {
+    "canonical_mounts_sha256": "9d359d0d20b3a8422e7e97658fed117b35befa79a84e3947e3db2fe199cf2b6f",
+    "config": "a0343fa6afc0a90d553a5cbe5535709b0a22350c96013a696aa9b1b65ce4e5cf",
+    "environment_sha256": "9ecc4a543dc193736e08a8526f691722e68ecae9f8e0a206beb8d4f61d4329d0",
+    "id": "a781614d942f9e44bc9a590e4538d6cb0a278f29ec1e5a6ee161542d2a112f91",
+    "image": "sha256:ee0ec78aefb57df0ac03beb015e7ea4cfb91be92d32207ff00a3b3128d298e32",
+    "restart_count": 0,
+    "started": "2026-11-10T17:39:56.698664937Z"
+  },
+  "runtime_restarts": false,
+  "schema_revision": "j65bc789b025",
+  "schema_sha256": "ca15d3cb51c5cb99a68865c6a0c0d5aadd32ee1c5a5cfbc70dee7bfbbf4baa6a",
+  "stage": "CRM_ORDER_SYSTEM_READONLY_BASELINE",
+  "static_only": true,
+  "table_count": 169
+}
