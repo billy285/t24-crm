@@ -1,0 +1,15 @@
+{
+  "baseline_git_commit": "dbe880e54dd982a9033d86141c303aee195589d0",
+  "baseline_source_sha": "86fbb228e176a4fabc07a32988353451eea3f1ed",
+  "build_receipt_sha256": "6355a030fff75935b058650f7864c6f1a5932c0707a9d51b91ce55a6cbb331e4",
+  "changed_source_files": {
+    "app/frontend/src/components/crm-order-customer-org.css": "5f5c1f497bada87622a3d3528981499028ad544a3876163b8347d17703f54fd5"
+  },
+  "dist_inventory_sha256": "5ee17473f5c2584e2e3a7156ae1d7676d2d6bd8608ef7d59df8cd2b60ec52f36",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "216361b50c3e",
+  "source_commit_bytes_verified": true,
+  "source_sha": "a753b28fadb048b6f199fc88bc89da786eb96a51",
+  "stage": "CRM_ORDER_MOBILE_FIX_SOURCE_FREEZE"
+}
