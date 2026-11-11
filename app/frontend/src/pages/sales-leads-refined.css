@@ -493,7 +493,7 @@
 }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(5) { width: 28%; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(4) { width: auto; }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(3) { width: 140px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(3) { width: 160px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(2) { width: 112px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:last-child { width: 176px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table:has(.sl-select-cell) th:nth-last-child(5) { width: 26%; }
@@ -503,6 +503,7 @@
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .sl-actions-cell { width: 176px; text-align: right; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-compact-identity { display: block; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-note { -webkit-line-clamp: 2; color: var(--sl-order-muted); font-size: 12px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-compact .sl-order-table td { padding-block: 6px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history .slr-contact-details { margin: 2px 0 0; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history .slr-contact-details > summary {
   display: inline-flex;
@@ -568,6 +569,6 @@
 }
 
 @media (max-width: 359px) {
-  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { max-width: 72px; white-space: normal; text-align: right; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { max-width: none; white-space: nowrap; text-align: right; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button { padding-inline: 7px; }
 }
