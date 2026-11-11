@@ -617,6 +617,7 @@ function SalesLeadWorkspace() {
 
   const renderLeadDial = (lead: SalesLead) => {
     if (lead.is_blacklisted || lead.do_not_contact) return <Button className="sl-order-dial" size="sm" variant="outline" disabled aria-label={`禁止拨打${lead.business_name}`}><Phone size={14} /></Button>;
+    if (lead.converted_customer_id) return <Button className="sl-order-dial" size="sm" variant="outline" disabled aria-label={`已转正式客户：${lead.business_name}`}><Phone size={14} /></Button>;
     if (lead.status === 'new' && !lead.converted_customer_id) return <Button className="sl-order-dial" size="sm" variant="outline" aria-label={`首次拨打：${lead.business_name}`} onClick={() => openFirstDial(lead)}><Phone size={14} /></Button>;
     return <CustomerPhoneDial country={lead.country} phone={lead.phone} label="" aria-label={`拨打${lead.business_name}`} className="sl-order-dial-control" buttonClassName="sl-order-dial" />;
   };
@@ -625,8 +626,8 @@ function SalesLeadWorkspace() {
     const protectedLead = lead.is_blacklisted || lead.do_not_contact;
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => openDealControl(lead)}>查看成交</Button>;
-    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首拨核验</Button>;
-    return <Button size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>跟进</Button>;
+    if (lead.status === 'new') return <Button className="sl-order-followup" size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首拨核验</Button>;
+    return <Button className="sl-order-followup" size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>跟进</Button>;
   };
 
   const visibleDataErrors = dataErrors.filter(section => view !== 'calls' || section !== '真实通话报告');
@@ -817,7 +818,7 @@ function SalesLeadWorkspace() {
                         <button type="button" className="slr-card-name sl-order-name" onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>
                         <p className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</p>
                       </div>
-                      <Badge className={`shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
+                      <Badge className={`sl-order-status shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
                     </div>
                     {Boolean(protectedLead || lead.converted_customer_id) && <div className="slr-card-flags">{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}{lead.converted_customer_id && <Badge className="bg-emerald-100 text-emerald-700">已转正式客户</Badge>}</div>}
                     <div className="sl-order-phone sl-order-secondary"><span className={protectedLead ? 'line-through' : ''}>{formatPhoneNumber(lead.phone, lead.country)}</span>{lead.industry && <span>{lead.industry}</span>}</div>
@@ -853,7 +854,7 @@ function SalesLeadWorkspace() {
                     <td className="sl-identity-cell"><div className="slr-compact-identity"><button type="button" className="sl-business-name sl-order-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button><div className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</div><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span><span className="sl-order-secondary">{lead.industry}</span></div></div></td>
                     <td className="sl-order-history"><LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} /></td>
                     <td><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />{leadInsights[lead.id]?.profile.next_step && <p className="sl-order-secondary">{leadInsights[lead.id].profile.next_step}</p>}</td>
-                    <td className="sl-order-status-column"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <p className="sl-order-secondary">{lead.is_blacklisted ? '黑名单 · 禁止拨打' : '禁止再联系'}</p>}{lead.converted_customer_id && <p className="sl-order-secondary">已转正式客户</p>}</td>
+                    <td className="sl-order-status-column"><Badge className={`sl-order-status ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <p className="sl-order-secondary">{lead.is_blacklisted ? '黑名单 · 禁止拨打' : '禁止再联系'}</p>}{lead.converted_customer_id && <p className="sl-order-secondary">已转正式客户</p>}</td>
                     <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => lead.do_not_contact ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{lead.do_not_contact ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                   </tr>;
                 })}

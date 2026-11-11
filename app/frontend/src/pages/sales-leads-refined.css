@@ -249,6 +249,7 @@
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading {
   align-items: center;
   min-height: 40px;
+  margin-bottom: 0;
   gap: 12px;
 }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading > div:first-child { min-width: 0; }
@@ -303,6 +304,14 @@
   gap: 10px;
   padding: 14px 16px 12px;
 }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .slr-list-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+}
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row {
   display: flex;
   grid-column: auto;
@@ -337,6 +346,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   gap: 8px 16px;
   min-width: 0;
 }
@@ -437,7 +447,7 @@
   line-height: 20px;
   white-space: nowrap;
 }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button:not([aria-haspopup]):not([aria-label]) {
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > .sl-order-followup {
   border-color: var(--sl-order-accent-line);
   color: var(--sl-order-accent);
   background: var(--sl-order-soft);
@@ -453,7 +463,7 @@
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control svg { margin: 0; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control span:empty { display: none; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup] { padding: 0; }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-status { padding: 2px 7px; border-radius: 5px; font-size: 11px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-status { flex: none; padding: 2px 7px; border-radius: 5px; font-size: 11px; line-height: 18px; white-space: nowrap; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table {
   width: 100%;
   min-width: 740px;
@@ -484,16 +494,17 @@
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(5) { width: 28%; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(4) { width: auto; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(3) { width: 140px; }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(2) { width: 84px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(2) { width: 112px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:last-child { width: 176px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table:has(.sl-select-cell) th:nth-last-child(5) { width: 26%; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table:has(.sl-select-cell) th:nth-last-child(4) { width: auto; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table :is(th, td).sl-select-cell { width: 32px; padding-left: 12px; padding-right: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .sl-order-status-column { width: 112px; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .sl-actions-cell { width: 176px; text-align: right; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-compact-identity { display: block; }
 .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-note { -webkit-line-clamp: 2; color: var(--sl-order-muted); font-size: 12px; line-height: 18px; }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history { margin: 2px 0 0; }
-.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history > summary {
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history .slr-contact-details { margin: 2px 0 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history .slr-contact-details > summary {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -521,7 +532,7 @@
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-list-controls { gap: 4px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views { gap: 2px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button { min-height: 44px; height: 44px; padding: 8px 9px; font-size: 12px; }
-  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { font-size: 10px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { font-size: 11px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-active-filters { font-size: 11px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .calm-sales-extra-filters { grid-template-columns: 1fr; padding-top: 8px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list { border-top: 1px solid var(--sl-order-line); background: var(--sl-order-surface); }
@@ -538,7 +549,7 @@
   }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article:last-child { border-bottom: 0; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article > .flex { align-items: center; gap: 8px; }
-  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list .sl-order-name { display: flex; align-items: center; min-height: 44px; padding: 0; font-size: 14px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list .sl-order-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: 44px; max-height: 44px; padding: 0; font-size: 14px; line-height: 20px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list .sl-order-secondary { font-size: 12px; line-height: 18px; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone > span:first-child { flex: none; white-space: nowrap; }
@@ -553,7 +564,7 @@
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control > button,
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup] { padding: 0; }
   .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-card-flags { margin-top: 0; margin-bottom: 2px; gap: 4px; }
-  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history > summary { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history .slr-contact-details > summary { min-height: 44px; }
 }
 
 @media (max-width: 359px) {
