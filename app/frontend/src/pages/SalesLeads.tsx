@@ -3,7 +3,7 @@ import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDi
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MessageSquarePlus, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Timer, Trash2, Users,
+  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, SlidersHorizontal, Timer, Trash2, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -24,7 +24,7 @@ import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
 import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { useSalesListPosition } from '@/lib/use-sales-list-position';
-import { SalesLeadPulse, LeadContactSnapshot, LeadProgressSnapshot, LeadNextStep } from '@/components/SalesLeadSnapshot';
+import { SalesLeadPulse, LeadContactSnapshot, LeadProgressSnapshot } from '@/components/SalesLeadSnapshot';
 import { salesApi, type LeadInsight } from '@/lib/sales-intelligence';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
+import { businessDateDifference, formatBusinessDateTimeInput, parseBusinessDateTimeInput } from '@/lib/business-date';
 import { formatPhoneNumber, getPhoneCopyValue, parsePhoneNumber } from '@/lib/phone-format';
 import { readFollowUpDraft, writeFollowUpDraft, removeFollowUpDraft, type DraftPersistence } from '@/lib/sales-followup-draft';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -148,6 +148,17 @@ function LeadCommunication({ notes, insight, loading }: { notes?: string; insigh
   </div>;
 }
 
+function LeadFollowUpTime({ lead, insight }: { lead: SalesLead; insight?: LeadInsight }) {
+  if (lead.is_blacklisted || lead.do_not_contact || lead.converted_customer_id) {
+    return <div className="sl-order-due sl-order-secondary">{lead.converted_customer_id ? '已转正式客户' : '已停止联系'}</div>;
+  }
+  const next = formatBusinessDateTimeInput(lead.next_follow_up_at);
+  const difference = next ? businessDateDifference(next.slice(0, 10)) : null;
+  const overdue = Boolean(next && (insight?.overdue || new Date(parseBusinessDateTimeInput(next)).getTime() < Date.now()));
+  const label = next ? `${difference === 0 ? '今天' : difference === 1 ? '明天' : next.slice(5, 10).replace('-', '/')} ${next.slice(11, 16)}` : '待安排跟进';
+  return <div className={`sl-order-due ${overdue ? 'is-overdue' : ''}`}><Clock3 size={14} aria-hidden="true" /><span>{overdue ? '逾期 · ' : ''}{label}</span></div>;
+}
+
 export default function SalesLeads() {
   const { employee, role } = useRole();
   return <SalesLeadWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}`} />;
@@ -181,6 +192,7 @@ function SalesLeadWorkspace() {
   const [dueRange, setDueRange] = useState(() => ['today', 'overdue'].includes(initialParams.get('due_range') || '') ? initialParams.get('due_range')! : '');
   const [contactFilter, setContactFilter] = useState(() => ['contactable', 'do_not_contact', 'blacklisted'].includes(initialParams.get('contact_rule') || '') ? initialParams.get('contact_rule')! : '');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(initialParams.get('page')) || 1)));
   const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(initialParams.get('page_size'))) ? Number(initialParams.get('page_size')) : 20);
   const [total, setTotal] = useState(0);
@@ -601,16 +613,20 @@ function SalesLeadWorkspace() {
   };
 
   const customerDetailPath = (customerId: number) => `/customers?detail=${customerId}&tab=info&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+  const openFirstDial = (lead: SalesLead) => navigate(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+
+  const renderLeadDial = (lead: SalesLead) => {
+    if (lead.is_blacklisted || lead.do_not_contact) return <Button className="sl-order-dial" size="sm" variant="outline" disabled aria-label={`禁止拨打${lead.business_name}`}><Phone size={14} /></Button>;
+    if (lead.status === 'new' && !lead.converted_customer_id) return <Button className="sl-order-dial" size="sm" variant="outline" aria-label={`首次拨打：${lead.business_name}`} onClick={() => openFirstDial(lead)}><Phone size={14} /></Button>;
+    return <CustomerPhoneDial country={lead.country} phone={lead.phone} label="" aria-label={`拨打${lead.business_name}`} className="sl-order-dial-control" buttonClassName="sl-order-dial" />;
+  };
 
   const renderLeadAction = (lead: SalesLead) => {
     const protectedLead = lead.is_blacklisted || lead.do_not_contact;
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => openDealControl(lead)}>查看成交</Button>;
-    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => navigate(`/sales-workbench?lead_id=${lead.id}${lead.assigned_sales_id ? `&sales_employee_id=${lead.assigned_sales_id}` : ''}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>首次拨打</Button>;
-    if (['interested', 'appointment'].includes(lead.status)) return isMobile
-      ? <Button size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>继续跟进</Button>
-      : <><Button size="sm" variant="outline" onClick={() => void openDealControl(lead)}>登记成交</Button><Button size="sm" variant="ghost" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}><MessageSquarePlus size={16} /></Button></>;
-    return <Button size="sm" variant="outline" onClick={() => openEdit(lead, true)}>继续跟进</Button>;
+    if (lead.status === 'new') return <Button size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首拨核验</Button>;
+    return <Button size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>跟进</Button>;
   };
 
   const visibleDataErrors = dataErrors.filter(section => view !== 'calls' || section !== '真实通话报告');
@@ -620,19 +636,19 @@ function SalesLeadWorkspace() {
   const employeeValue = (item: CallEvidence, value: number) => callEvidenceState(item).available ? value : '—';
   const employeeDuration = (item: CallEvidence, value: number) => callEvidenceState(item).available ? formatDuration(value) : '—';
   return (
-    <div className={`t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}`}>
+    <div className={`t24-directory-page t24-sales-leads-page sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}${view === 'leads' ? ' sl-order-page' : ''}`}>
       <div className="sc-section-heading slr-page-heading">
-        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2></div>
-        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图">更多视图<ChevronDown size={15} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />新增线索</Button>}</div>
+        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2>{view === 'leads' && <p className="slr-current-scope" role="status">{scopeText} · {loading ? '正在读取客户' : `共 ${total} 位客户`}</p>}</div>
+        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图"><span className="sl-order-more-label">更多</span><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{view === 'leads' && <DropdownMenuItem onSelect={() => setOverviewExpanded(current => !current)}>{overviewExpanded ? '收起数据一览' : canManage ? '数据与线索保护' : '数据一览'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate} aria-label="新增线索"><Plus className="h-4 w-4" /><span className="sl-order-create-label">新增线索</span></Button>}</div>
       </div>
 
       {listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
       {visibleDataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{visibleDataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => void loadData()} />
       <nav className="slr-primary-views" aria-label="销售主要视图">{([{value:'leads',label:'联系进展'},{value:'calls',label:'通话数据'},{value:'handoffs',label:'成交与交接'}] as const).map(item => <button key={item.value} type="button" aria-current={view === item.value ? 'page' : undefined} onClick={() => setView(item.value)}>{item.label}</button>)}</nav>
-      <p className="slr-current-scope" role="status">当前范围：{scopeText} · {view === 'calls' ? `最近 ${callReportDays} 天 · 北京时间` : view === 'handoffs' ? '成交与交接记录' : '已授权销售资料'}</p>
-      {(view === 'leads' || view === 'calls') && <div className="slr-utilities">
-        <details className="slr-overview"><summary><BarChart3 size={15} />数据一览<ChevronDown size={14} /></summary><SalesLeadPulse stats={stats} report={callReport} days={callReportDays} onCalls={() => setView('calls')} loading={!statsReady} /></details>
+      {view !== 'leads' && <p className="slr-current-scope" role="status">当前范围：{scopeText} · {view === 'calls' ? `最近 ${callReportDays} 天 · 北京时间` : view === 'handoffs' ? '成交与交接记录' : '已授权销售资料'}</p>}
+      {(view === 'calls' || view === 'leads' && overviewExpanded) && <div className="slr-utilities">
+        <details className="slr-overview" open={view === 'leads' ? overviewExpanded : undefined} onToggle={event => { if (view === 'leads') setOverviewExpanded(event.currentTarget.open); }}><summary><BarChart3 size={15} />数据一览<ChevronDown size={14} /></summary><SalesLeadPulse stats={stats} report={callReport} days={callReportDays} onCalls={() => setView('calls')} loading={!statsReady} /></details>
         {view === 'leads' && canManage && recoveryOverview && <details className="sl-recovery">
           <summary><ShieldAlert size={16} /><strong>线索保护</strong><span>可回收 <b>{recoveryOverview.summary.recoverable}</b></span><span>保护期提醒 <b>{recoveryOverview.summary.watch}</b></span>{recoveryOverview.summary.extension_requests > 0 && <span>待审批 <b>{recoveryOverview.summary.extension_requests}</b></span>}<small>查看规则与处理</small><ChevronDown size={14} /></summary>
           <div><p>系统只提示，主管确认后才回收。受保护 {recoveryOverview.summary.protected} 条 · 延期保护 {recoveryOverview.summary.extended} 条 · 禁止联系 {stats.do_not_contact} 条 · 黑名单 {stats.blacklisted} 条。</p>{isMobile ? <p>批量回收与改派请在电脑端处理。</p> : <Button size="sm" variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</div>
@@ -772,13 +788,13 @@ function SalesLeadWorkspace() {
       <section className="sc-lead-panel space-y-4" hidden={view !== 'leads'} aria-label="销售线索列表">
       <Card className={`sc-table-card sl-lead-table ${compactRows ? 'sl-compact' : ''} overflow-hidden border-slate-200 shadow-sm`}>
         <CardContent className="p-0">
-          <div className="sl-table-toolbar">
-            <div className="slr-list-tools"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部进展' }, { value: 'today', label: '今天需跟进' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav>
-              <div className="sl-quick-filters" aria-label="快捷线索状态">{[{ value: 'follow_up', label: '待回访' }, { value: 'interested', label: '有意向' }, { value: 'appointment', label: '已预约' }, { value: '', label: '全部' }].map(option => <button key={option.value} type="button" aria-pressed={statusFilter === option.value} onClick={() => { setStatusFilter(option.value); setPage(1); }}>{option.label}</button>)}</div>
+          <div className="sl-table-toolbar sl-order-toolbar">
+            <div className="slr-list-tools">
               <div className="sl-search-row">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
-              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><ChevronDown className="h-4 w-4" />筛选{contactFilter ? ' · 1' : ''}</Button>
+              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><SlidersHorizontal className="h-4 w-4" />筛选{statusFilter || contactFilter ? ` · ${Number(Boolean(statusFilter)) + Number(Boolean(contactFilter))}` : ''}</Button>
               </div>
+              <div className="sl-order-list-controls"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部' }, { value: 'today', label: '今天' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav><span className="sl-order-time-label">跟进时间 · 北京时间</span></div>
             </div>
             {filtersExpanded && <div id="sales-lead-extra-filters" className="calm-sales-extra-filters">
               <label><span className="sc-filter-label">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
@@ -789,7 +805,7 @@ function SalesLeadWorkspace() {
           </div>
           {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
           {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
-          <div data-testid="sales-leads-mobile-list" className="slr-mobile-list divide-y divide-slate-100 md:hidden">
+          <div data-testid="sales-leads-mobile-list" className="slr-mobile-list sl-order-mobile-list divide-y divide-slate-100 md:hidden">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
               : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">当前范围暂无销售线索</p>
               : items.map(lead => {
@@ -798,20 +814,19 @@ function SalesLeadWorkspace() {
                   <article key={lead.id} data-testid="sales-lead-mobile-card" className={`slr-mobile-card ${protectedLead ? 'bg-rose-50/40' : 'bg-white'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <button type="button" className="slr-card-name" onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>
-                        <p className="mt-0.5 text-xs text-slate-500">{[lead.contact_name, lead.assigned_sales_name || '待分配'].filter(Boolean).join(' · ')}</p>
+                        <button type="button" className="slr-card-name sl-order-name" onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>
+                        <p className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</p>
                       </div>
                       <Badge className={`shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
                     </div>
                     {Boolean(protectedLead || lead.converted_customer_id) && <div className="slr-card-flags">{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}{lead.converted_customer_id && <Badge className="bg-emerald-100 text-emerald-700">已转正式客户</Badge>}</div>}
-                    <div className="slr-card-meta"><span className={protectedLead ? 'text-slate-400 line-through' : 'text-slate-700'}>{formatPhoneNumber(lead.phone, lead.country)}</span>{(lead.city || lead.state || lead.industry) && <span>{[[lead.city, lead.state].filter(Boolean).join(', '), lead.industry].filter(Boolean).join(' · ')}</span>}</div>
-                    {Boolean(lead.status !== 'new' || lead.notes || lead.last_contact_at || leadInsights[lead.id]?.calls || leadInsights[lead.id]?.records) && <LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} />}
-                    {Boolean(lead.status !== 'new' || protectedLead || lead.converted_customer_id || lead.next_follow_up_at || lead.last_contact_at || leadInsights[lead.id]?.last_contact_at) && <div className="sl-mobile-next"><LeadNextStep insight={leadInsights[lead.id]} nextAt={lead.next_follow_up_at} lastAt={lead.last_contact_at} stopped={protectedLead} converted={!!lead.converted_customer_id} /></div>}
-                    <div className="slr-card-actions">
-                      {protectedLead ? <Button className="h-11 px-2" variant="outline" disabled><Phone className="h-4 w-4" />拨号</Button> : <CustomerPhoneDial country={lead.country} phone={lead.phone} label="RingCentral" className="w-full" />}
+                    <div className="sl-order-phone sl-order-secondary"><span className={protectedLead ? 'line-through' : ''}>{formatPhoneNumber(lead.phone, lead.country)}</span>{lead.industry && <span>{lead.industry}</span>}</div>
+                    <div className="sl-order-row-footer"><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />
+                    <div className="slr-card-actions sl-order-actions">
+                      {renderLeadDial(lead)}
                       {renderLeadAction(lead)}
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button className="h-11 w-11 p-0" variant="outline" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuTrigger asChild><Button className="h-11 w-11 p-0" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
                           <DropdownMenuItem className="min-h-11" onSelect={() => setDossierId(lead.id)}>累计档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}
                           <DropdownMenuItem className="min-h-11" disabled={protectedLead} onSelect={() => { void copyLeadPhone(lead); }}><Clipboard className="mr-2 h-4 w-4" />复制电话</DropdownMenuItem>
@@ -822,29 +837,31 @@ function SalesLeadWorkspace() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
+                    </div>
                   </article>
                 );
               })}
           </div>
           {!isMobile && <div data-testid="sales-leads-desktop-table" className="sl-table-scroll">
-            <table className="sl-data-table">
-              <thead><tr>{canManage && <th className="sl-select-cell"><input type="checkbox" aria-label="选择当前页全部线索" disabled={listError} checked={items.length > 0 && items.every(item => selectedLeadIds.includes(item.id))} onChange={event => setSelectedLeadIds(event.target.checked ? items.map(item => item.id) : [])} /></th>}<th className="slr-merchant-column">商家 / 负责人</th><th className="slr-contact-column">沟通摘要</th><th className="slr-next-column">下一步 <small>北京时间</small></th><th className="sl-actions-cell">操作</th></tr></thead>
+            <table className="sl-data-table sl-order-table">
+              <thead><tr>{canManage && <th className="sl-select-cell"><input type="checkbox" aria-label="选择当前页全部线索" disabled={listError} checked={items.length > 0 && items.every(item => selectedLeadIds.includes(item.id))} onChange={event => setSelectedLeadIds(event.target.checked ? items.map(item => item.id) : [])} /></th>}<th className="slr-merchant-column">商家 / 联系人</th><th className="slr-contact-column">最近沟通</th><th className="slr-next-column">下次跟进</th><th className="sl-order-status-column">进展</th><th className="sl-actions-cell">操作</th></tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={canManage ? 5 : 4} className="sl-empty">正在加载线索…</td></tr> : items.length === 0 ? <tr><td colSpan={canManage ? 5 : 4} className="sl-empty">当前筛选没有匹配的商家，请调整搜索或筛选条件。</td></tr> : items.map(lead => {
+                {loading ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">正在加载线索…</td></tr> : items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">当前筛选没有匹配的商家，请调整搜索或筛选条件。</td></tr> : items.map(lead => {
                   const protectedLead = lead.is_blacklisted || lead.do_not_contact;
                   return <tr key={lead.id} className={protectedLead ? 'sl-protected-row' : ''}>
                     {canManage && <td className="sl-select-cell"><input type="checkbox" aria-label={`选择 ${lead.business_name}`} disabled={listError} checked={selectedLeadIds.includes(lead.id)} onChange={event => setSelectedLeadIds(current => event.target.checked ? [...current, lead.id] : current.filter(id => id !== lead.id))} /></td>}
-                    <td className="sl-identity-cell"><div className="slr-compact-identity"><button type="button" className="sl-business-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button><div className="slr-legacy-identity-meta min-[1024px]:hidden"><div className="sl-identity-meta"><span>{lead.assigned_sales_name || '待分配'}</span><span>{lead.industry || '未分类'}{lead.city || lead.state ? ` · ${[lead.city, lead.state].filter(Boolean).join(', ')}` : ''}</span></div></div><details className="slr-merchant-context hidden min-[1024px]:block"><summary aria-label={`查看${lead.business_name}负责人和地区`}>{lead.assigned_sales_name || '待分配'}<ChevronDown size={11} /></summary><div className="sl-identity-meta"><span>{lead.assigned_sales_name || '待分配'}</span><span>{lead.industry || '未分类'}{lead.city || lead.state ? ` · ${[lead.city, lead.state].filter(Boolean).join(', ')}` : ''}</span></div></details><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><Phone size={12} /><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span></div><div className="slr-identity-flags"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <span>禁止拨打</span>}</div></div></td>
-                    <td><LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} /></td>
-                    <td><LeadNextStep insight={leadInsights[lead.id]} nextAt={lead.next_follow_up_at} lastAt={lead.last_contact_at} stopped={protectedLead} converted={!!lead.converted_customer_id} /></td>
-                    <td className="sl-actions-cell"><div className="sl-row-actions">{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => lead.do_not_contact ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{lead.do_not_contact ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
+                    <td className="sl-identity-cell"><div className="slr-compact-identity"><button type="button" className="sl-business-name sl-order-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button><div className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</div><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span><span className="sl-order-secondary">{lead.industry}</span></div></div></td>
+                    <td className="sl-order-history"><LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} /></td>
+                    <td><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />{leadInsights[lead.id]?.profile.next_step && <p className="sl-order-secondary">{leadInsights[lead.id].profile.next_step}</p>}</td>
+                    <td className="sl-order-status-column"><Badge className={statusColors[lead.status] || statusColors.new}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <p className="sl-order-secondary">{lead.is_blacklisted ? '黑名单 · 禁止拨打' : '禁止再联系'}</p>}{lead.converted_customer_id && <p className="sl-order-secondary">已转正式客户</p>}</td>
+                    <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => lead.do_not_contact ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{lead.do_not_contact ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                   </tr>;
                 })}
               </tbody>
             </table>
           </div>}
-          <div className="flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-500">共 {total} 条，第 {page}/{totalPages} 页</p>
+          <div className="sl-order-pagination flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">共 {total} 位 · 第 {page}/{totalPages} 页</p>
             <div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>下一页</Button></div>
           </div>
         </CardContent>

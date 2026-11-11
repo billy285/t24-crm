@@ -231,3 +231,332 @@
 .sl-due-views { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
 .sl-due-views button { min-height:44px; padding:8px 12px; border-radius:9px; color:#64748b; }
 .sl-due-views button[aria-pressed=true] { color:#1d4ed8; background:#eff6ff; font-weight:600; }
+
+/* Selected order-list layout: contact progress only, with the other views intact. */
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads {
+  --sl-order-surface: var(--crm-surface, #fff);
+  --sl-order-subtle: var(--crm-surface-subtle, #f7f9fc);
+  --sl-order-ink: var(--crm-ink, #172638);
+  --sl-order-muted: var(--crm-muted, #65758a);
+  --sl-order-line: var(--crm-border, #e5eaf0);
+  --sl-order-accent: var(--crm-accent, #245ee5);
+  --sl-order-soft: var(--crm-accent-soft, #eff6ff);
+  --sl-order-accent-line: var(--crm-accent-border, #d6e3fb);
+  gap: 12px;
+  min-width: 0;
+  color: var(--sl-order-ink);
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading {
+  align-items: center;
+  min-height: 40px;
+  gap: 12px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading > div:first-child { min-width: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading h2 {
+  color: var(--sl-order-ink);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -.4px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-current-scope {
+  margin: 3px 0 0;
+  color: var(--sl-order-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-heading-tools { flex-wrap: nowrap; gap: 6px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-primary-views {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  min-height: 0;
+  border-bottom: 1px solid var(--sl-order-line);
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-primary-views > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  height: 36px;
+  padding: 6px 0;
+  color: var(--sl-order-muted);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-primary-views > button[aria-current="page"] {
+  color: var(--sl-order-accent);
+  border-bottom-color: var(--sl-order-accent);
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-lead-table {
+  margin: 0;
+  border: 1px solid var(--sl-order-line);
+  border-radius: 10px;
+  background: var(--sl-order-surface);
+  box-shadow: none;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sc-lead-panel { gap: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row {
+  display: flex;
+  grid-column: auto;
+  grid-row: auto;
+  flex-basis: auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row > div { flex: 1; min-width: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row input {
+  width: 100%;
+  min-height: 36px;
+  height: 36px;
+  border-color: var(--sl-order-line);
+  border-radius: 8px;
+  background: var(--sl-order-surface);
+  color: var(--sl-order-ink);
+  font-size: 13px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row > button {
+  flex: none;
+  min-height: 36px;
+  height: 36px;
+  padding: 6px 12px;
+  border-color: var(--sl-order-line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-list-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button {
+  flex: none;
+  min-height: 32px;
+  height: 32px;
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--sl-order-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button[aria-pressed="true"] {
+  color: var(--sl-order-accent);
+  background: var(--sl-order-soft);
+  font-weight: 600;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label {
+  flex: none;
+  color: var(--sl-order-muted);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-active-filters { margin: 0; gap: 8px; color: var(--sl-order-muted); }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .calm-sales-extra-filters {
+  margin: 0;
+  padding: 10px 0 0;
+  gap: 10px;
+  border-top: 1px solid var(--sl-order-line);
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-name {
+  display: block;
+  min-width: 0;
+  min-height: 24px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--sl-order-ink);
+  text-align: left;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-secondary {
+  margin: 0;
+  color: var(--sl-order-muted);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone { font-variant-numeric: tabular-nums; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-due {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--sl-order-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-due > svg { flex: none; width: 13px; height: 13px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-due:is(.sl-overdue, .is-overdue) { color: #b4534a; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions {
+  display: inline-flex;
+  grid-template-columns: none;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions button {
+  flex: none;
+  min-height: 32px;
+  height: 32px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button:not([aria-haspopup]):not([aria-label]) {
+  border-color: var(--sl-order-accent-line);
+  color: var(--sl-order-accent);
+  background: var(--sl-order-soft);
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup],
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control,
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions .sl-order-dial {
+  width: 32px;
+  min-width: 32px;
+  flex: none;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control > button { width: 100%; padding: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control svg { margin: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control span:empty { display: none; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup] { padding: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-status { padding: 2px 7px; border-radius: 5px; font-size: 11px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table {
+  width: 100%;
+  min-width: 740px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th {
+  height: 36px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--sl-order-line);
+  background: var(--sl-order-subtle);
+  color: var(--sl-order-muted);
+  text-align: left;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table td {
+  height: auto;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sl-order-line);
+  vertical-align: middle;
+  color: var(--sl-order-ink);
+  overflow-wrap: anywhere;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(5) { width: 28%; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(4) { width: auto; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(3) { width: 140px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:nth-last-child(2) { width: 84px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table th:last-child { width: 176px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table:has(.sl-select-cell) th:nth-last-child(5) { width: 26%; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table:has(.sl-select-cell) th:nth-last-child(4) { width: auto; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table :is(th, td).sl-select-cell { width: 32px; padding-left: 12px; padding-right: 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .sl-actions-cell { width: 176px; text-align: right; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-compact-identity { display: block; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-table .slr-note { -webkit-line-clamp: 2; color: var(--sl-order-muted); font-size: 12px; line-height: 18px; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history { margin: 2px 0 0; }
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  color: var(--sl-order-muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+.t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads :is(.sl-order-name, .sl-order-actions button, .sl-due-views > button):focus-visible { outline: 2px solid var(--sl-order-accent); outline-offset: 3px; }
+
+@media (max-width: 767px) {
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads { gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading { min-height: 44px; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-page-heading h2 { font-size: 22px; line-height: 28px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-heading-tools { gap: 2px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-heading-tools > button { min-height: 44px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-heading-tools > button[aria-label] { width: 44px; min-width: 44px; padding: 0; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads :is(.sl-order-create-label, .sl-order-more-label) { display: none; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-primary-views { gap: 0; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-primary-views > button { flex: 1; min-width: 0; min-height: 44px; height: 44px; padding: 8px 2px; font-size: 13px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-lead-table { border: 0; border-radius: 0; background: transparent; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar { gap: 4px; padding: 4px 0 6px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row input { min-height: 44px; height: 44px; font-size: 16px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar .sl-search-row > button { min-height: 44px; height: 44px; padding: 8px 10px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-list-controls { gap: 4px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views { gap: 2px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button { min-height: 44px; height: 44px; padding: 8px 9px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { font-size: 10px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-active-filters { font-size: 11px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .calm-sales-extra-filters { grid-template-columns: 1fr; padding-top: 8px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list { border-top: 1px solid var(--sl-order-line); background: var(--sl-order-surface); }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article {
+    display: grid;
+    gap: 0;
+    margin: 0;
+    padding: 8px 0;
+    border: 0;
+    border-bottom: 1px solid var(--sl-order-line);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article:last-child { border-bottom: 0; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article > .flex { align-items: center; gap: 8px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list .sl-order-name { display: flex; align-items: center; min-height: 44px; padding: 0; font-size: 14px; line-height: 20px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list .sl-order-secondary { font-size: 12px; line-height: 18px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone > span:first-child { flex: none; white-space: nowrap; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-phone > span:last-child:not(:first-child) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-row-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-row-footer .sl-order-due { flex: 1; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions { flex: none; gap: 4px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions button { min-width: 44px; min-height: 44px; height: 44px; padding: 8px 10px; font-size: 12px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup],
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control,
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions .sl-order-dial { width: 44px; min-width: 44px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-dial-control > button,
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-actions > button[aria-haspopup] { padding: 0; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .slr-card-flags { margin-top: 0; margin-bottom: 2px; gap: 4px; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-history > summary { min-height: 44px; }
+}
+
+@media (max-width: 359px) {
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-order-time-label { max-width: 72px; white-space: normal; text-align: right; }
+  .t24-system.app-shell .crm-desktop-main .slr-page.sl-order-page.slr-view-leads .sl-due-views > button { padding-inline: 7px; }
+}
