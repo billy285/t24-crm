@@ -1,0 +1,16 @@
+{
+  "baseline_git_commit": "e238171d578563d762aee899ed168d1c2bb8c5df",
+  "baseline_source_sha": "596687a9b9e70f35ad09854d62774c226ee21fd8",
+  "build_receipt_sha256": "d79b915409ed600f84d994760b547c206b2543b8c0ffac4f96d846e33ea40bbc",
+  "changed_source_files": {
+    "app/frontend/src/pages/SalesLeads.tsx": "592a339e4e1e5f7b96369fb5b4cd67bafcc063103cdcd62213419296f90253e8",
+    "app/frontend/src/pages/sales-leads-refined.css": "93e645d6080f28be4b39844002e031807c0293d5e3287c0c2f8390470d783091"
+  },
+  "dist_inventory_sha256": "352e1b0219a07572b89e9b76f65455ead0947706fc5551a526c9ee8046582781",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "829fc0660640",
+  "source_commit_bytes_verified": true,
+  "source_sha": "7ff2deff1ed317b425a63915e1c9bd5873debddf",
+  "stage": "CRM_ORDER_LIST_SOURCE_FREEZE"
+}
