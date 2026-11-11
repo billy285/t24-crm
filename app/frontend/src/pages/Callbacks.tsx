@@ -594,7 +594,7 @@ export default function Callbacks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-callbacks app-page calm-delivery-page crm-delivery-refined">
+    <div className="t24-work-page delivery-center-ui dc-callbacks app-page calm-delivery-page crm-delivery-refined odf-page odf-callbacks">
       {/* Header */}
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div><p className="app-page-kicker">T24 Marketing · Customer Care</p><h2 className="app-page-heading flex items-center gap-2">
@@ -783,7 +783,7 @@ export default function Callbacks() {
           ) : filtered.length === 0 ? (
             <DeliveryEmpty title={callbacks.length ? "没有匹配的回访记录" : "把下一次联系安排在这里"} description={callbacks.length ? "试试调整搜索条件，或切换回访状态和日期。" : "为客户安排回访时间和负责人，记录每次沟通结果，让后续跟进更有条理。"} />
           ) : (
-            <div className="grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
+            <div className="odf-callback-rows grid gap-3 p-3 md:block md:divide-y md:divide-slate-100 md:p-0">
               {paginated.items.map(cb => {
                 const cust = customerMap[cb.customer_id];
                 const isOverdue = cb.status === 'pending' && cb.callback_date &&

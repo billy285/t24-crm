@@ -1,0 +1,68 @@
+/* Owner and decision workspaces use the same quiet headings and continuous
+   work lists as the accepted sales directory. Accounting/evidence stays intact. */
+.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/"], [data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) .app-page { min-width: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/"], [data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) .app-page > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner { padding: 16px; border: 1px solid var(--order-line); border-radius: 10px; background: var(--order-surface); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-heading h2 { font-size: 20px; line-height: 28px; color: var(--order-ink); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception-list { display: block; border-top: 1px solid var(--order-line); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception {
+  display: flex; align-items: center; min-height: 64px; width: 100%; gap: 12px;
+  margin: 0; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--order-line); border-radius: 0; background: var(--order-surface); box-shadow: none;
+}
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception:first-child { background: var(--order-surface); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception:last-child { border-bottom: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-rank { min-width: 24px; padding-top: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception-copy { flex: 1; min-width: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception-copy strong { font-size: 14px; line-height: 21px; color: var(--order-ink); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception-copy small { color: var(--order-muted); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home :is(.owner-desktop-hero, .crm-owner-reminder-disclosure) { border-radius: 10px; border-color: var(--order-line); background: var(--order-surface); box-shadow: none; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .crm-owner-hero-content { padding: 16px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .calm-owner-metrics { gap: 0; border-top: 1px solid var(--order-line); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .t24-command-metric { min-height: 82px; padding: 10px 12px; border-color: var(--order-line); background: transparent; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .t24-command-metric > p:nth-of-type(2) { font-size: 22px; line-height: 28px; color: var(--order-ink); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home :is(.sf-footer, .sf-owner-status-label, .crm-owner-reminder-summary-note, .owner-mobile-asof) { color: var(--order-muted); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner-counts-active button { background: var(--order-soft); border-color: var(--order-line); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner-counts-active button :is(span, strong) { color: var(--order-accent); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home :is(.shr-reminders, .owner-mobile-finance-card, .owner-mobile-attention-disclosure) { border-radius: 10px; border-color: var(--order-line); box-shadow: none; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-dashboard { gap: 12px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-finance-card { padding: 14px; background: var(--order-surface); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-progress-grid { gap: 0; background: var(--order-surface); border: 1px solid var(--order-line); border-radius: 10px; overflow: hidden; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-progress-card { padding: 12px; border: 0; border-right: 1px solid var(--order-line); border-radius: 0; background: transparent; box-shadow: none; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-progress-card:last-child { border-right: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .dashboard-object-link { border-radius: 0; border-bottom-color: var(--order-line); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .dashboard-stat-trigger { border-radius: 10px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .dashboard-stat-trigger > div { padding: 14px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .dashboard-stat-trigger .text-2xl { font-size: 22px; line-height: 28px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-content-frame > div > h2 { margin-bottom: 12px; font-size: 24px; line-height: 32px; color: var(--order-ink); }
+
+.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) :is(.app-page-title, .mgt-page-header) { margin-bottom: 0; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/company-roadmap"] .app-page-title p:last-child { margin-top: 3px; max-width: 70ch; font-size: 12px; line-height: 19px; color: var(--order-muted); }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/company-roadmap"] .calm-roadmap-focus > div { padding: 16px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/company-roadmap"] .calm-roadmap-focus h2 { margin-top: 6px; font-size: 20px; line-height: 28px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/company-roadmap"] .calm-roadmap-goal > div { padding: 16px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) :is(.calm-admin-disclosure, .mgt-disclosure) { border-color: var(--order-line); border-radius: 10px; box-shadow: none; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) :is(.calm-admin-disclosure, .mgt-disclosure) > summary { min-height: 40px; padding: 10px 14px; font-size: 13px; line-height: 20px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] :is(.mgt-board, .mgt-tools-panel, .mgt-analysis-period) { border-color: var(--order-line); border-radius: 10px; box-shadow: none; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] :is(.mgt-inbox-tabs, .mgt-analysis-period, .mgt-tools-links) { gap: 6px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-ranking-row { min-height: 52px; border-color: var(--order-line); padding-block: 10px; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-ranking-row strong { font-variant-numeric: tabular-nums; }
+.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-board-head h2 { color: var(--order-ink); font-size: 16px; line-height: 24px; }
+@media (max-width: 767px) {
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner { padding: 12px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-heading h2 { font-size: 18px; line-height: 26px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-exception { min-height: 68px; padding: 11px 0; gap: 8px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner .sf-owner-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home :is(.sf-owner-counts button, .shr-reminders-automation button, .shr-reminders-counts button, summary) { min-height: 44px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .sf-owner-counts button { padding: 8px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-heading h2 { font-size: 16px; line-height: 24px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-shortcuts { gap: 6px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .crm-owner-home .owner-mobile-shortcuts button { min-height: 64px; border-radius: 8px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) :is(.app-page-title, .mgt-page-header) { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-header-actions { width: 100%; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-header-actions > button { flex: 1; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/company-roadmap"], [data-crm-page="/management-decisions"]) :is(.calm-admin-disclosure, .mgt-disclosure) > summary { min-height: 44px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-analysis-period { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-analysis-period > span { display: none; }
+  .app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/management-decisions"] .mgt-analysis-period > :is(.t24-native-select, button) { grid-column: 1 / -1; }
+}

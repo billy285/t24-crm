@@ -33,6 +33,7 @@ import { createPrivateStripeSelection, privateStripeReportDate, type PrivateStri
 import PrivateBankDashboard, { PrivateBankDetail } from './PrivateBankDashboard';
 import { PRIVATE_WORKSPACE_VIEWS, privateBackTarget, privateNavigationState, privateWorkspaceItemSource, withoutPersonalFinanceNavigation, type PrivateWorkspaceView, type PrivateWorkspacePanel } from '@/lib/private-workspace-navigation';
 import './private-workspace.css';
+import './private-order.css';
 
 type View = PrivateWorkspaceView;
 type PrivatePanelEntry = { view: View; kind: 'detail' | PrivateWorkspacePanel; item?: PrivateItem; editor?: 'new' | 'edit'; initialForm?: typeof EMPTY_FORM; snoozeAt?: string };

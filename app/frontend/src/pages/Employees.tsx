@@ -485,7 +485,7 @@ export default function Employees() {
   if (selectedEmp) {
     const e = selectedEmp;
     return (
-      <div className="crm-org-polish crm-org-compact t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
+      <div className="crm-order-customer-org crm-order-employee-detail crm-org-polish crm-org-compact t24-detail-page calm-admin-page calm-employee-detail app-page space-y-4">
         <div className="crm-employee-detail-heading flex items-center gap-3 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => { detailSequence.current++; setSelectedEmp(null); }}><ArrowLeft className="w-4 h-4 mr-1" /> 返回列表</Button>
           <h2 className="text-lg font-semibold">{e.name}</h2>
@@ -620,7 +620,7 @@ export default function Employees() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="crm-org-polish crm-org-compact t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
+    <div className="crm-order-customer-org crm-order-employees crm-org-polish crm-org-compact t24-directory-page t24-employee-directory calm-admin-page calm-employees-page app-page space-y-5">
       <div className="app-page-title flex items-start justify-between">
         <div>
           <p className="app-page-kicker">T24 Marketing · Team</p>
@@ -630,7 +630,7 @@ export default function Employees() {
         {!isMobile && canCreate && <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700"><Plus className="w-4 h-4 mr-1" /> 添加员工</Button>}
       </div>
 
-      <div className="t24-directory-metrics calm-employee-summary employee-directory-summary grid grid-cols-4 gap-2">
+      <div className="t24-directory-metrics calm-employee-summary employee-directory-summary crm-order-summary grid grid-cols-4 gap-2">
         {[
           { label: '总员工', value: loading || (loadError && employees.length === 0) ? '—' : employees.length, color: 'text-blue-600' },
           { label: '在职', value: loading || (loadError && employees.length === 0) ? '—' : employees.filter(e => e.status === 'active').length, color: 'text-green-600' },
@@ -643,7 +643,7 @@ export default function Employees() {
         ))}
       </div>
 
-      <Card className="t24-directory-toolbar border-slate-200"><CardContent className="p-3">
+      <Card className="t24-directory-toolbar crm-order-toolbar border-slate-200"><CardContent className="p-3">
         <div className="employee-directory-filters flex flex-wrap gap-2 md:flex-nowrap">
           <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input aria-label="搜索员工" placeholder="搜索姓名、电话、邮箱、用户名..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <Button type="button" variant="outline" className="md:hidden" aria-expanded={showDirectoryFilters} onClick={() => setShowDirectoryFilters(value => !value)}>筛选{[filterStatus, filterRole, filterDept].some(value => value !== 'all') ? ' · 已启用' : ''}</Button>
@@ -674,19 +674,19 @@ export default function Employees() {
         </div>
       )}
 
-      <Card className="t24-directory-results border-slate-200"><CardContent className="p-0">
+      <Card className="t24-directory-results crm-order-results border-slate-200"><CardContent className="p-0">
         {loading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
         : loadError && employees.length === 0 ? <div className="py-12 text-center"><p className="text-sm font-medium text-slate-600">员工资料尚未加载</p><p className="mt-1 text-xs text-slate-400">请使用上方“重试”，当前不显示为零员工。</p></div>
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">{search || [filterStatus, filterRole, filterDept].some(value => value !== 'all') ? '暂无匹配的员工，请调整筛选' : '暂无员工'}</p>
         : (
           <>
-          {isMobile ? <div className="space-y-3 p-3" data-testid="employee-mobile-cards">
+          {isMobile ? <div className="crm-order-mobile-list space-y-3 p-3" data-testid="employee-mobile-cards">
             {paginated.items.map(e => (
-              <article key={e.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <article key={e.id} className="crm-order-record rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="truncate font-semibold text-slate-950">{e.name}</h3>
+                      <button type="button" className="crm-order-record-name min-w-0 text-left font-semibold" onClick={() => openDetail(e)}>{e.name}</button>
                       <Badge className={`text-xs ${empStatusColors[e.status]}`}>{empStatusLabels[e.status] || e.status}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">{e.employee_code || '未设工号'} · {getRoleDisplay(e.role)}</p>
@@ -694,10 +694,7 @@ export default function Employees() {
                   <Badge variant="secondary" className="shrink-0 text-xs">{departmentLabels[e.department] || e.department || '未分部门'}</Badge>
                 </div>
                 <p className={`mt-2 text-xs ${employeePasswordState(e).className}`}>{employeePasswordState(e).label}</p>
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                  <div><span className="block text-slate-400">岗位</span><span className="mt-0.5 block font-medium text-slate-700">{positionLabels[e.position] || e.position || '-'}</span></div>
-                  <div><span className="block text-slate-400">直属上级</span><span className="mt-0.5 block font-medium text-slate-700">{e.supervisor || '-'}</span></div>
-                </div>
+                <p className="crm-order-record-meta">岗位 {positionLabels[e.position] || e.position || '-'} · 上级 {e.supervisor || '-'}</p>
                 <div className="mt-3 flex gap-2">
                   {e.phone ? (
                     <Button variant="outline" className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700" onClick={() => {

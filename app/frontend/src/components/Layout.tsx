@@ -6,6 +6,11 @@ import './crm-desktop-compact.css';
 import './crm-visual-polish.css';
 import './media-layout-navigation.css';
 import './crm-color-themes.css';
+import './crm-order-foundation.css';
+import './crm-order-command.css';
+import './crm-order-customer-org.css';
+import './crm-order-delivery-finance.css';
+import './crm-order-sales-media.css';
 import CrmThemePicker from './CrmThemePicker';
 import { useCrmTheme } from '@/lib/use-crm-theme';
 import { getCrmTheme } from '@/lib/crm-theme';
@@ -283,7 +288,7 @@ export default function Layout({ children }: LayoutProps) {
   // This account-scoped space has its own server authorization and chrome.
   // Remount all private state when the verified employee/session changes.
   if (currentPath === '/private-workspace') {
-    return <div key={`${employee?.id || 'unknown'}:${getAuthSessionEpoch()}`} className="private-workspace-shell">{children}</div>;
+    return <div key={`${employee?.id || 'unknown'}:${getAuthSessionEpoch()}`} data-crm-order="20261111" className="private-workspace-shell">{children}</div>;
   }
 
   // Check page access permission
@@ -338,7 +343,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div data-crm-polish="20261026" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}${isMediaWorkspace ? ' app-media-layout' : ''}`} onKeyDown={secondaryOverlayOpen ? event => {
+    <div data-crm-polish="20261026" data-crm-order="20261111" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}${isMediaWorkspace ? ' app-media-layout' : ''}`} onKeyDown={secondaryOverlayOpen ? event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();

@@ -2832,7 +2832,7 @@ export default function ServiceBoard() {
   }
 
   return (
-    <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page calm-delivery-page crm-delivery-refined">
+    <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page calm-delivery-page crm-delivery-refined odf-page odf-service">
       {/* Header */}
       <div className="dc-heading flex-col sm:flex-row items-start sm:items-center">
         <div>

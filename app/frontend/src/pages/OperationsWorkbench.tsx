@@ -366,7 +366,7 @@ export default function OperationsWorkbench() {
   } as const;
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-today calm-operations-page crm-delivery-refined app-page">
+    <div className="t24-work-page delivery-center-ui dc-today calm-operations-page crm-delivery-refined app-page odf-page odf-operations">
       <ServiceFollowThroughNav view="today" onChange={changeView} />
       {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
@@ -408,7 +408,7 @@ export default function OperationsWorkbench() {
             return (
               <Card key={action.id} onFocus={() => setSelectedActionId(action.id)} onMouseEnter={() => setSelectedActionId(action.id)} className={`dc-action-card ${selectedAction?.id === action.id ? 'calm-action-selected' : ''} dc-urgency-${action.urgency} overflow-hidden rounded-[22px] shadow-[0_10px_28px_-22px_rgba(15,23,42,0.55)] md:rounded-xl md:shadow-none ${style.card}`}>
                 <CardContent className="p-0 md:p-4">
-                  {isMobile && <div className="md:hidden">
+                  {isMobile && <div className="odf-action-mobile md:hidden">
                     <div className={`h-1 w-full ${style.bar}`} />
                     <div className="p-4">
                       <div className="flex items-start gap-3">

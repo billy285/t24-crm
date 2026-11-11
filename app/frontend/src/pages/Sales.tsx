@@ -449,7 +449,7 @@ export default function Sales() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-active-customers crm-sales-compact">
+    <div className="crm-order-customer-org crm-order-sales t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-active-customers crm-sales-compact">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Active Customers</p>
@@ -489,14 +489,14 @@ export default function Sales() {
       </div>
 
       <p className="text-xs text-slate-500">可访问成交客户总览 · 以下统计不随列表筛选变化</p>
-      <div className="calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="可访问成交客户总览">
+      <div className="crm-order-summary calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="可访问成交客户总览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">成交客户</p><p className="text-2xl font-semibold text-slate-800 mt-1">{totalClosedCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">服务中客户</p><p className="text-2xl font-semibold text-green-600 mt-1">{activeCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">续费关注</p><p className="text-2xl font-semibold text-amber-600 mt-1">{renewalCustomers}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">待收尾款客户</p><p className="text-2xl font-semibold text-red-600 mt-1">{outstandingCustomers}</p></CardContent></Card>
       </div>
 
-      <Card className="border-slate-200">
+      <Card className="crm-order-toolbar border-slate-200">
         <CardContent className="p-3 space-y-3">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_190px]">
             <div className="relative">
@@ -560,7 +560,7 @@ export default function Sales() {
         {filterCountry !== 'all' && <Button type="button" variant="outline" size="sm" onClick={() => setFilterCountry('all')}>国家：{countryOptions.find(option => option.value === filterCountry)?.label || filterCountry} ×</Button>}
         <Button type="button" variant="ghost" size="sm" onClick={() => { setSearch(''); setFilterCustomerId('all'); setFilterServiceStatus('all'); setFilterSalesPerson('all'); setFilterCountry('all'); }}>清空筛选</Button>
       </div>}
-      <Card className="border-slate-200">
+      <Card className="crm-order-results border-slate-200">
         <CardContent className="p-0">
           <div className="calm-record-list-heading">
             <div><h3>成交客户</h3><p>{filtered.length} 位 · 查看服务、到期时间与下一步</p></div>
@@ -574,9 +574,9 @@ export default function Sales() {
             <p className="text-center text-slate-400 py-12">暂无符合条件的成交客户</p>
           ) : (
             <>
-            {isMobile && <div className="grid gap-3 p-3 md:hidden">
+            {isMobile && <div className="crm-order-mobile-list grid gap-3 p-3 md:hidden">
               {paginated.items.map(row => (
-                <div key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div key={row.id} className="crm-order-record rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <button type="button" className="min-w-0 text-left" onClick={() => openCustomerDetail(row.id)}>
                       <p className="truncate font-semibold text-blue-700">{row.business_name}</p>
@@ -586,19 +586,21 @@ export default function Sales() {
                       {subStatusLabels[row.service_status] || serviceStatusLabels[row.service_status] || row.service_status}
                     </Badge>
                   </div>
-                  <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                  <div className="crm-order-record-block mt-3 rounded-lg bg-slate-50 p-3">
                     <p className="text-xs text-slate-400">当前服务{row.active_service_count > 1 ? ` · ${row.active_service_count} 个套餐` : ''}</p>
                     <p className="mt-1 text-sm font-medium text-slate-800">{row.latest_package_name || '-'}</p>
                     {row.latest_package_historical_name && <p className="mt-1 text-xs text-slate-400">历史：{row.latest_package_historical_name}</p>}
                     <p className="mt-1 text-xs text-slate-500">到期 {row.service_end_date?.slice(0, 10) || '-'} · {row.service_remaining_days == null ? '剩余 -' : row.service_remaining_days <= 0 ? `已超期 ${Math.abs(row.service_remaining_days)} 天` : `剩余 ${row.service_remaining_days} 天`}</p>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <details className="crm-order-record-details"><summary>成交与收款</summary>
+                  <div className="crm-order-record-fields mt-3 grid grid-cols-2 gap-3 text-sm">
                     <div><p className="text-xs text-slate-400">联系人</p><p className="mt-1 text-slate-700">{row.contact_name || '-'} · {row.phone ? formatPhoneNumber(row.phone, row.country) : '-'}</p></div>
                     <div><p className="text-xs text-slate-400">最近成交</p><p className="mt-1 text-slate-700">{row.latest_deal_amount ? fmt(row.latest_deal_amount) : '-'} · {row.latest_deal_date?.slice(0, 10) || '-'}</p></div>
                     {canViewFinance && <div><p className="text-xs text-slate-400">最近收款</p><p className="mt-1 text-slate-700">{row.latest_payment_amount ? fmt(row.latest_payment_amount) : '-'}</p></div>}
                     {canViewFinance && <div><p className="text-xs text-slate-400">尾款</p><p className={`mt-1 ${row.outstanding_amount > 0 ? 'font-medium text-red-600' : 'text-slate-400'}`}>{row.outstanding_amount > 0 ? fmt(row.outstanding_amount) : '-'}</p></div>}
                   </div>
-                  <Button className="mt-4 w-full bg-blue-600 hover:bg-blue-700" size="sm" onClick={() => openCustomerDetail(row.id)}>
+                  </details>
+                  <Button className="crm-order-record-action mt-4 w-full" variant="outline" size="sm" onClick={() => openCustomerDetail(row.id)}>
                     查看客户详情
                   </Button>
                 </div>

@@ -4218,7 +4218,7 @@ function FinanceWorkspace() {
         ['账目编号', record?.id], ['备注', record?.notes],
       ] : [['归属月份', record?.expense_month], ['币种', row.currency], ['账目编号', record?.id], ['备注', record?.notes]];
       return (
-        <details key={row.id} open={expandedLedgerIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setViewField('expandedLedgerIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <details key={row.id} open={expandedLedgerIds.includes(row.id)} onToggle={event => { const open = event.currentTarget.open; setViewField('expandedLedgerIds', ids => open ? ids.includes(row.id) ? ids : [...ids, row.id] : ids.filter(id => id !== row.id)); }} className="odf-mobile-ledger-row rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <summary aria-label={`查看账目：${row.title}`} className="flex min-h-20 cursor-pointer list-none items-center gap-3 p-3.5">
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><Icon className="h-5 w-5" /></div>
             <div className="min-w-0 flex-1">
@@ -4316,7 +4316,7 @@ function FinanceWorkspace() {
             {mobileEntryDisabled && <p className="mt-3 text-center text-xs text-slate-500">本月已关账，如需补录请由管理员重新打开月份。</p>}
           </section>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="odf-summary-strip grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs text-slate-500">{dateFilterMode === 'this_month' ? '本月实收' : '所选账期实收'}</p>
               <p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{fmt(summaryNetReceiptsUsd)}</p>
@@ -4456,7 +4456,7 @@ function FinanceWorkspace() {
   }
 
   return (
-    <div className={isMobile ? 'financial-workspace financial-workspace--finance min-w-0' : `financial-workspace financial-workspace--finance t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
+    <div className={isMobile ? 'financial-workspace financial-workspace--finance odf-page odf-finance min-w-0' : `financial-workspace financial-workspace--finance odf-page odf-finance t24-command-page t24-finance-page calm-finance-page app-page space-y-5 ${activeFinanceTab === 'overview' ? 't24-finance-page--overview' : ''}`}>
       {isMobile && canAccess('/finance-entry') && <div className="flex justify-end pb-2"><Button variant="outline" className="min-h-11 md:min-h-9" onClick={() => navigate('/finance-entry?status=submitted')}>登记待核对 <ArrowUpRight className="ml-1 h-4 w-4" /></Button></div>}
       {contextCustomerId && <div className="finance-context-bar"><span>客户：{customerMap[contextCustomerId]?.business_name || `#${contextCustomerId}`} · 原始收支</span><div>{contextReturnTo?.startsWith('/finance') && <Button variant="outline" onClick={() => navigate(contextReturnTo)}>返回客户利润</Button>}<Button variant="ghost" onClick={() => { const params = new URLSearchParams(searchParams); params.delete('customer_id'); params.delete('returnTo'); setSearchParams(params); }}>查看全部客户</Button></div></div>}
       {isMobile && !contextCustomerId && contextReturnTo?.startsWith('/finance') && <Button variant="outline" className="mb-3" onClick={() => navigate(contextReturnTo)}>返回月度检查</Button>}

@@ -2646,7 +2646,7 @@ export default function Customers() {
     });
 
     return (
-      <div className="customer-detail-page app-page space-y-4 md:space-y-5">
+      <div className="crm-order-customer-org crm-order-customer-detail customer-detail-page app-page space-y-4 md:space-y-5">
         <div className="customer-detail-hero app-page-title items-start md:items-center">
           <div className="flex w-full min-w-0 items-start gap-2.5">
           <Button aria-label={detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'} variant="ghost" size="sm" className="h-11 w-11 shrink-0 px-0 md:h-8 md:w-auto md:px-3" onClick={closeDetail}><ArrowLeft className="h-4 w-4 md:mr-1" /> <span className="hidden md:inline">{detailReturnTo ? getReturnLabel(detailReturnTo) : detailFromFinance ? '返回财务' : '返回列表'}</span></Button>
@@ -3284,8 +3284,8 @@ export default function Customers() {
 
   // ========== LIST VIEW ==========
   return (
-    <div className="app-page customer-360-page calm-customer-page space-y-4">
-      <div className="customer-360-hero">
+    <div className="crm-order-customer-org crm-order-customers app-page customer-360-page calm-customer-page space-y-4">
+      <div className="customer-360-hero crm-order-heading">
         <div className="customer-360-hero-copy">
           <p className="customer-360-kicker">T24 MARKETING · CUSTOMER 360</p>
           <h2>客户管理</h2>
@@ -3316,7 +3316,7 @@ export default function Customers() {
           </div></details>}
           {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 shadow-lg shadow-blue-950/30 hover:bg-blue-500 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
-        <div className="calm-customer-summary" aria-label="客户统计">
+        <div className="calm-customer-summary crm-order-customer-summary" aria-label="客户统计">
           <span>当前可访问 <strong>{customers.length}</strong></span>
           <span title="客户资料中标记为已成交的客户，不等同于曾成交客户或合作周期统计">当前已成交 <strong>{customerStatusCounts.closed || 0}</strong></span>
           <span>暂停与流失 <strong>{attentionCustomerCount}</strong></span>
@@ -3331,12 +3331,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="customer-360-segments -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-1">
-        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
-        {Object.entries(statusLabels).map(([k, v]) => (
-          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
-        ))}
-      </div>
+
 
       {inlineEditMode && (
         <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-700">
@@ -3351,7 +3346,7 @@ export default function Customers() {
         </CardContent></Card>
       )}
 
-      <div className="customer-360-toolbar space-y-3">
+      <div className="customer-360-toolbar crm-order-toolbar space-y-3">
         <div className="flex gap-2 md:gap-3">
           <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" /><Input placeholder="搜索编号、名称、联系人、电话..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
           <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 md:hidden" onClick={() => setMobileFiltersOpen(true)}>
@@ -3367,6 +3362,13 @@ export default function Customers() {
           </Button>
         </div>
         {!isMobile && showAdvanced && renderAdvancedFilters()}
+      </div>
+
+      <div className="customer-360-segments crm-order-segments -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-1">
+        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
+        {Object.entries(statusLabels).map(([k, v]) => (
+          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
+        ))}
       </div>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
@@ -3396,14 +3398,14 @@ export default function Customers() {
             <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
           </div>
 
-      <Card className="app-card customer-360-directory"><CardContent className="p-0">
+      <Card className="app-card customer-360-directory crm-order-results"><CardContent className="p-0">
         {loading ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
           <>
-          <div className="grid gap-2.5 p-3 md:hidden">
+          <div className="crm-order-mobile-list grid gap-2.5 p-3 md:hidden">
             {paginatedCustomers.items.map(c => (
-              <div key={c.id} className="customer-mobile-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div key={c.id} className="crm-order-record customer-mobile-card rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <button type="button" className="customer-mobile-identity min-w-0 text-left" onClick={() => openDetail(c)}>
                     <p className="line-clamp-2 break-words text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>

@@ -1340,7 +1340,7 @@ export default function Deals() {
   }
 
   return (
-    <div className="t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-deals-page crm-sales-compact">
+    <div className="crm-order-customer-org crm-order-deals t24-record-page t24-directory-page app-page space-y-5 calm-delivery-page calm-deals-page crm-sales-compact">
       <div className="app-page-title flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           <p className="app-page-kicker">T24 Marketing · Deals</p>
@@ -1387,7 +1387,7 @@ export default function Deals() {
         </div>
       </div>
 
-      <div className="calm-record-metrics grid grid-cols-2 gap-3 xl:grid-cols-5" aria-label="当前可见范围的成交记录概览">
+      <div className="crm-order-summary calm-record-metrics grid grid-cols-2 gap-3 xl:grid-cols-5" aria-label="当前可见范围的成交记录概览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">成交记录</p><p className="mt-1 text-2xl font-semibold text-slate-900">{deals.length}</p><p className="mt-1 text-xs text-slate-400">总额 ${totalAmount.toLocaleString()}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">已付款</p><p className="mt-1 text-2xl font-semibold text-emerald-600">{paidDealCount}</p><p className="mt-1 text-xs text-slate-400">成交记录中的付款标记</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">未付款</p><p className="mt-1 text-2xl font-semibold text-red-600">{unpaidDealCount}</p><p className="mt-1 text-xs text-slate-400">需要跟进</p></CardContent></Card>
@@ -1411,7 +1411,7 @@ export default function Deals() {
       )}
 
       {/* Search & Filters */}
-      <Card className="border-slate-200">
+      <Card className="crm-order-toolbar border-slate-200">
         <CardContent className="p-3 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1547,7 +1547,7 @@ export default function Deals() {
       )}
 
       {/* Deals list */}
-      <Card className="border-slate-200">
+      <Card className="crm-order-results border-slate-200">
         <CardContent className="p-0">
           <div className="calm-record-list-heading"><div><h3>成交记录</h3><p>{filtered.length} 笔 · 金额与交接状态分开核对</p></div></div>
           {loading ? (
@@ -1558,12 +1558,12 @@ export default function Deals() {
             <p className="text-center text-slate-400 py-12">暂无成交记录</p>
           ) : (
             <>
-            {isMobile && <div className="grid gap-3 p-3 md:hidden">
+            {isMobile && <div className="crm-order-mobile-list grid gap-3 p-3 md:hidden">
               {paginated.items.map(d => {
                 const isDuplicate = duplicateDealIds.has(d.id);
                 const packageClassification = getPackageClassification(d.package_name);
                 return (
-                <div key={d.id} className={`rounded-xl border bg-white p-4 shadow-sm ${isDuplicate ? 'border-orange-200 ring-1 ring-orange-100' : 'border-slate-200'}`}>
+                <div key={d.id} className={`crm-order-record rounded-xl border bg-white p-4 shadow-sm ${isDuplicate ? 'border-orange-200 ring-1 ring-orange-100' : 'border-slate-200'}`}>
                   <div className="flex items-start justify-between gap-3">
                     <button type="button" className="min-w-0 text-left" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>
                       <p className="truncate font-semibold text-blue-700">{d.customer_name}</p>
@@ -1574,12 +1574,12 @@ export default function Deals() {
                       {isDuplicate && <Badge className="bg-orange-100 text-orange-700">疑似重复</Badge>}
                     </div>
                   </div>
-                  <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                  <div className="crm-order-record-block mt-3 rounded-lg bg-slate-50 p-3">
                     <div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-800">{packageClassification.currentLabel}</p><p className="font-semibold text-emerald-600">${Number(d.deal_amount || 0).toLocaleString()}</p></div>
                     {packageClassification.changed && <p className="mt-1 text-xs text-slate-400">历史成交原名：{packageClassification.historicalLabel}</p>}
                     <p className="mt-1 text-xs text-slate-500">{productLabels[d.product_type] || d.product_type || '-'} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                  <div className="crm-order-record-fields mt-3 grid grid-cols-2 gap-3 text-sm">
                     <div><p className="text-xs text-slate-400">交接</p><p className="mt-1 text-slate-700">{d.is_handed_over ? '已交接' : '待交接'}</p></div>
                     <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
                   </div>

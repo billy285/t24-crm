@@ -1,0 +1,589 @@
+/* Ordered delivery and finance reading surfaces. Scope: these ten routes only.
+   State colors, chart series, hidden views and all financial action guards stay intact. */
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) { --t24-control-height:36px; --t24-control-compact:32px; --t24-control-large:40px; color:var(--crm-ink); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is([hidden]) { display:none !important; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.odf-page,.t24-work-page)) { min-width:0; border:0; background:transparent; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-page > :not([hidden]) + :not([hidden])) { margin-top:16px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading)) { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px 20px; margin:0; padding:0 0 14px; border-bottom:1px solid var(--crm-border); background:transparent; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading) > div:first-child) { min-width:0; flex:1 1 240px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading) :is(h1,h2,.app-page-heading)) { margin:0; font-size:22px; font-weight:650; line-height:1.4; letter-spacing:-.02em; color:var(--crm-ink); overflow-wrap:anywhere; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.app-page-kicker,.app-page-title p[class*="uppercase"]):not(.fe-eyebrow)) { display:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.app-page-title,.fe-header) :is(.app-page-description,p:not([class*="uppercase"]))) { max-width:76ch; font-size:12px; line-height:1.7; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-card,.app-toolbar,.dc-filter-context,.dc-board-tools,.dc-guidance,.dc-task-secondary-filters,.dc-overdue-reminder,.rmb-query-panel,.rmb-calculation-details,.portal-overview,.portal-period-summary,.calm-secondary-panel)) { border-radius:8px; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.t24-card-header) { padding:16px 18px 12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.t24-card-header .t24-section-title) { font-size:14px; font-weight:650; line-height:1.6; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.t24-button) { box-shadow:none; font-weight:550; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-button,.t24-input,.t24-native-select)) { border-radius:var(--crm-radius-control,8px); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-input,.t24-native-select)) { box-shadow:none; border-color:var(--crm-border-strong); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-input,.t24-native-select):focus-visible) { border-color:var(--crm-blue); outline-color:var(--crm-blue); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.app-toolbar,.dc-callback-toolbar,.dc-board-tools,.fe-search-controls,.commission-filters,.commission-mobile-filters)) { padding:14px 16px; border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface); box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-panel-heading,.dc-list-heading,.fe-list-heading,.payroll-list-heading,.commission-record-heading)) { min-height:48px; padding:12px 16px; gap:8px; border-bottom:1px solid var(--crm-border); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-panel-heading,.dc-list-heading,.fe-list-heading,.payroll-list-heading) :is(h2,h3)) { font-size:14px; font-weight:650; color:var(--crm-ink); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-panel-heading,.dc-list-heading,.fe-list-heading,.payroll-list-heading) :is(span,small)) { font-size:12px; font-weight:400; color:var(--crm-muted); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-guidance,.dc-task-secondary-filters,.dc-media-entry,.rmb-query-panel,.rmb-calculation-details,.portal-overview,.portal-period-summary,.calm-secondary-panel) > summary) { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; min-height:40px; padding:10px 12px; color:var(--crm-secondary); font-size:12px; line-height:1.6; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-filter-context,.dc-list-pagination,.fe-pagination)) { color:var(--crm-muted); font-size:12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-result-summary) { gap:8px; padding:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-result-summary strong) { font-weight:500; color:var(--crm-secondary); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-applied-filters,.fe-active-filters)) { gap:6px; margin-top:8px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-applied-filters,.fe-active-filters) button) { border-radius:6px; font-size:12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-list,.dc-callback-list,.dc-progress-list,.dc-action-list,.fe-list,.commission-records)) { min-width:0; border-radius:8px; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-row,.dc-callback-row,.dc-action-card,.dc-progress-card,.fe-record)) { border-radius:0; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-row,.dc-callback-row,.dc-action-card,.fe-record) + :is(.dc-task-row,.dc-callback-row,.dc-action-card,.fe-record)) { border-top:1px solid var(--crm-border); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-row,.dc-callback-row,.dc-action-card,.dc-progress-card) :is(h3,h4)) { font-size:14px; font-weight:600; line-height:1.55; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-auxiliary,.dc-task-next,.dc-summary-text,.dc-action-context p,.fe-record-title p)) { font-size:12px; line-height:1.7; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-auxiliary,.dc-muted-meta)) { color:var(--crm-muted); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-metrics,.odf-summary-strip):not([hidden])) { display:grid; gap:0; overflow:hidden; border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metrics) { grid-template-columns:repeat(var(--dc-metric-count,4),minmax(0,1fr)); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric) { min-width:0; padding:14px 16px; border:0; border-left:1px solid var(--crm-border); border-radius:0; background:transparent; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric:first-child) { border-left:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric.is-active) { background:var(--crm-blue-soft); box-shadow:inset 0 -2px var(--crm-blue); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric strong) { font-size:24px; line-height:1.4; letter-spacing:-.02em; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric-label) { font-size:12px; color:var(--crm-secondary); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card) { min-width:0; margin:0; border:0; border-left:1px solid var(--crm-border); border-radius:0; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card:first-child) { border-left:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip .t24-card-content) { padding:14px 16px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip :is(p,strong)) { overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(table) { width:100%; font-size:13px; line-height:1.6; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(table thead th) { height:42px; padding:10px 14px; border-bottom:1px solid var(--crm-border); background:var(--crm-surface-soft); color:var(--crm-muted); font-size:12px; font-weight:550; vertical-align:middle; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(table tbody td) { padding:12px 14px; border-bottom:1px solid var(--crm-border); vertical-align:top; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(table tbody tr:last-child td) { border-bottom:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-table-scroll,.payroll-responsive-table,.finance-desktop-tables,.t24-card-content[class*="overflow-x-auto"])) { max-width:100%; overscroll-behavior-x:contain; scrollbar-width:thin; scrollbar-color:var(--crm-border-strong) transparent; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-task-views,.fe-tabs,.payroll-view-tabs,.commission-mobile-tabs,.portal-mobile-tabs,[role="tablist"])) { max-width:100%; border-radius:0; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.fe-tabs,.payroll-view-tabs,.commission-mobile-tabs,[role="tablist"])) { padding:0; gap:0; border-bottom:1px solid var(--crm-border); background:transparent; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.fe-tabs,.payroll-view-tabs,.commission-mobile-tabs) > :is(button,[role="tab"]), [role="tablist"] > [role="tab"]) { border-radius:0; border-bottom:2px solid transparent; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.fe-tabs,.payroll-view-tabs,.commission-mobile-tabs) > :is([aria-current="page"],[aria-pressed="true"],[data-state="active"]), [role="tablist"] > [data-state="active"]) { border-bottom-color:var(--crm-blue); background:transparent; color:var(--crm-blue); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-rows) { gap:0; }
+
+@media (min-width:768px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.dc-task-row) { padding:14px 16px; }
+}
+
+@media (min-width:1024px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.dc-task-row .dc-task-desktop) { align-items:center; }
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/callbacks"] :is(.odf-callback-rows) { gap:0; padding:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/callbacks"] :is(.dc-callback-row) { border-width:0 0 1px; padding:14px 16px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/callbacks"] :is(.dc-callback-row:last-child) { border-bottom:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-board-tools) { margin-top:14px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list .dc-progress-card) { border-width:0 0 1px; margin:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list > div) { gap:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-kanban) { gap:12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-today-toolbar) { gap:12px; padding:12px 0; border-bottom:1px solid var(--crm-border); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-action-list) { gap:0; overflow:hidden; border:1px solid var(--crm-border); background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-action-card) { margin:0; border-width:0; overflow:visible; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-action-card + .dc-action-card) { border-top-width:1px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.calm-execution-workspace) { gap:18px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-header h1) { font-size:22px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-scope) { margin:12px 0; padding:10px 12px; border-radius:6px; font-size:12px; line-height:1.7; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-eyebrow) { margin-bottom:4px; color:var(--crm-muted); font-size:11px; letter-spacing:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-search-row) { gap:8px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-search-extra) { gap:12px; padding-top:12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-records) { gap:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record) { margin:0; padding:14px 16px; border:0; border-top:1px solid var(--crm-border); background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record:first-child) { border-top:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record-title h3) { font-size:14px; line-height:1.6; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record-value strong) { font-size:18px; font-variant-numeric:tabular-nums; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-desktop-heading) { padding-bottom:14px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(:is(.finance-context-bar,.finance-desktop-period,.finance-snapshot,.finance-list-filters,.finance-snapshot-cards)) { border-radius:8px; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-ledger-key-metrics) { gap:0; border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-ledger-key-metrics > *) { border-radius:0; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-priority) { padding:16px 18px; border-radius:8px; box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-priority h2) { margin-top:4px; font-size:18px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(:is(.commission-heading-actions,.commission-toolbar,.commission-record-heading)) { gap:10px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-record-heading) { padding-inline:0; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-mobile-card) { border-width:0 0 1px; border-color:var(--crm-border); border-radius:0; background:var(--crm-surface); box-shadow:none; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-mobile-card > summary) { padding:14px 12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.portal-owner-selector) { border-radius:8px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(:is(.portal-overview,.portal-period-summary)) { border:1px solid var(--crm-border); background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(:is(.portal-overview,.portal-period-summary) > :not(summary)) { margin-inline:12px; }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.portal-overview > summary span) { font-weight:400; color:var(--crm-muted); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/rmb-profit"] :is(:is(.rmb-query-panel,.rmb-calculation-details)) { border:1px solid var(--crm-border); background:var(--crm-surface); }
+
+.t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/rmb-profit"] :is(:is(.rmb-query-panel,.rmb-calculation-details) > .t24-card) { border:0; box-shadow:none; }
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) { --t24-control-height:44px; --t24-control-compact:44px; --t24-control-large:44px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-page > :not([hidden]) + :not([hidden])) { margin-top:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading)) { padding-bottom:12px; gap:10px; flex-direction:row; align-items:flex-start; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading) > div:first-child) { flex:1 1 160px; min-width:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-heading,.dc-service-detail-heading,.app-page-title,.fe-header,.commission-heading) :is(h1,h2,.app-page-heading)) { font-size:20px; line-height:1.4; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-button,.dc-applied-filters button,.fe-tabs button,.commission-mobile-tabs button,[role="tab"])) { min-height:44px; height:auto; min-width:44px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.t24-input,.t24-native-select)) { min-height:44px; font-size:16px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.app-toolbar,.dc-callback-toolbar,.dc-board-tools,.fe-search-controls,.commission-mobile-filters)) { padding:12px; border-radius:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-guidance,.dc-task-secondary-filters,.dc-media-entry,.rmb-query-panel,.rmb-calculation-details,.portal-overview,.portal-period-summary,.calm-secondary-panel) > summary) { min-height:44px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metrics) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric) { min-height:76px; padding:10px 12px; border:0; border-left:1px solid var(--crm-border); border-top:1px solid var(--crm-border); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric:nth-child(2n+1)) { border-left:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric:nth-child(-n+2)) { border-top:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric strong) { font-size:21px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.dc-metric small) { display:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip) { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card) { border:0; border-top:1px solid var(--crm-border); border-left:1px solid var(--crm-border); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card:nth-child(2n+1)) { border-left:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card:nth-child(-n+2)) { border-top:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip .t24-card-content) { padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip :is(.text-xl,.text-2xl)) { font-size:18px; line-height:1.5; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-filter-context,.dc-list-pagination)) { margin-top:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(:is(.dc-panel-heading,.dc-list-heading,.fe-list-heading,.payroll-list-heading)) { padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-rows) { gap:0; padding:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.dc-task-row) { margin:0; border-width:0 0 1px; border-color:var(--crm-border); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.dc-task-row:last-child) { border-bottom:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary) { margin:0; border:1px solid var(--crm-border); background:var(--crm-surface); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary .t24-card-content) { padding:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary .t24-card-content > p) { margin:0; padding:9px 12px; border-bottom:1px solid var(--crm-border); font-size:11px; font-weight:500; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary [role="group"]) { gap:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary [role="group"] > button) { min-height:64px; border:0; border-left:1px solid var(--crm-border); border-radius:0; padding:10px 12px; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-summary [role="group"] > button:first-child) { border-left:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile > .p-4) { padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile > .p-4 > .flex > span:first-child) { width:30px; height:30px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-facts) { margin-top:10px; gap:6px 12px; border:0; border-radius:0; background:transparent; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-facts > div) { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; min-width:0; padding:0; background:transparent; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-facts > div > span) { margin:0; font-size:12px; line-height:1.7; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-facts > div > span:last-child) { font-weight:500; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile > .p-4 > .mt-4.border-t) { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; padding-top:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile > .p-4 > .mt-4.border-t > button) { flex:1 1 130px; width:auto; min-height:44px; border-radius:var(--crm-radius-control,8px); font-weight:550; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile > .p-4 > .mt-4.border-t > div) { flex:1 1 180px; margin-top:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] :is(.odf-task-mobile details) { border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/callbacks"] :is(.dc-callback-row) { padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/callbacks"] :is(.dc-callback-row-actions) { gap:8px; flex-wrap:wrap; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-service .dc-heading > div:last-child) { gap:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list) { border:1px solid var(--crm-border); overflow:hidden; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list .dc-progress-card) { display:flex; flex-direction:column; align-items:stretch; padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list .dc-progress-card > p) { margin-top:10px; padding:8px 10px; border-radius:6px; font-size:12px; line-height:1.7; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/service-board"] :is(.dc-progress-list .dc-progress-card > button) { width:auto; align-self:flex-end; min-width:140px; max-width:100%; margin-top:10px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-today-toolbar) { padding-block:10px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-today-toolbar nav) { overflow-x:auto; flex-wrap:nowrap; max-width:100%; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-today-toolbar nav > button) { flex-shrink:0; min-height:44px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.odf-action-mobile > .p-4) { padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.odf-action-mobile > .p-4 > .flex > span:first-child) { width:30px; height:30px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.dc-action-context) { margin-top:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/operations-workbench"] :is(.odf-action-mobile .dc-action-context button) { min-height:44px; padding:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.financial-workspace--finance > .app-page) { min-width:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero) { padding:16px; border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface); color:var(--crm-ink); box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero h1) { margin-top:0; font-size:20px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero p[class*="text-cyan-300"]) { display:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero p[class*="text-slate-300"]) { color:var(--crm-muted); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero > div:nth-child(2)) { margin-top:12px; padding:12px 0 0; border:0; border-top:1px solid var(--crm-border); border-radius:0; background:transparent; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero .text-3xl) { font-size:26px; overflow-wrap:anywhere; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero span[class*="text-emerald-200"]) { color:var(--crm-success); background:color-mix(in srgb,var(--crm-success) 10%,transparent); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero span[class*="text-amber-200"]) { color:var(--crm-warning); background:color-mix(in srgb,var(--crm-warning) 10%,transparent); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.finance-mobile-hero span[class*="text-rose-200"]) { color:var(--crm-danger); background:color-mix(in srgb,var(--crm-danger) 10%,transparent); }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-summary-strip > div) { min-width:0; padding:12px; border:0; border-left:1px solid var(--crm-border); border-top:1px solid var(--crm-border); border-radius:0; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-summary-strip > div:nth-child(2n+1)) { border-left:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-summary-strip > div:nth-child(-n+2)) { border-top:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(section[aria-label="快速记账"]) { padding:12px; border-radius:8px; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(section[aria-label="快速记账"] button) { min-height:68px; border-radius:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(section[aria-label="快速记账"] button > span) { width:28px; height:28px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-mobile-ledger-row) { margin:0; border-width:0 0 1px; border-color:var(--crm-border); border-radius:0; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-mobile-ledger-row > summary) { min-height:76px; gap:8px; padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.odf-mobile-ledger-row > summary > div:first-child) { height:30px; width:30px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] :is(.mobile-finance-record-fields) { gap:8px; font-size:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-header-actions) { gap:8px; flex-wrap:wrap; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-tabs) { overflow-x:auto; flex-wrap:nowrap; margin-top:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-tabs > button) { flex-shrink:0; padding-inline:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record) { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record-title) { min-width:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record-value) { min-width:0; max-width:140px; text-align:right; overflow-wrap:anywhere; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record > button) { grid-column:1 / -1; justify-self:end; width:auto; min-width:126px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance-entry"] :is(.fe-record-title p) { overflow-wrap:anywhere; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/payroll"] :is(.payroll-view-tabs) { display:flex; overflow-x:auto; flex-wrap:nowrap; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/payroll"] :is(.payroll-view-tabs > button) { flex:0 0 auto; min-height:44px; padding-inline:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/payroll"] :is(.payroll-trend-row) { flex-wrap:wrap; gap:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-mobile-filters) { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-mobile-card > summary) { min-height:76px; padding:12px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/commissions"] :is(.commission-mobile-amounts) { gap:8px; padding:10px 0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/rmb-profit"] :is(.odf-rmb-period-row) { margin:0; padding:12px; border:0; border-bottom:1px solid var(--crm-border); border-radius:0; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/rmb-profit"] :is(.odf-rmb-period-row > .grid) { margin-top:10px; padding:10px; border-radius:6px; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.odf-portal-row) { margin:0; padding:12px; border:0; border-bottom:1px solid var(--crm-border); border-radius:0; box-shadow:none; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.odf-portal .t24-card-content:has(> .odf-portal-row)) { padding:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.odf-portal .t24-card-content > .odf-portal-row + .odf-portal-row) { margin-top:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.portal-period-summary > div) { margin-inline:0; }
+}
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/partner-portal"] :is(.portal-period-summary .t24-card) { border-width:1px 0 0; border-radius:0; }
+}
+
+/* Mobile card shells: defeat the older mobile radius utilities without changing controls. */
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.t24-card,.app-toolbar,.dc-board-tools,.dc-task-list,.dc-callback-list,.dc-progress-list,.dc-action-list,.fe-list,.fe-search-controls,.commission-mobile-filters,.commission-mobile-card,.rmb-query-panel,.rmb-calculation-details,.portal-overview,.portal-period-summary,.calm-secondary-panel,.finance-mobile-hero,.finance-mobile-todos,.finance-snapshot,.finance-context-bar,.finance-desktop-period,.finance-list-filters,.finance-ledger-key-metrics,.odf-summary-strip,.portal-owner-selector) { border-radius:10px !important; }
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/tasks"] .dc-task-toolbar > details { border-radius:10px !important; }
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/finance"] section[aria-label="快速记账"] { border-radius:10px !important; }
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/payroll"] .payroll-responsive-table tbody tr { border-radius:10px !important; }
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main:is([data-crm-page="/tasks"],[data-crm-page="/service-board"],[data-crm-page="/callbacks"],[data-crm-page="/operations-workbench"],[data-crm-page="/finance"],[data-crm-page="/finance-entry"],[data-crm-page="/payroll"],[data-crm-page="/commissions"],[data-crm-page="/rmb-profit"],[data-crm-page="/partner-portal"]) :is(.odf-summary-strip > .t24-card,.odf-summary-strip > div,.dc-action-list > .dc-action-card,.dc-task-row) { border-radius:0 !important; }
+}

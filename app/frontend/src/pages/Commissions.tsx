@@ -372,7 +372,7 @@ export default function Commissions() {
 
   if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取渠道与分润台账...</div></div>;
 
-  return <div className="financial-workspace financial-workspace--commissions crm-org-compact app-page commission-page">
+  return <div className="financial-workspace financial-workspace--commissions crm-org-compact app-page commission-page odf-page odf-commissions">
     {loadError && <PageLoadState error={`分润数据读取失败：${loadError}${data ? '，当前保留上次数据，修改暂不可用' : ''}`} onRetry={() => void load()} />}
     {optionsError && optionsNotice}{loginOptionsError && loginOptionsNotice}
     <div className="commission-heading">
