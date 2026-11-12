@@ -1,23 +1,23 @@
 {
   "baseline_git_commit": "25e59c0d7f193585ee286be036cbd5468b3e10e8",
   "baseline_source_sha": "f405a3079a184469d71924ca4950c41900dd922b",
-  "build_receipt_sha256": "25bcb6ea0f44644686f2863430d95e093e9347e1a9a7905137289cc67f435d02",
+  "build_receipt_sha256": "86fb0b92a816f6acb52dcc3bfeb6776e27f909d5573a00fb9c60ea5ad7170249",
   "changed_source_files": {
-    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "b5c5380ba86fd89890700d0ec6118819fa4b327702b3848929e0b699be183722",
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "92d78d3969ad0723840e954e830cfa2710dfba357f53507375dd30ea51dc216b",
     "app/frontend/src/components/SalesPhoneConnections.tsx": "2675bf44b4a9094d6f92e6b1d8d54133a448bfe568b201840dc73e9cf4896868",
     "app/frontend/src/components/SalesTeamPerformance.tsx": "44092d38c4508ffd409240323dcd616077a53ae49a907b7a14e720fe0ffc7735",
     "app/frontend/src/pages/CustomerLifecycle.tsx": "9fdce6cf2cf25c5a51479f8b997718b3b203c75df708b91db148cd154079c95d",
     "app/frontend/src/pages/MerchantPool.tsx": "0dff39a67ba6103d2a84c613efcf491cb179182a9cfedb6282953a186a0f8b9e",
     "app/frontend/src/pages/SalesLeads.tsx": "cadfb5d89ce4d3856049345ab0b8d564b30a820687e0e303a2253f35506e8a03",
     "app/frontend/src/pages/ServiceBoard.tsx": "747f60c9a7b7c030015008fa55793eb3ba4e0dee9f35d7d337975ebe41472b6e",
-    "app/frontend/tests/refresh-preservation.test.mjs": "57467b51a841aaddae28dd51687441f83cda63f851dc07b6881fedfbf3861f80",
+    "app/frontend/tests/refresh-preservation.test.mjs": "bf3d44ef0b7e8814f6b682084e0b7e2b018555be166fc38a85e7287cbd64e42c",
     "app/frontend/tests/sales-refresh-retention.test.mjs": "ef407b0ef41f0f766bdd7c20ebefc7d59a430fffa9d1f827c36c995490b1569e"
   },
-  "dist_inventory_sha256": "770214785772259cb641cca557e3d603d36c96137ded6e76f3f836807a59fdb9",
+  "dist_inventory_sha256": "a08f55d0dd5a4f28f2e2c79adf7eb67ca6e95aa4536e1d1cfcc303d52162598d",
   "fresh_build_passed": true,
   "frontend_only": true,
-  "frontend_version": "b9a3dfb03737",
+  "frontend_version": "7bd658bdeb58",
   "source_commit_bytes_verified": true,
-  "source_sha": "ed6a6ed84bc5941fb99d10dbb5d6b991a15514cf",
+  "source_sha": "0942925209970afe869ac9769c26880d27cc4471",
   "stage": "CRM_REFRESH_STABILITY_SOURCE_FREEZE"
 }
