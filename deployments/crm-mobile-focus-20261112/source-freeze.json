@@ -1,0 +1,27 @@
+{
+  "baseline_git_commit": "3f10a0434f878167743fb9db594560ec31f27067",
+  "baseline_source_sha": "a753b28fadb048b6f199fc88bc89da786eb96a51",
+  "build_receipt_sha256": "71c41afaaef64d3a028e664c9b74d0303d829df40da2d514c663ec47c4e676c6",
+  "changed_source_files": {
+    "app/frontend/src/components/Layout.tsx": "c45ed4035f3bdbda99c7ed5e50111bdf45ecb9e41bd722cfc9635ffc990068eb",
+    "app/frontend/src/components/MobileSalesQueue.tsx": "0ffca39afeac83dcda2feeb166bb395b248c7bf62b0f0c060cafef160b898266",
+    "app/frontend/src/components/crm-mobile-focus-customer.css": "d14544403a83e4c4221676eb3806312574554ccf28818a68b8dc422e5469f9d5",
+    "app/frontend/src/components/crm-mobile-focus-delivery.css": "f815b0e28716c49fa7513dc9a3965b7430d51bf69992ee269bac177d0f5259b1",
+    "app/frontend/src/components/crm-mobile-focus-sales.css": "57451eaafe8efb0b29acd26820f5149a08d75fc2bae86aeed78ca1f0c8eb0ff7",
+    "app/frontend/src/components/crm-mobile-focus.css": "33aa1406de9a34dda62a7e029711b21c7439413f2501448fd20cd26d9ee98307",
+    "app/frontend/src/pages/Customers.tsx": "3f57ea9b33a51cb841aa8af76c6c933c0a41ef25c19a5756015de1c5e02e1f90",
+    "app/frontend/src/pages/FinanceEntry.tsx": "bddd5bc81523784b6d8dadb4b97215c4b3139980bb0d36135260affa17ff30fa",
+    "app/frontend/src/pages/SalesLeads.tsx": "581eaf020fe7a2761ea3a9101d3a62542f13a709e7bbbbc01eb03f94c288f1c4",
+    "app/frontend/src/pages/SalesWorkbench.tsx": "6d455dba12fbeffade0db32b2ed814f1aa2dd1a247b40f388867373362d32f5d",
+    "app/frontend/src/pages/ServiceBoard.tsx": "be6bddee68c3fa2e8e6671fba78a43ad42bb97da0d3423d64e1593f6d295ec52",
+    "app/frontend/src/pages/Tasks.tsx": "e29f41d327fff775f7619b8765d5a1c8dd45fbac071f60ebf5cce4077d9d1091",
+    "app/frontend/tests/mobile-task-summary.spec.ts": "b2295156257860c01fb3971477f70d192d6b3f68efbd66a157b61d4759c17357"
+  },
+  "dist_inventory_sha256": "d97535c08b7701e1a01ba224f6f1c42e3467759739e6db34d72b75b7f8bd2431",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "75e008e44e70",
+  "source_commit_bytes_verified": true,
+  "source_sha": "f405a3079a184469d71924ca4950c41900dd922b",
+  "stage": "CRM_MOBILE_FOCUS_SOURCE_FREEZE"
+}
