@@ -42,9 +42,11 @@ export default function MobileSalesQueue({ tasks, selectedTaskId, filter, overdu
       || phoneSearchMatches(task.lead.phone, query, task.lead.country));
   }, [query, tasks]);
   const filterLabel = ({ all: '全部', unfinished: '未完成', overdue: '逾期', callback: '待回访', interested: '有意向', appointment: '已预约' } as Record<string, string>)[filter] || '全部';
+  const qualityLabel = ({ missing_contact: '缺联系人', needs_review: '资料待核实', has_interest: '已明确意向产品' } as Record<string, string>)[qualityFilter] || qualityFilter;
+  const activeFilters = [qualityFilter !== 'all' ? qualityLabel : '', query.trim() ? `搜索：${query.trim()}` : ''].filter(Boolean);
 
   return <Sheet open={open} onOpenChange={setOpen}>
-    <SheetTrigger asChild><Button variant="outline" className="sw-phone-queue-trigger" disabled={disabled} aria-label="打开客户队列" data-selected-task-id={selectedTaskId || ''}><ListFilter size={17} /><span>客户队列</span><span className="sw-queue-position">{filterLabel} · {position || '—'} / {tasks.length}</span><ChevronDown size={16} /></Button></SheetTrigger>
+    <SheetTrigger asChild><Button variant="outline" className="sw-phone-queue-trigger" disabled={disabled} aria-label="打开客户队列" data-selected-task-id={selectedTaskId || ''}><ListFilter size={17} /><span className="sw-focus-queue-copy"><span>客户队列</span>{activeFilters.length > 0 && <small>{activeFilters.join(' · ')}</small>}</span><span className="sw-queue-position">{filterLabel} · {position || '—'} / {tasks.length}</span><ChevronDown size={16} /></Button></SheetTrigger>
     <SheetContent side="bottom" className="sales-center-ui sw-mobile-sheet sw-queue-sheet" onOpenAutoFocus={event => { event.preventDefault(); titleRef.current?.focus(); }}>
       <SheetHeader><SheetTitle ref={titleRef} tabIndex={-1}>客户队列</SheetTitle><SheetDescription className="sr-only">搜索姓名、电话或城市，选择客户不会保存或完成任务。</SheetDescription></SheetHeader>
       <div className="sw-queue-search"><Search size={17} aria-hidden="true" /><Input aria-label="搜索客户队列" placeholder="搜索客户、电话或城市" maxLength={200} className={query ? 'pr-16' : undefined} value={query} onChange={event => updateQuery(event.target.value)} />{query ? <Button type="button" variant="ghost" className="absolute inset-y-0 right-0 min-h-11 min-w-11 px-3" aria-label="清空队列搜索" onClick={() => updateQuery('')}>清空</Button> : null}</div>

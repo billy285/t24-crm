@@ -1,0 +1,279 @@
+/* Keep the current customer and next action ahead of optional workspace detail. */
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench {
+  --sw-focus-line: var(--crm-border, #e2e8f0);
+  --sw-focus-muted: var(--crm-muted, #64748b);
+  --sw-focus-ink: var(--crm-ink, #172638);
+  --sw-focus-accent: var(--crm-accent, #245ee5);
+  --sw-focus-surface: var(--crm-surface, #fff);
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-merchant-details {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  min-width: 0;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-merchant-details > summary {
+  display: none;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-contact-safety {
+  min-width: 0;
+  margin-top: 8px;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-queue-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-queue-copy small {
+  color: var(--sw-focus-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench {
+    gap: 8px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-workspace-heading {
+    padding: 0 0 8px;
+    gap: 4px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sc-page-heading {
+    margin: 0;
+    gap: 8px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-phone-scope-controls {
+    min-width: 0;
+    gap: 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-scope-trigger {
+    max-width: 180px;
+    padding: 3px 4px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-scope-trigger strong {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-progress-row {
+    min-height: 22px;
+    gap: 10px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-phone-connections {
+    margin: 0;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-phone-connections > details > summary {
+    padding: 7px 10px;
+    min-height: 44px;
+    gap: 8px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-phone-connections > details > summary > span {
+    flex-direction: row;
+    align-items: center;
+    gap: 3px 10px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-phone-connections > details > summary :is(strong, small) {
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-phone-summary-warning {
+    padding: 5px 10px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-phone-queue-trigger {
+    margin: 0;
+    gap: 7px;
+    min-height: 44px;
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-queue-position {
+    flex: 1 0 auto;
+    margin-left: auto;
+    font-size: 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sc-customer {
+    padding: 10px 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: start;
+    flex-wrap: nowrap;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-heading > div:first-child {
+    display: block;
+    min-width: 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-heading h2 {
+    margin: 4px 0;
+    font-size: 18px;
+    line-height: 25px;
+    overflow-wrap: anywhere;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-heading p {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-navigation {
+    width: auto;
+    grid-column: 2;
+    grid-row: 1;
+    gap: 0;
+    justify-content: flex-end;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-paging {
+    display: flex;
+    gap: 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-paging button {
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-contact-safety {
+    margin-top: 6px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sales-local-time {
+    margin: 4px 0;
+    font-size: 12px;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-dial-row {
+    gap: 5px;
+    margin: 4px 0 8px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-phone strong {
+    font-size: 21px;
+    line-height: 28px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-dial-actions {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-dial-actions .sw-dial-button {
+    min-height: 44px;
+    background: var(--sw-focus-accent);
+    border-color: var(--sw-focus-accent);
+    color: hsl(var(--primary-foreground, 0 0% 100%));
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-merchant-details > summary,
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-queue-overview > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 0;
+    list-style: none;
+    color: var(--sw-focus-muted);
+    font-size: 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench :is(.sw-focus-merchant-details, .sw-focus-queue-overview) > summary::-webkit-details-marker {
+    display: none;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench :is(.sw-focus-merchant-details, .sw-focus-queue-overview)[open] > summary > svg {
+    transform: rotate(180deg);
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-merchant-details {
+    border-top: 1px solid var(--sw-focus-line);
+    margin-top: 6px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-focus-queue-overview {
+    border-top: 1px solid var(--sw-focus-line);
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-today {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-summary {
+    order: 2;
+    padding: 12px 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-panel {
+    padding: 10px 12px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-panel h2 {
+    margin-bottom: 8px;
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-actions > div {
+    padding: 7px 0;
+    min-height: 52px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-actions > div > div {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-actions > div > div strong {
+    margin: 0;
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-mobile-row {
+    padding: 10px 0;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-team-mobile-row > dl {
+    margin-top: 5px;
+    padding: 0;
+  }
+  body:has(.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"]) .sw-focus-scope-sheet .sw-view-context {
+    display: grid;
+    gap: 5px;
+    margin: 8px 0 14px;
+    color: var(--crm-muted, #64748b);
+    font-size: 12px;
+    line-height: 18px;
+  }
+  body:has(.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"]) .sw-focus-scope-sheet .sw-view-context-account {
+    margin: 0;
+  }
+}
+@media (max-width: 359px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sc-page-heading {
+    flex-wrap: wrap;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-phone-scope-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-scope-trigger {
+    max-width: none;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-scope-trigger > span {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    text-align: left;
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-workbench"] .sw-focus-workbench .sw-customer-navigation {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: end;
+  }
+}

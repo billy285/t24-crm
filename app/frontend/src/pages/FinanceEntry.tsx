@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FilePenLine, LockKeyhole, Paperclip, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, ChevronLeft, ChevronRight, Download, FilePenLine, Filter, LockKeyhole, MoreHorizontal, Paperclip, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useRole } from '@/lib/role-context';
 import { useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { financeEntryApi, financeEntryError, financeEntryErrorStatus, financeEntryRequestId, financeEntryStatusLabels, editableFinanceEntry, uploadFinanceEntryAttachment, downloadFinanceEntryAttachment, type FinanceEntryAttachment, type FinanceEntryAttachments, type FinanceEntryCustomer, type FinanceEntryDraft, type FinanceEntryKind, type FinanceEntryList, type FinanceEntryStatus } from '@/lib/finance-entry-api';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import './finance-entry.css';
 import { formatBusinessDateTimeInput } from '@/lib/business-date';
 import { financeEntryListQuery, changeFinanceEntryListFilters } from '@/lib/finance-entry-list-filters';
@@ -295,14 +296,14 @@ export default function FinanceEntry() {
   const readOnly = !writable || owner;
 
   return <div className="fe-page app-page odf-page odf-entry">
-    <header className="fe-header"><div><p className="fe-eyebrow">{owner ? '老板核对 · 公司正式账保持独立' : '财务登记 · 仅本人提交'}</p><h1>财务登记台</h1><p>{owner ? '核对登记与凭据，由你决定退回或确认入账。' : '先保存草稿，填写凭据后提交；正式入账由老板确认。'}</p></div><div className="fe-header-actions"><Button variant="outline" disabled={listLoading} onClick={() => void loadList()}><RefreshCw size={14} className={listLoading ? 'animate-spin' : ''}/>刷新</Button>{canCreate && <Button onClick={openNew}><Plus size={15}/>新建登记</Button>}</div></header>
-    <div className="fe-scope" role="note"><LockKeyhole size={14}/><span>{owner ? '这里显示员工登记，不会自动入账。' : '仅显示本人草稿及当前仍获授权的客户。'} 不开放公司利润、工资、分润或私人空间。</span></div>
-    <nav className="fe-tabs" aria-label="登记状态">{statusTabs.map(value => <button key={value} type="button" aria-current={status === value ? 'page' : undefined} onClick={() => changeStatus(value)}>{value === 'all' ? '全部登记' : financeEntryStatusLabels[value as FinanceEntryStatus]}</button>)}</nav>
+    <header className="fe-header"><div className="mfocus-entry-heading-copy"><p className="fe-eyebrow">{owner ? '老板核对 · 公司正式账保持独立' : '财务登记 · 仅本人提交'}</p><h1>财务登记台</h1><p>{owner ? '核对登记与凭据，由你决定退回或确认入账。' : '先保存草稿，填写凭据后提交；正式入账由老板确认。'}</p></div><div className="fe-header-actions"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" aria-label="更多登记操作"><MoreHorizontal size={17}/><span className="mfocus-entry-more-label">更多</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={listLoading} onSelect={() => void loadList()}><RefreshCw size={14} className={listLoading ? 'animate-spin' : ''}/>{listLoading ? '读取中…' : '刷新登记记录'}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>{canCreate && <Button onClick={openNew}><Plus size={15}/>新建登记</Button>}</div></header>
+    <details className="fe-scope mfocus-entry-scope"><summary><LockKeyhole size={14}/><span>{owner ? '员工登记 · 不会自动入账' : '本人草稿及已授权客户'}</span><ChevronRight size={14}/></summary><div role="note"><p>{owner ? '核对登记与凭据，由你决定退回或确认入账。' : '先保存草稿，填写凭据后提交；正式入账由老板确认。'}</p><p>{owner ? '这里显示员工登记，不会自动入账。' : '仅显示本人草稿及当前仍获授权的客户。'} 不开放公司利润、工资、分润或私人空间。</p></div></details>
     <section className="fe-search-controls" aria-label="检索登记">
+      <nav className="fe-tabs" aria-label="登记状态">{statusTabs.map(value => <button key={value} type="button" aria-current={status === value ? 'page' : undefined} onClick={() => changeStatus(value)}>{value === 'all' ? '全部登记' : financeEntryStatusLabels[value as FinanceEntryStatus]}</button>)}</nav>
       <form className="fe-search-row" onSubmit={event => { event.preventDefault(); changeListFilters({ q: searchInput }); }}>
         <Input aria-label="搜索登记" placeholder="搜索客户、登记编号、凭据或备注" maxLength={120} value={searchInput} onChange={event => setSearchInput(event.target.value)} />
-        <Button type="submit" variant="outline">搜索</Button>
-        <Button type="button" variant="outline" aria-expanded={showListFilters} aria-controls="finance-entry-list-filters" onClick={() => setShowListFilters(value => !value)}>更多筛选{kindFilter || startFilter || endFilter ? ' · 已启用' : ''}</Button>
+        <Button type="submit" variant="outline" aria-label="搜索登记"><Search size={16}/><span className="mfocus-entry-search-label">搜索</span></Button>
+        <Button type="button" variant="outline" aria-label={kindFilter || startFilter || endFilter ? '更多筛选，已启用' : '更多筛选'} aria-expanded={showListFilters} aria-controls="finance-entry-list-filters" onClick={() => setShowListFilters(value => !value)}><Filter size={16}/><span>筛选{kindFilter || startFilter || endFilter ? ' ·' : ''}</span></Button>
       </form>
       {showListFilters && <div id="finance-entry-list-filters" className="fe-search-extra">
         <label>登记类型<NativeSelect aria-label="筛选登记类型" value={kindFilter} onChange={value => changeListFilters({ kind: value })} options={[{value:'',label:'全部登记类型'}, ...Object.entries(kindLabels).map(([value,label])=>({value,label}))]} /></label>

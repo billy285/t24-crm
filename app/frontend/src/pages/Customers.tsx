@@ -3281,15 +3281,24 @@ export default function Customers() {
   }
 
   const previewCustomer = currentPagePreview(paginatedCustomers.items, previewCustomerId);
+  const advancedFilterNames: Record<string, string> = { customer_code: '编号', business_name: '商家', contact_name: '联系人', phone: '电话', industry: '行业', status: '状态', level: '等级', sales_person: '负责人', source: '来源', wechat: '微信', email: '邮箱', country: '国家', state: '州/省', city: '城市' };
+  const advancedFilterDictionaries: Record<string, Record<string, string>> = { industry: industryLabels, status: statusLabels, level: levelLabels, source: sourceLabels };
+  const activeCustomerFilterLabels = [
+    filterStatus !== 'all' ? `状态：${statusLabels[filterStatus] || filterStatus}` : '',
+    filterIndustry !== 'all' ? `行业：${industryLabels[filterIndustry] || filterIndustry}` : '',
+    filterLevel !== 'all' ? `等级：${levelLabels[filterLevel] || filterLevel}` : '',
+    filterSource !== 'all' ? `来源：${sourceLabels[filterSource] || filterSource}` : '',
+    ...Object.entries(advFilters).filter(([, value]) => value.trim()).map(([key, value]) => `${advancedFilterNames[key] || key}：${key === 'country' ? getCountryLabel(value) : advancedFilterDictionaries[key]?.[value] || value}`),
+  ].filter(Boolean);
 
   // ========== LIST VIEW ==========
   return (
-    <div className="crm-order-customer-org crm-order-customers app-page customer-360-page calm-customer-page space-y-4">
+    <div className="crm-order-customer-org crm-order-customers mfc-customers app-page customer-360-page calm-customer-page space-y-4">
       <div className="customer-360-hero crm-order-heading">
         <div className="customer-360-hero-copy">
           <p className="customer-360-kicker">T24 MARKETING · CUSTOMER 360</p>
           <h2>客户管理</h2>
-          <p>找到客户，继续下一步</p>
+          <p className="mfc-customer-scope">{loading ? '正在读取授权客户' : `当前授权 · ${customers.length} 位客户`}</p>
         </div>
         <div className="customer-360-hero-actions">
           {!isMobile && <details className="calm-customer-tools"><summary>更多工具</summary><div className="calm-tools-content">
@@ -3316,12 +3325,15 @@ export default function Customers() {
           </div></details>}
           {hasPermission('customer_create') && <Button onClick={openCreate} className="flex-1 bg-blue-600 shadow-lg shadow-blue-950/30 hover:bg-blue-500 sm:flex-none"><Plus className="w-4 h-4 mr-1" /> 新增客户</Button>}
         </div>
-        <div className="calm-customer-summary crm-order-customer-summary" aria-label="客户统计">
-          <span>当前可访问 <strong>{customers.length}</strong></span>
-          <span title="客户资料中标记为已成交的客户，不等同于曾成交客户或合作周期统计">当前已成交 <strong>{customerStatusCounts.closed || 0}</strong></span>
-          <span>暂停与流失 <strong>{attentionCustomerCount}</strong></span>
-          <span>本月新增 <strong>{newCustomersThisMonth}</strong></span>
-        </div>
+        <details className="mfc-customer-overview">
+          <summary aria-label="客户统计概览"><span className="mfc-overview-label-prefix">客户</span>概览</summary>
+          <div className="calm-customer-summary crm-order-customer-summary" aria-label="客户统计">
+            <span>当前可访问 <strong>{loading ? '—' : customers.length}</strong></span>
+            <span title="客户资料中标记为已成交的客户，不等同于曾成交客户或合作周期统计">当前已成交 <strong>{loading ? '—' : customerStatusCounts.closed || 0}</strong></span>
+            <span>暂停与流失 <strong>{loading ? '—' : attentionCustomerCount}</strong></span>
+            <span>本月新增 <strong>{loading ? '—' : newCustomersThisMonth}</strong></span>
+          </div>
+        </details>
       </div>
 
       {showColPicker && (
@@ -3365,11 +3377,16 @@ export default function Customers() {
       </div>
 
       <div className="customer-360-segments crm-order-segments -mx-1 flex flex-nowrap gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-1">
-        <Button variant={filterStatus === 'all' ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
-        {Object.entries(statusLabels).map(([k, v]) => (
-          <Button key={k} variant={filterStatus === k ? 'default' : 'outline'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
+        <Button variant={isMobile ? 'ghost' : filterStatus === 'all' ? 'default' : 'outline'} aria-pressed={filterStatus === 'all'} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${!isMobile && filterStatus === 'all' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus('all')}>全部 {customers.length}</Button>
+        {Object.entries(statusLabels).filter(([key]) => !isMobile || ['following', 'closed'].includes(key) || filterStatus === key).map(([k, v]) => (
+          <Button key={k} variant={isMobile ? 'ghost' : filterStatus === k ? 'default' : 'outline'} aria-pressed={filterStatus === k} size="sm" className={`min-h-11 shrink-0 text-xs md:h-8 md:min-h-0 ${!isMobile && filterStatus === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} onClick={() => setFilterStatus(k)}>{v} {customers.filter(customer => customer.status === k).length}</Button>
         ))}
       </div>
+
+      {activeCustomerFilterLabels.length > 0 && <div className="mfc-customer-active-filters" aria-label="当前生效的客户筛选">
+        <span>{activeCustomerFilterLabels.join(' · ')}</span>
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setFilterStatus('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除筛选</Button>
+      </div>}
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <SheetContent side="bottom" className="max-h-[86vh] overflow-y-auto rounded-t-2xl px-5 pb-8 md:hidden">
@@ -3393,9 +3410,9 @@ export default function Customers() {
 
       <div className="customer-360-workspace">
         <section className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <div className="mfc-customer-list-meta flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <span className="font-medium text-slate-700">客户目录 · 共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
-            <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}</span>
+            <span className={`mfc-customer-sync inline-flex items-center gap-1.5${loadError ? ' is-error' : ''}`} role={loadError ? 'alert' : undefined}><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}{loadError && <Button type="button" variant="ghost" size="sm" onClick={() => void loadCustomers()}>重试</Button>}</span>
           </div>
 
       <Card className="app-card customer-360-directory crm-order-results"><CardContent className="p-0">
@@ -3409,21 +3426,18 @@ export default function Customers() {
                 <div className="flex items-start justify-between gap-2">
                   <button type="button" className="customer-mobile-identity min-w-0 text-left" onClick={() => openDetail(c)}>
                     <p className="line-clamp-2 break-words text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-400">{c.customer_code || `客户#${c.id}`}</p>
                   </button>
-                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                  <div className="mfc-customer-status flex shrink-0 flex-wrap justify-end gap-1">
                     <Badge className={`px-2 py-1 text-[10px] ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status || '-'}</Badge>
-                    <Badge className={`px-2 py-1 text-[10px] ${getLevelColorClass(c.level)}`}>{levelLabels[c.level] || c.level || '-'}</Badge>
                   </div>
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <p className="truncate text-slate-700"><span className="mr-1 text-slate-400">联系人</span>{c.contact_name || '-'}</p>
-                  <p className="truncate text-slate-700"><span className="mr-1 text-slate-400">负责人</span>{c.sales_person || '-'}</p>
-                  <p className="col-span-2 truncate text-slate-700"><span className="mr-1 text-slate-400">行业 / 地区</span>{industryLabels[c.industry] || c.industry || '-'} · {c.state || '-'}</p>
+                <div className="mfc-customer-record-context">
+                  <p><span>负责人</span>{c.sales_person || '待分配'}</p>
+                  {c.state && <span>{c.state}</span>}
                 </div>
-                <div className="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
+                <div className="mfc-customer-record-actions mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
                   <div className="min-w-0 flex-1">{c.phone ? <CustomerPhoneDial phone={c.phone} country={c.country} label={formatPhoneNumber(c.phone, c.country)} variant="outline" className="w-full min-w-0" buttonClassName="min-w-0 flex-1 justify-start px-3" /> : <span className="flex min-h-11 items-center px-3 text-xs text-slate-400">电话未填写</span>}</div>
-                  <Button size="sm" variant="outline" className="min-h-11 w-24 shrink-0 text-blue-700 hover:bg-blue-50 md:min-h-0" onClick={() => openDetail(c)}>查看</Button>
+                  <Button size="sm" className="mfc-customer-primary min-h-11 shrink-0 md:min-h-0" onClick={() => openDetail(c)}>查看资料</Button>
                   {(canManageCustomerAccess(c) || canAssignCustomer(c) || canEditBasic(c) || canDeleteCustomer(c)) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

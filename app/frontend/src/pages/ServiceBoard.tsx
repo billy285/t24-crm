@@ -772,6 +772,17 @@ export default function ServiceBoard() {
     });
   }, [progresses, allTasks, quickFilter, search, filters, businessToday]);
 
+  const activeDeliveryFilters = [
+    ...(quickFilter !== 'all' ? [{ key: 'quick', label: quickFilterLabels[quickFilter], clear: () => setQuickFilter('all') }] : []),
+    ...(search ? [{ key: 'search', label: `搜索：${search}`, clear: () => setSearch('') }] : []),
+    ...(filters.industry !== 'all' ? [{ key: 'industry', label: industryLabels[filters.industry] || filters.industry, clear: () => setFilters({ ...filters, industry: 'all' }) }] : []),
+    ...(filters.service_type !== 'all' ? [{ key: 'type', label: serviceTypeLabels[filters.service_type] || filters.service_type, clear: () => setFilters({ ...filters, service_type: 'all' }) }] : []),
+    ...(filters.service_stage !== 'all' ? [{ key: 'stage', label: allStageLabels[filters.service_stage] || filters.service_stage, clear: () => setFilters({ ...filters, service_stage: 'all' }) }] : []),
+    ...(filters.ops_person ? [{ key: 'ops', label: `运营：${filters.ops_person}`, clear: () => setFilters({ ...filters, ops_person: '' }) }] : []),
+    ...(filters.sales_person ? [{ key: 'sales', label: `销售：${filters.sales_person}`, clear: () => setFilters({ ...filters, sales_person: '' }) }] : []),
+    ...(filters.issue_status !== 'all' ? [{ key: 'issue', label: issueStatusLabels[filters.issue_status] || filters.issue_status, clear: () => setFilters({ ...filters, issue_status: 'all' }) }] : []),
+  ];
+
   const paginatedProgresses = useMemo(
     () => paginateList(filtered, progressPage, progressPageSize),
     [filtered, progressPage, progressPageSize],
@@ -1645,10 +1656,10 @@ export default function ServiceBoard() {
     if (isMobile) {
       const nextTask = onboarding.nextStep?.task || allTasks.find(task => task.service_progress_id === sp.id && !['completed', 'cancelled'].includes(task.status));
       return <article className={`dc-progress-card rounded-2xl border bg-white p-4 ${issue || overdue ? 'border-rose-200' : 'border-slate-200'}`}>
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || sp.service_stage} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : overdue ? '已逾期' : expiring ? '即将到期' : sp.service_stage === 'ended' ? '已结束' : '进行中'}</Badge></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || '阶段待核对'} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : overdue ? '已逾期' : expiring ? '即将到期' : sp.service_stage === 'ended' ? '已结束' : '进行中'}</Badge></div>
         <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">{issue ? sp.issue_description || '需要先处理服务卡点' : nextTask ? `下一步：${nextTask.task_name}` : sp.last_work_summary || '查看服务记录，确认下一步安排'}</p>
         <Button className="mt-3 min-h-11 w-full" onClick={() => { void openDetail(sp); setDetailTab('tasks'); }}>{issue ? '处理服务卡点' : nextTask ? '继续任务' : '查看服务详情'}</Button>
-        <details className="mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500">服务详情与更多操作</summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新进展</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
+        <details className="mfocus-delivery-card-details mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500"><span>服务详情与更多操作</span><ChevronDown size={16} aria-hidden="true"/></summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p>{!allStageLabels[sp.service_stage] && <p>阶段原值：{sp.service_stage || '未设置'} · 待核对</p>}<p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新进展</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
       </article>;
     }
 
@@ -2277,18 +2288,23 @@ export default function ServiceBoard() {
   const ProgressPaginationFooter = () => {
     if (filtered.length === 0) return null;
     return (
-      <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="mfocus-delivery-pagination mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mfocus-delivery-pagination-top">
+          <div className="mfocus-delivery-pagination-range">
           显示第 {paginatedProgresses.start}-{paginatedProgresses.end} 条，共 {filtered.length} 条
-        </div>
-        <div className="flex items-center gap-2">
+          </div>
+          <label className="mfocus-delivery-page-size">
           <span className="text-xs text-slate-500">每页</span>
           <NativeSelect
+            aria-label="每页交付记录"
             value={String(progressPageSize)}
             onChange={value => setProgressPageSize(Number(value))}
             options={PAGE_SIZE_OPTIONS.map(size => ({ value: String(size), label: `${size} 条` }))}
             className="h-9 w-24 text-sm"
           />
+          </label>
+        </div>
+        <div className="mfocus-delivery-pagination-controls flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -2835,12 +2851,12 @@ export default function ServiceBoard() {
     <div className="t24-work-page t24-service-page delivery-center-ui dc-service app-page calm-delivery-page crm-delivery-refined odf-page odf-service">
       {/* Header */}
       <div className="dc-heading flex-col sm:flex-row items-start sm:items-center">
-        <div>
+        <div className="mfocus-delivery-heading-copy">
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-blue-600">T24 Marketing · Delivery</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">新客户交付进度看板</h2>
           <p className="mt-1 text-sm text-slate-500">从成交交接到首次上线，明确阶段、负责人、卡点和下一步动作</p>
         </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+        <div className="mfocus-delivery-header-actions grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <div className="hidden sm:block">
             <ExportButton
               data={exportData}
@@ -2849,14 +2865,16 @@ export default function ServiceBoard() {
               sheetName="服务进度"
             />
           </div>
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11 gap-1.5 md:min-h-0" aria-label="更多交付操作">更多交付操作<ChevronDown size={14}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setShowStats(!showStats)}>{showStats ? '收起运营详情' : '查看运营详情'}</DropdownMenuItem>{canCreate && <DropdownMenuItem onSelect={openCreateProgress}>补录旧客户服务</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>
-          <Button variant="outline" size="sm" onClick={loadData} disabled={refreshing} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? '刷新中…' : '刷新'}</Button>
-          {canCreateFromDeal && <Button onClick={() => navigate('/deals')} className="col-span-2 min-h-11 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" />从成交创建交付</Button>}
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className="min-h-11 gap-1.5 md:min-h-0" aria-label="更多交付操作">{isMobile ? '更多' : '更多交付操作'}<ChevronDown size={14}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{isMobile && canCreateFromDeal && <DropdownMenuItem onSelect={() => navigate('/deals')}>从成交创建交付</DropdownMenuItem>}{isMobile && <DropdownMenuItem disabled={refreshing} onSelect={() => void loadData()}>{refreshing ? '刷新中…' : '刷新交付记录'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setShowStats(!showStats)}>{showStats ? '收起运营详情' : '查看运营详情'}</DropdownMenuItem>{canCreate && <DropdownMenuItem onSelect={openCreateProgress}>补录旧客户服务</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>
+          {!isMobile && <Button variant="outline" size="sm" onClick={loadData} disabled={refreshing} className="min-h-11 gap-1.5 md:min-h-0"><RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? '刷新中…' : '刷新'}</Button>}
+          {!isMobile && canCreateFromDeal && <Button onClick={() => navigate('/deals')} className="col-span-2 min-h-11 sm:col-span-1 md:min-h-0"><Plus className="w-4 h-4 mr-1" />从成交创建交付</Button>}
         </div>
       </div>
 
       {loadFeedback}
 
+      {(isAdmin || role === 'ops' || canCreate || archivedStoppedCount > 0) && <details className="mfocus-delivery-overview" open={!isMobile}>
+        <summary><BarChart3 size={15}/><strong>概览与规则</strong>{(isAdmin || role === 'ops') && <span className="mfocus-delivery-overview-counts">{stats.withIssue > 0 && <span className="text-rose-700">卡点 {stats.withIssue}</span>}{stats.overdueCount > 0 && <span className="text-amber-700">逾期 {stats.overdueCount}</span>}{stats.withIssue === 0 && stats.overdueCount === 0 && <span>交付 {stats.total} 条</span>}</span>}<ChevronDown size={15}/></summary>
       {(isAdmin || role === 'ops') && <DeliveryMetrics label="交付概览" items={[
         { key: 'total', label: '交付记录', value: stats.total, note: '当前可见范围；一位客户可有多项服务', onClick: () => setQuickFilter('all'), active: quickFilter === 'all' },
         { key: 'active', label: '服务进行中', value: stats.active, note: '正在推进的服务交付', tone: 'green' },
@@ -2867,6 +2885,7 @@ export default function ServiceBoard() {
       {(canCreate || archivedStoppedCount > 0) && <details className="dc-guidance">
         <summary><Info size={15} /><strong>交付规则与历史说明</strong><span>{archivedStoppedCount > 0 ? `已隐藏 ${archivedStoppedCount} 条停止合作的历史记录` : '从成交交接开始，避免重复建档'}</span><ChevronRight size={14} /></summary>
         <div>{canCreate && <><p>本看板用于新客户首次交付。新成交需要交付时，请在成交管理开启“生成服务看板”，或点击成交列表中的“看板”；旧客户补录和长期运营客户无需重复生成。</p>{canCreateFromDeal && <Button size="sm" variant="outline" onClick={() => navigate('/deals')}>从成交创建交付</Button>}</>}{archivedStoppedCount > 0 && <p>停止合作客户的历史交付仍保留在客户生命周期与操作记录中。</p>}</div>
+      </details>}
       </details>}
 
       <section id="delivery-operating-details" className="dc-operating-details" hidden={!showStats} aria-label="运营详细统计">
@@ -3057,7 +3076,7 @@ export default function ServiceBoard() {
       </section>
       <section className="dc-board-tools" aria-label="交付筛选与视图">
       {/* Quick Filters */}
-      <div className="dc-quick-filters flex gap-2 flex-wrap">
+      <div className="dc-quick-filters mfocus-delivery-quick flex gap-2 flex-wrap" data-expanded={showFilters}>
         {(Object.entries(quickFilterLabels) as [QuickFilter, string][]).map(([k, v]) => (
           <Button key={k} aria-pressed={quickFilter === k} variant={quickFilter === k ? 'default' : 'outline'} size="sm"
             className={`min-h-11 text-xs md:h-8 md:min-h-0 ${quickFilter === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
@@ -3072,24 +3091,24 @@ export default function ServiceBoard() {
 
       {/* Search & Filters */}
       <Card className="border-slate-200"><CardContent className="p-3 space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="mfocus-delivery-search-row flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input aria-label="搜索服务交付" placeholder="搜索客户名称、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
           </div>
-          <div className="flex gap-2">
-            <div className="flex overflow-hidden rounded-md border border-slate-200">
+          <div className="mfocus-delivery-filter-actions flex gap-2">
+            {isMobile ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" aria-label={`交付视图：${viewMode === 'list' ? '列表' : viewMode === 'kanban' ? '看板' : '员工'}`} className="mfocus-delivery-view">{viewMode === 'list' ? '列表' : viewMode === 'kanban' ? '看板' : '员工'}<ChevronDown size={14}/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setViewMode('list')}>列表{viewMode === 'list' ? ' ✓' : ''}</DropdownMenuItem><DropdownMenuItem onSelect={() => setViewMode('kanban')}>看板{viewMode === 'kanban' ? ' ✓' : ''}</DropdownMenuItem><DropdownMenuItem onSelect={() => setViewMode('employee')}>员工{viewMode === 'employee' ? ' ✓' : ''}</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : <div className="flex overflow-hidden rounded-md border border-slate-200">
               <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'list'} onClick={() => setViewMode('list')}><LayoutList className="w-3.5 h-3.5" /> 列表</button>
               <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'kanban'} onClick={() => setViewMode('kanban')}><Kanban className="w-3.5 h-3.5" /> 看板</button>
               <button className={`flex min-h-11 items-center gap-1 px-3 py-2 text-xs md:min-h-0 ${viewMode === 'employee' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`} aria-pressed={viewMode === 'employee'} onClick={() => setViewMode('employee')}><Users className="w-3.5 h-3.5" /> 员工</button>
-            </div>
-            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`min-h-11 gap-1.5 md:h-10 md:min-h-0 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} aria-expanded={showFilters} onClick={() => setShowFilters(!showFilters)}>
-              <Filter className="w-4 h-4" /> 筛选
+            </div>}
+            <Button variant={showFilters ? 'default' : 'outline'} size="sm" className={`min-h-11 gap-1.5 md:h-10 md:min-h-0 ${showFilters ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`} aria-expanded={showFilters} aria-controls="delivery-list-filter-fields" onClick={() => setShowFilters(!showFilters)}>
+              <Filter className="w-4 h-4" /> 筛选{activeDeliveryFilters.length > 0 ? ` ${activeDeliveryFilters.length}` : ''}
             </Button>
           </div>
         </div>
         {showFilters && (
-          <div className="border-t border-slate-200 pt-3">
+          <div id="delivery-list-filter-fields" className="border-t border-slate-200 pt-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div><label className="text-xs text-slate-500 mb-1 block">行业</label><NativeSelect value={filters.industry} onChange={v => setFilters({ ...filters, industry: v })} options={[{ value: 'all', label: '全部' }, ...Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
               <div><label className="text-xs text-slate-500 mb-1 block">服务类型</label><NativeSelect value={filters.service_type} onChange={v => setFilters({ ...filters, service_type: v })} options={[{ value: 'all', label: '全部' }, ...Object.entries(serviceTypeLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
@@ -3105,6 +3124,7 @@ export default function ServiceBoard() {
             </div>
           </div>
         )}
+        {activeDeliveryFilters.length > 0 && <div className="mfocus-delivery-active-filters" aria-label="生效交付筛选"><span>当前条件</span>{activeDeliveryFilters.map(filter => <Button key={filter.key} type="button" variant="outline" size="sm" onClick={filter.clear} aria-label={`清除筛选：${filter.label}`}>{filter.label} ×</Button>)}<Button type="button" variant="ghost" size="sm" onClick={() => { setQuickFilter('all'); setSearch(''); setFilters({ industry: 'all', service_type: 'all', service_stage: 'all', ops_person: '', sales_person: '', issue_status: 'all' }); }}>清空筛选</Button></div>}
       </CardContent></Card>
 
       </section>

@@ -11,6 +11,10 @@ import './crm-order-command.css';
 import './crm-order-customer-org.css';
 import './crm-order-delivery-finance.css';
 import './crm-order-sales-media.css';
+import './crm-mobile-focus.css';
+import './crm-mobile-focus-sales.css';
+import './crm-mobile-focus-customer.css';
+import './crm-mobile-focus-delivery.css';
 import CrmThemePicker from './CrmThemePicker';
 import { useCrmTheme } from '@/lib/use-crm-theme';
 import { getCrmTheme } from '@/lib/crm-theme';
@@ -55,6 +59,8 @@ import { prefetchCrmRoute } from './crm-route-modules';
 interface LayoutProps {
   children: React.ReactNode;
 }
+
+const mobileFocusPaths = new Set(['/tasks', '/service-board', '/finance-entry', '/customers', '/sales-leads', '/sales-workbench']);
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
@@ -343,7 +349,7 @@ export default function Layout({ children }: LayoutProps) {
     : pageLabels[currentPath] || appNavigationItems.find(n => n.path === currentPath)?.label || '';
 
   return (
-    <div data-crm-polish="20261026" data-crm-order="20261111" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}${isMediaWorkspace ? ' app-media-layout' : ''}`} onKeyDown={secondaryOverlayOpen ? event => {
+    <div data-crm-polish="20261026" data-crm-order="20261111" data-crm-focus="20261112" onPointerOver={event => prefetchAllowedLink(event.target)} onFocusCapture={event => prefetchAllowedLink(event.target)} className={`t24-system app-shell mobile-app-layout flex h-[100dvh] overflow-hidden md:h-screen${navigationCollapsed ? ' app-nav-secondary-collapsed' : ''}${isSalesWorkspace ? ' app-sales-layout' : ''}${isMediaWorkspace ? ' app-media-layout' : ''}`} onKeyDown={secondaryOverlayOpen ? event => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -411,7 +417,7 @@ export default function Layout({ children }: LayoutProps) {
             </button>
             <div className="min-w-0">
               {!isSalesWorkspace && <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-blue-500">T24 OS</p>}
-              <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{isSalesWorkspace ? '销售中心' : currentPageLabel}</p>
+              <p className="truncate text-[15px] font-bold tracking-tight text-slate-900">{isSalesWorkspace ? '销售中心' : mobileFocusPaths.has(currentPath) ? activeNavSection?.label || currentPageLabel : currentPageLabel}</p>
             </div>
           </div>
           <button type="button" className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-800 md:inline-flex lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="打开业务导航">

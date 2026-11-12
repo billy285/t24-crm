@@ -1,0 +1,99 @@
+/* Directory presentation only. Filters, customer access and contact guards keep
+   their existing handlers; statistics and complete records remain reachable. */
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main:is([data-crm-page="/customers"],[data-crm-page="/sales-leads"]) {
+  --mfc-ink: var(--crm-ink, #172638);
+  --mfc-muted: var(--crm-muted, #65758a);
+  --mfc-line: var(--crm-border, #e5eaf0);
+  --mfc-surface: var(--crm-surface, #fff);
+  --mfc-subtle: var(--crm-surface-subtle, #f7f9fc);
+  --mfc-accent: var(--crm-accent, #245ee5);
+  --mfc-soft: var(--crm-accent-soft, #eff6ff);
+}
+
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page > * { margin-block: 0; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero {
+  grid-template-columns: minmax(0,1fr) auto auto;
+  gap: 8px 12px;
+  align-items: start;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero:has(.mfc-customer-overview[open]) { grid-template-columns: minmax(0,1fr) auto; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero-copy { min-width: 0; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero-actions { display: flex; flex-wrap: wrap; align-items: start; justify-content: end; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview { min-width: 0; color: var(--mfc-muted); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--mfc-line);
+  border-radius: 8px;
+  color: var(--mfc-ink);
+  background: var(--mfc-surface);
+  font-size: 12px;
+  line-height: 20px;
+  list-style: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview > summary::-webkit-details-marker { display: none; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview > summary::after { content: '⌄'; margin-left: 5px; color: var(--mfc-muted); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview[open] { grid-column: 1/-1; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview[open] > summary { justify-content: flex-start; border: 0; padding-inline: 0; background: transparent; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview[open] > summary::after { transform: rotate(180deg); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview .calm-customer-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px 16px; padding: 10px 0; overflow: visible; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview .calm-customer-summary > span { display: flex; flex-wrap: wrap; gap: 4px; white-space: normal; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-active-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; line-height: 18px; color: var(--mfc-muted); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-active-filters > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-active-filters .t24-button { min-height: 32px; padding: 5px 8px; color: var(--mfc-accent); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-sync { min-width: 0; flex-wrap: wrap; font-size: 11px; line-height: 18px; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-sync.is-error { color: var(--crm-warning, #9a5b20); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-context { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 12px; margin-top: 2px; font-size: 12px; line-height: 18px; color: var(--mfc-muted); }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-context > p { min-width: 0; overflow-wrap: anywhere; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-context > p > span { margin-right: 6px; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-context > span { flex: none; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-primary { background: var(--mfc-accent); border-color: var(--mfc-accent); color: hsl(var(--primary-foreground)); box-shadow: none; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-status { max-width: 44%; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-status > span { white-space: normal; word-break: normal; overflow-wrap: anywhere; text-align: center; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .mfc-lead-next-step { margin: 4px 0; color: var(--mfc-ink); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .mfc-lead-next-step > span { margin-right: 6px; color: var(--mfc-muted); }
+
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page { gap: 8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero { gap: 6px 8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-hero-actions .t24-button { min-height: 44px; padding-inline: 9px; white-space: nowrap; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview > summary { min-height: 44px; padding: 8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-overview-label-prefix { display: none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-overview .calm-customer-summary { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 12px; padding-block: 8px; font-size: 12px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-segments { gap: 18px; border-bottom: 1px solid var(--mfc-line); overflow-x: auto; padding: 0 2px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-segments .t24-button { min-height: 44px; height: 44px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; box-shadow: none; color: var(--mfc-muted); font-size: 13px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-360-segments .t24-button[aria-pressed="true"] { color: var(--mfc-accent); border-bottom-color: var(--mfc-accent); background: transparent; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-active-filters .t24-button { min-height: 44px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-list-meta { column-gap: 8px; row-gap: 2px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-list-meta > span:first-child { font-size: 11px; line-height: 18px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-sync.is-error { flex-basis: 100%; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-mobile-card { padding-block: 9px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-mobile-card .customer-mobile-identity { min-height: 44px; display: flex; align-items: center; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .customer-mobile-card .customer-mobile-identity p { font-size: 14px; line-height: 20px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-actions { margin-top: 7px; padding-top: 7px; border-top: 0; gap: 6px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-actions .mfc-customer-primary { min-width: 72px; padding-inline: 10px; font-size: 12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads { gap: 6px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .sl-order-toolbar { padding-top: 2px; padding-bottom: 4px; gap: 2px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .sl-order-list-controls { min-height: 44px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .sl-order-actions .sl-order-followup { background: var(--mfc-accent); border-color: var(--mfc-accent); color: hsl(var(--primary-foreground)); }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/sales-leads"] .slr-page.sl-order-page.slr-view-leads .sl-order-mobile-list > article { padding-block: 8px; }
+}
+
+@media (max-width: 359px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-actions:has(> button[aria-haspopup]) { flex-wrap: wrap; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-actions:has(> button[aria-haspopup]) > div:first-child { flex-basis: 100%; }
+  .t24-system.app-shell[data-crm-focus="20261112"] .crm-desktop-main[data-crm-page="/customers"] .crm-order-customer-org.crm-order-customers.app-page .mfc-customer-record-actions:has(> button[aria-haspopup]) > .mfc-customer-primary { margin-left: auto; }
+}

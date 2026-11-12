@@ -6,7 +6,7 @@ const longNote = '先联系客户确认资料。\n' + '保留客户提供的原�
 const systemNote = '发现问题：客户资料尚未齐全。\n建议处理：先确认联系人，再补充资料。\n问题编号：QA-MOBILE-001\n' + '补充说明不应挤压主要操作。'.repeat(45);
 
 for (const width of [320, 390, 430]) {
-  test(`手机任务说明收起后主操作可达，展开保留完整资料 ${width}px`, async ({ page }) => {
+  test(`手机任务主操作可达，详情保留完整资料 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(emp => {
       localStorage.setItem('emp_auth_token', 'task-layout-fixture');
@@ -32,22 +32,22 @@ for (const width of [320, 390, 430]) {
     const system = page.locator('#task-row-802');
     await expect(plain.getByRole('heading', { name: '长说明任务' })).toBeVisible();
     for (const [card, fullNote, action] of [[plain, longNote, '开始处理'], [system, systemNote, '完成并记录']] as const) {
-      const detail = card.getByRole('group', { name: '任务说明' });
-      await expect(detail).not.toHaveAttribute('open');
-      await expect(card.locator('.mobile-task-note-full')).toBeHidden();
+      await expect(card.locator('.cf-task-full-note')).toHaveCount(0);
       const box = await card.boundingBox();
       const actionBox = await card.getByRole('button', { name: action, exact: true }).boundingBox();
-      expect(actionBox!.y - box!.y).toBeLessThan(460);
+      expect(actionBox!.y - box!.y).toBeLessThan(240);
       expect(actionBox!.height).toBeGreaterThanOrEqual(44);
-      await card.getByText('展开说明', { exact: true }).click();
-      await expect(detail).toHaveAttribute('open');
-      await expect(card.locator('.mobile-task-note-full')).toHaveText(fullNote);
-      await card.getByText('收起说明', { exact: true }).click();
-      await expect(detail).not.toHaveAttribute('open');
+      await card.getByRole('button', { name: /^更多任务操作：/ }).click();
+      await page.getByRole('menuitem', { name: '任务详情与完整说明', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
+      await expect(detail.locator('.cf-task-full-note')).toHaveText(fullNote);
+      await detail.getByRole('button', { name: '返回列表', exact: true }).click();
+      await expect(detail).toBeHidden();
     }
-    await expect(system.locator('summary')).toContainText('先确认联系人，再补充资料。');
-    await expect(page.locator('#task-row-803').getByText('确认联系人', { exact: true })).toBeVisible();
-    await expect(page.locator('#task-row-803 summary')).toHaveCount(0);
+    await page.locator('#task-row-803').getByRole('button', { name: /^更多任务操作：/ }).click();
+    await page.getByRole('menuitem', { name: '任务详情与完整说明', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '任务详情', exact: true }).locator('.cf-task-full-note')).toHaveText('确认联系人');
+    await page.getByRole('button', { name: '返回列表', exact: true }).click();
     const widthResult = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth }));
     expect(widthResult.document).toBeLessThanOrEqual(widthResult.viewport);
     expect(writes).toEqual([]);

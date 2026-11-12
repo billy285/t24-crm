@@ -1,0 +1,170 @@
+/* Mobile information hierarchy; only the explicitly enabled delivery/entry routes.
+   Financial dialogs, mutation controls and semantic state colors remain outside this scope. */
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview { border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface); overflow:hidden; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview > summary { display:flex; align-items:center; gap:8px; min-height:40px; padding:8px 12px; list-style:none; cursor:pointer; color:var(--crm-secondary); font-size:12px; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview > summary::-webkit-details-marker { display:none; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview > summary > svg:last-child { margin-left:auto; flex-shrink:0; transition:transform .15s; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview[open] > summary > svg:last-child { transform:rotate(180deg); }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview[open] > summary { border-bottom:1px solid var(--crm-border); }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview-counts { display:flex; flex-wrap:wrap; gap:6px 12px; margin-left:4px; font-variant-numeric:tabular-nums; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview > :not(summary) { margin:10px; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-active-filters { display:flex; align-items:center; flex-wrap:wrap; gap:6px; color:var(--crm-muted); font-size:12px; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-active-filters > button { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-top { display:flex; flex:1; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-page-size { display:flex; flex:0 0 auto; align-items:center; gap:6px; white-space:nowrap; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope { display:block; padding:0; background:transparent; border:0; margin:8px 0; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > summary { display:flex; align-items:center; gap:6px; min-height:36px; list-style:none; cursor:pointer; font-size:12px; color:var(--crm-secondary); }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > summary::-webkit-details-marker { display:none; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > summary > svg { margin:0; flex-shrink:0; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > summary > svg:last-child { margin-left:auto; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope[open] > summary > svg:last-child { transform:rotate(90deg); }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > div { padding:8px 10px; border:1px solid var(--crm-border); border-radius:8px; background:var(--crm-surface-soft); font-size:12px; line-height:1.7; }
+
+.t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-controls .fe-tabs { margin:0 0 10px; }
+
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service > :not([hidden]) + :not([hidden]) { margin-top:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-heading { flex-direction:row; align-items:center; flex-wrap:nowrap; gap:8px; padding-bottom:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-heading > .mfocus-delivery-heading-copy { flex:1 1 auto; min-width:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-heading-copy > p { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-heading-copy > h2 { font-size:19px; line-height:1.4; margin:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-heading > .mfocus-delivery-header-actions { display:flex; flex:0 0 auto; width:auto; gap:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-header-actions > .hidden { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-heading .mfocus-delivery-header-actions button { min-height:44px; height:44px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-overview > summary { min-height:44px; padding:8px 10px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-board-tools { margin-top:8px; padding:0; border:0; background:transparent; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-board-tools > .t24-card { margin:0; border:0; background:transparent; box-shadow:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-board-tools > .t24-card > .t24-card-content { padding:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-quick[data-expanded="false"] { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-quick[data-expanded="true"] { display:flex; gap:6px; padding-bottom:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-search-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:6px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-search-row > .relative { min-width:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-filter-actions { display:contents; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-search-row :is(input,button) { height:44px; min-height:44px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-search-row button { padding-inline:10px; font-size:12px; white-space:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-view { gap:4px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-active-filters { gap:6px; padding-top:2px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-active-filters > span { flex-basis:100%; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-active-filters > button { min-height:44px; padding:6px 9px; font-size:12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-list-heading { min-height:36px; padding:6px 0; border-bottom:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-list-heading > small { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-progress-list .dc-progress-card { padding:12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-progress-list .dc-progress-card > details { margin-top:10px; padding-top:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .dc-progress-list .dc-progress-card > details > summary { display:flex; align-items:center; min-height:44px; font-size:12px; color:var(--crm-muted); }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-card-details > summary { display:flex; align-items:center; justify-content:space-between; min-height:44px; gap:8px; list-style:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-card-details > summary::-webkit-details-marker { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-card-details > summary > svg { flex-shrink:0; transition:transform .15s; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-card-details[open] > summary > svg { transform:rotate(180deg); }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination { display:flex; flex-direction:column; align-items:stretch; gap:8px; padding:10px 12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-top { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; width:100%; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-range { min-width:0; font-size:12px; line-height:18px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-page-size > span { flex-shrink:0; white-space:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-page-size > .t24-native-select-wrap { width:84px; min-width:84px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-controls { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); width:100%; gap:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-controls > button { min-width:0; width:100%; min-height:44px; white-space:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/service-board"] .odf-service .mfocus-delivery-pagination-controls > span { min-width:44px; white-space:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page > :not([hidden]) + :not([hidden]) { margin-top:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-header { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; gap:8px; padding-bottom:8px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-header > .mfocus-entry-heading-copy { flex:1 1 auto; min-width:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-heading-copy > p { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-heading-copy > h1 { font-size:19px; line-height:1.4; margin:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-header > .fe-header-actions { flex:0 0 auto; width:auto; flex-wrap:nowrap; gap:6px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-header-actions > button { flex:0 0 auto; height:44px; min-height:44px; padding-inline:10px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page :is(.mfocus-entry-more-label,.mfocus-entry-search-label) { display:none; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-header-actions > button[aria-label="更多登记操作"] { width:44px; padding:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope { margin:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .mfocus-entry-scope > summary { min-height:44px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-controls { margin:0; padding:0; border:0; background:transparent; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-controls .fe-tabs { gap:4px; margin:0 0 8px; padding-bottom:2px; overflow-x:auto; flex-wrap:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-controls .fe-tabs > button { flex:1 0 auto; min-height:44px; padding-inline:10px; white-space:nowrap; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-row { display:grid; grid-template-columns:minmax(0,1fr) 44px auto; gap:6px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-row > input { width:100%; min-width:0; min-height:44px; font-size:13px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-row > button { height:44px; min-height:44px; padding-inline:10px; font-size:12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-row > button[type="submit"] { padding:0; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-search-extra { grid-template-columns:minmax(0,1fr); padding:10px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-list-heading { min-height:40px; padding:8px 12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-record { gap:8px; padding:12px; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-record-title > p { margin-top:3px; line-height:1.5; }
+
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/finance-entry"] .odf-entry.fe-page .fe-record-value > strong { font-size:17px; color:var(--crm-ink); }
+}

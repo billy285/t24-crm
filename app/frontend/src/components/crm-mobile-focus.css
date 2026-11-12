@@ -1,0 +1,59 @@
+/* Information hierarchy only. Route permissions, requests and mutations stay in
+   their existing handlers; full task metadata remains available in details. */
+.t24-system.app-shell[data-crm-focus="20261112"] {
+  --cf-ink: var(--crm-ink, #20352c);
+  --cf-muted: var(--crm-muted, #66766d);
+  --cf-line: var(--crm-border, #e1e7e3);
+  --cf-surface: var(--crm-surface, #fff);
+  --cf-accent: var(--crm-accent, #245ee5);
+  --cf-soft: var(--crm-accent-soft, #eff6ff);
+}
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog .cf-task-details-content { display:grid;gap:16px;min-width:0; }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog .cf-task-detail-facts { margin:0; }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog .cf-task-detail-facts > div { display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid var(--crm-border,#e1e7e3); }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog dt { color:var(--crm-muted,#66766d); }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog dd { margin:0;overflow-wrap:anywhere; }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog section h4 { margin-bottom:6px;font-weight:500; }
+body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-detail-dialog .cf-task-full-note { overflow-wrap:anywhere;line-height:1.7; }
+@media (max-width:767px) {
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks { display:flex;flex-direction:column;gap:8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > * + * { margin-top:0; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-heading { flex-direction:row;align-items:center;gap:8px;margin:0; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-heading h2 { font-size:22px;line-height:30px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-heading .app-page-description { display:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-heading > .t24-button { min-width:0;flex-shrink:0;min-height:44px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > [role="alert"] { order:1; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-task-toolbar { order:2;padding:0;border:0;background:transparent;box-shadow:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .cf-task-search-row { flex-direction:row;align-items:center;min-width:0;gap:8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-search-row > .relative { min-width:0; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-filter-trigger { flex-shrink:0;gap:5px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .cf-task-tabs { order:3;border:0;border-bottom:1px solid var(--cf-line);border-radius:0!important;background:transparent;box-shadow:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs .t24-card-content { padding:0; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs [role="group"] { display:flex;gap:18px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs [role="group"] > button { display:flex;align-items:center;gap:5px;min-height:44px;width:auto;padding:6px 0;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--cf-muted);box-shadow:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs [role="group"] > button[aria-pressed="true"] { color:var(--cf-accent);border-bottom-color:var(--cf-accent); }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs [role="group"] > button > span { font-size:13px;line-height:20px;font-weight:500; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-tabs [role="group"] > button > span:first-child { order:2;font-variant-numeric:tabular-nums; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-filter-context { order:4;margin:0;padding:0; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .dc-result-summary { gap:4px 10px;padding:0;min-height:24px;align-items:center;font-size:12px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .dc-applied-filters { gap:6px;margin-top:4px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .dc-applied-filters > span:first-child { display:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks > .dc-task-list { order:5;margin:0; }
+  /* The visible range above already names the view and result count. */
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .dc-panel-heading { display:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-tasks .dc-panel-heading small { display:none; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-record { padding:12px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-record-heading { display:flex;align-items:flex-start;justify-content:space-between;gap:8px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-record-heading h3 { min-width:0;font-size:15px;font-weight:600;line-height:21px;overflow-wrap:anywhere; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-status { flex-shrink:0;max-width:none;white-space:nowrap;font-size:12px;line-height:18px;padding:3px 6px;border-radius:5px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-next { margin:6px 0 0;font-size:14px;line-height:21px;overflow-wrap:anywhere; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-timing { display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:8px;font-size:12px;line-height:19px;color:var(--cf-muted); }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-risk { display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;font-size:12px;color:#b65335; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-actions { display:flex;justify-content:flex-end;gap:8px;align-items:center;margin-top:10px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-actions > .t24-button { min-height:44px;border-radius:8px;font-size:13px; }
+  .t24-system.app-shell[data-crm-focus="20261112"] main.crm-desktop-main[data-crm-page="/tasks"] .cf-task-actions > .t24-button:first-child { min-width:0;max-width:calc(100% - 52px);padding-inline:12px;white-space:normal; }
+  body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-filter-sheet { padding:20px 16px 24px; }
+  body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-filter-sheet .dc-filter-label { display:grid;gap:6px;font-size:13px; }
+  body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-filter-sheet :is(input,select,button) { min-height:44px; }
+  body:has(.app-shell[data-crm-focus="20261112"]) .cf-task-filter-sheet select { font-size:16px; }
+}

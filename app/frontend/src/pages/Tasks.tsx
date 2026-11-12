@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
@@ -151,25 +152,6 @@ const parseEmployeeNames = (value?: string) => Array.from(new Set(
   String(value || '').split(/[,，]/).map(name => name.trim()).filter(Boolean),
 ));
 
-function MobileTaskNotes({ notes, preview }: { notes: string; preview: string }) {
-  const compactPreview = preview.replace(/\s+/g, ' ').trim();
-  const canExpand = notes !== preview || compactPreview.length > 80 || notes.split('\n').length > 2;
-  if (!canExpand) return <p className="mt-3 break-words rounded-xl bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{notes}</p>;
-
-  return (
-    <details className="mobile-task-note group mt-3 rounded-xl border border-slate-200 bg-slate-50" aria-label="任务说明">
-      <summary className="cursor-pointer list-none px-3 pt-2.5 text-sm text-slate-600 [&::-webkit-details-marker]:hidden">
-        <span className="line-clamp-2 leading-6 [overflow-wrap:anywhere] group-open:hidden">{compactPreview.length > 80 ? `${compactPreview.slice(0, 80)}…` : compactPreview}</span>
-        <span className="flex min-h-11 items-center justify-between gap-2 font-medium text-blue-700">
-          <span className="group-open:hidden">展开说明</span><span className="hidden group-open:inline">收起说明</span>
-          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 group-open:rotate-180" />
-        </span>
-      </summary>
-      <p className="mobile-task-note-full whitespace-pre-wrap border-t border-slate-200 px-3 py-3 text-sm leading-6 text-slate-600 [overflow-wrap:anywhere]">{notes}</p>
-    </details>
-  );
-}
-
 const paginateList = <T,>(items: T[], page: number, pageSize: number) => {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -229,6 +211,9 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   useListScroll('tasks', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [taskFiltersOpen, setTaskFiltersOpen] = useState(false);
+  const [taskDetails, setTaskDetails] = useState<any>(null);
+  useEffect(() => { setTaskDetails(null); setTaskFiltersOpen(false); }, [employee?.id, dataScope]);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [filterStatus, setFilterStatus] = useState(() => {
     const value = searchParams.get('status');
@@ -688,7 +673,7 @@ export default function Tasks() {
   }
 
   return (
-    <div className="t24-work-page delivery-center-ui dc-tasks app-page calm-delivery-page crm-delivery-refined odf-page odf-tasks">
+    <div className="cf-tasks t24-work-page delivery-center-ui dc-tasks app-page calm-delivery-page crm-delivery-refined odf-page odf-tasks">
       <div className="dc-heading flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
           {returnTo && (
@@ -718,12 +703,12 @@ export default function Tasks() {
         </Card>
       )}
 
-      <Card className="odf-task-summary border-slate-200 md:hidden">
+      <Card className="cf-task-tabs odf-task-summary border-slate-200 md:hidden">
         <CardContent className="p-3">
-          <p className="mb-3 text-xs font-semibold text-slate-500">手机优先视角</p>
           <div className="grid grid-cols-3 gap-2" role="group" aria-label="手机任务重点">
             <button
               type="button"
+              aria-pressed={primaryView === 'mine' && quickFilter === 'all'}
               onClick={() => activateMobileFocus('mine')}
               className={`min-h-16 rounded-xl border px-2 py-2 text-left ${primaryView === 'mine' && quickFilter === 'all' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700'}`}
             >
@@ -732,6 +717,7 @@ export default function Tasks() {
             </button>
             <button
               type="button"
+              aria-pressed={quickFilter === 'today_due'}
               onClick={() => activateMobileFocus('today_due')}
               className={`min-h-16 rounded-xl border px-2 py-2 text-left ${quickFilter === 'today_due' ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700'}`}
             >
@@ -740,6 +726,7 @@ export default function Tasks() {
             </button>
             <button
               type="button"
+              aria-pressed={quickFilter === 'overdue'}
               onClick={() => activateMobileFocus('overdue')}
               className={`min-h-16 rounded-xl border px-2 py-2 text-left ${quickFilter === 'overdue' ? 'border-red-600 bg-red-600 text-white' : 'border-red-200 bg-red-50 text-red-700'}`}
             >
@@ -762,27 +749,33 @@ export default function Tasks() {
 
       {/* Filters */}
       <div className="app-toolbar dc-task-toolbar">
-          <div className="flex flex-col gap-3 md:flex-row">
+          <div className="cf-task-search-row flex gap-2 md:gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input aria-label="搜索协作任务" placeholder="搜索任务名称、客户、负责人..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
+            <Button type="button" variant="outline" className="cf-task-filter-trigger md:hidden" aria-label={`筛选任务${taskFilters.length ? `，${taskFilters.length}项生效` : ''}`} onClick={() => setTaskFiltersOpen(true)}>筛选{taskFilters.length > 0 && <span>{taskFilters.length}</span>}</Button>
             <div className="hidden gap-3 md:flex">
               <label className="dc-filter-label"><span className="sr-only">任务状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} className="w-[140px]" options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
               <label className="dc-filter-label"><span className="sr-only">任务优先级</span><NativeSelect value={filterPriority} onChange={setFilterPriority} className="w-[140px]" options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
               <label className="dc-filter-label"><span className="sr-only">任务来源</span><NativeSelect value={filterSource} onChange={setFilterSource} className="w-[140px]" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
             </div>
           </div>
-          <details className="mt-3 rounded-xl border border-slate-200 bg-white md:hidden">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-slate-700">更多筛选<span className="text-xs font-normal text-slate-400">状态 · 优先级 · 来源</span></summary>
-            <div className="grid gap-3 border-t border-slate-100 p-3">
-              <label className="dc-filter-label"><span className="sr-only">任务工作视角</span><NativeSelect value={primaryView} onChange={changePrimaryView} options={primaryViews.map(view => ({ value: view.key, label: `${view.label} (${view.count})` }))} /></label>
-              <label className="dc-filter-label"><span className="sr-only">任务状态</span><NativeSelect value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
-              <label className="dc-filter-label"><span className="sr-only">任务优先级</span><NativeSelect value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
-              <label className="dc-filter-label"><span className="sr-only">任务来源</span><NativeSelect value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
-            </div>
-          </details>
       </div>
+
+      <Sheet open={taskFiltersOpen} onOpenChange={setTaskFiltersOpen}>
+        <SheetContent side="bottom" className="cf-task-filter-sheet max-h-[90dvh] overflow-y-auto">
+          <SheetHeader><SheetTitle>筛选任务</SheetTitle><SheetDescription>范围与条件会显示在列表上方。</SheetDescription></SheetHeader>
+          <div className="grid gap-3 py-4">
+            <label className="dc-filter-label"><span>工作视角</span><NativeSelect aria-label="任务工作视角" value={primaryView} onChange={changePrimaryView} options={primaryViews.map(view => ({ value: view.key, label: `${view.label} (${view.count})` }))} /></label>
+            <label className="dc-filter-label"><span>状态</span><NativeSelect aria-label="任务状态" value={filterStatus} onChange={setFilterStatus} options={[{ value: 'all', label: '全部状态' }, ...Object.entries(extendedStatusLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+            <label className="dc-filter-label"><span>优先级</span><NativeSelect aria-label="任务优先级" value={filterPriority} onChange={setFilterPriority} options={[{ value: 'all', label: '全部优先级' }, ...Object.entries(priorityLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+            <label className="dc-filter-label"><span>来源</span><NativeSelect aria-label="任务来源" value={filterSource} onChange={setFilterSource} options={[{ value: 'all', label: '全部来源' }, ...Object.entries(taskSourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></label>
+            <label className="dc-filter-label"><span>快捷条件</span><NativeSelect aria-label="任务快捷条件" value={quickFilter} onChange={setQuickFilter} options={Object.entries(quickFilterLabels).map(([value, label]) => ({ value, label }))} /></label>
+          </div>
+          <div className="flex gap-2"><Button type="button" variant="outline" onClick={clearTaskFilters}>清空筛选</Button><Button type="button" className="flex-1" onClick={() => setTaskFiltersOpen(false)}>查看{filtered.length}项任务</Button></div>
+        </SheetContent>
+      </Sheet>
 
       <DeliveryFilterSummary scope={`${taskScope === 'self' ? `${employee?.name || '本人'}的授权任务` : taskScope === 'team' ? '团队授权任务' : '全部授权任务'} · ${primaryViewLabels[primaryView] || '任务列表'}${focusTaskId ? ` · 保留定位任务 #${focusTaskId}` : ''}`} count={filtered.length} loading={loading} stale={Boolean(loadError)} filters={taskFilters} onClearAll={clearTaskFilters} />
 
@@ -808,81 +801,43 @@ export default function Tasks() {
                 const findingLine = noteLines.find((line: string) => line.startsWith('发现问题：'))?.replace(/^发现问题：\s*/, '');
                 const suggestionLine = noteLines.find((line: string) => line.startsWith('建议处理：'))?.replace(/^建议处理：\s*/, '');
                 const mobileTitle = String(t.title || '未命名任务').replace(/^【[^】]+】\s*/, '');
-                const TaskSourceIcon = source === 'system' ? Bot : ClipboardList;
+                const customerName = String(t.customer_name || '').trim();
+                const mobileActionTitle = customerName && mobileTitle.startsWith(customerName)
+                  ? mobileTitle.slice(customerName.length).replace(/^[\s·:：|\-—]+/, '').trim()
+                  : mobileTitle;
                 return (
                   <div
                     key={t.id}
                     id={`task-row-${t.id}`}
                     className={`dc-task-row overflow-hidden rounded-[22px] border p-0 transition-colors md:rounded-none md:border-0 md:p-4 ${t.id === focusTaskId ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white shadow-[0_8px_24px_-18px_rgba(15,23,42,0.45)] hover:bg-slate-50 md:shadow-none'}`}
                   >
-                    {isMobile && <div className="odf-task-mobile md:hidden">
-                      <div className={`h-1 w-full ${completed ? 'bg-emerald-500' : overdue ? 'bg-rose-500' : dueToday ? 'bg-blue-500' : waitingClient ? 'bg-violet-500' : 'bg-slate-300'}`} />
-                      <div className="p-4">
-                        <div className="flex items-start gap-3">
-                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${taskSourceColors[source] || taskSourceColors.manual}`}>
-                            <TaskSourceIcon className="h-5 w-5" />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                              <span>{taskSourceLabels[source]}</span>
-                              {t.automation_issue_id && <span className="dc-muted-meta">· 自动闭环</span>}
-                            </div>
-                            <h3 className={`mt-1 line-clamp-2 text-[15px] font-bold leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-950'}`}>{mobileTitle}</h3>
-                          </div>
-                          <span className={`max-w-[88px] shrink-0 rounded-full px-2.5 py-1.5 text-center text-[10px] font-bold leading-4 ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</span>
-                        </div>
-
-                        <div className="dc-task-auxiliary mt-3"><span>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span>{overdue && <span className="is-overdue">已逾期</span>}{dueToday && <span className="is-urgent">今日到期</span>}{stale && <span>3天未更新</span>}</div>
-
-                        <div className="odf-task-facts mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200">
-                          <div className="col-span-2 bg-slate-50 px-3 py-2.5">
-                            <span className="block text-[10px] font-medium text-slate-400">客户</span>
-                            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-800">{t.customer_name || '未关联客户'}</span>
-                          </div>
-                          <div className="bg-slate-50 px-3 py-2.5">
-                            <span className="block text-[10px] font-medium text-slate-400">负责人</span>
-                            <span className="mt-0.5 block truncate text-xs font-semibold text-slate-800">{t.assignee_name || '未分配'}</span>
-                          </div>
-                          <div className="bg-slate-50 px-3 py-2.5">
-                            <span className="block text-[10px] font-medium text-slate-400">截止时间</span>
-                            <span className={`mt-0.5 block text-xs font-semibold ${overdue ? 'text-rose-600' : 'text-slate-800'}`}>{t.due_date ? getTaskDateKey(t.due_date) : '未设置'}</span>
-                          </div>
-                        </div>
-
-                        {t.notes && <MobileTaskNotes notes={String(t.notes)} preview={suggestionLine || findingLine || String(t.notes)} />}
-
-                        {completionSummary && (
-                          <p className="mt-3 rounded-2xl bg-emerald-50 px-3 py-2.5 text-xs font-medium leading-5 text-emerald-700">{completionSummary}</p>
-                        )}
-                        {t.attachment_link && (
-                          <a className="mt-2 inline-block text-xs font-semibold text-blue-600" href={t.attachment_link} target="_blank" rel="noreferrer">查看附件</a>
-                        )}
-
-                        <div className="mt-4 border-t border-slate-100 pt-3">
-                          {canEditTask && t.status === 'pending' && (
-                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>
-                          )}
-                          {canEditTask && !completed && !['pending', 'waiting_client'].includes(t.status) && (
-                            <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>
-                              <CheckCircle2 className="mr-1.5 h-4 w-4" />完成并记录
-                            </Button>
-                          )}
-                          {canEditTask && t.status === 'waiting_client' && <Button className="min-h-12 w-full rounded-2xl bg-blue-600 font-bold hover:bg-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>客户已回复，继续处理</Button>}
-                          <div className="mt-2 flex gap-2">
-                            {canEditTask && !completed && t.status !== 'waiting_client' && (
-                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-violet-700" disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'waiting_client')}>等客户</Button>
-                            )}
-                            {canEditTask && t.status === 'waiting_client' && (
-                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs text-blue-700" disabled={statusBusyIds.has(t.id)} onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}>完成并记录</Button>
-                            )}
-                            {canOpenCustomers && t.customer_id && (
-                              <Button size="sm" variant="outline" className="min-h-11 min-w-0 flex-1 rounded-xl px-2 text-xs" onClick={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>
-                                <ExternalLink className="mr-1 h-3.5 w-3.5" />客户
-                              </Button>
-                            )}
-                            {(canEditTask || (canDeleteTask && !t.automation_issue_id)) && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-11 w-11 shrink-0 px-0 md:h-8 md:w-8" aria-label={`更多任务操作：${t.title}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{canEditTask && <DropdownMenuItem asChild><Button aria-label="编辑任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-slate-700" onClick={() => openEditTask(t)}><Edit className="mr-1 h-3.5 w-3.5" />编辑</Button></DropdownMenuItem>}{canDeleteTask && !t.automation_issue_id && <DropdownMenuItem asChild><Button aria-label="删除任务" size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 rounded-lg px-3 text-sm text-rose-600 hover:bg-rose-50" onClick={() => setDeleteTarget(t)}><Trash2 className="mr-1 h-3.5 w-3.5" />删除</Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}
-                          </div>
-                        </div>
+                    {isMobile && <div className="cf-task-record md:hidden">
+                      <div className="cf-task-record-heading">
+                        <h3 className={completed ? 'line-through text-slate-500' : ''}>{customerName || mobileTitle}</h3>
+                        <Badge className={`cf-task-status ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
+                      </div>
+                      {customerName && mobileActionTitle && <p className="cf-task-next">{mobileActionTitle}</p>}
+                      <div className="cf-task-timing">
+                        <span>{t.assignee_name || '负责人未分配'}</span>
+                        <span className={overdue ? 'text-rose-600' : ''}>{t.due_date ? `截止 ${getTaskDateKey(t.due_date)}` : '截止时间未设置'}</span>
+                      </div>
+                      {(overdue || dueToday || t.priority === 'high') && <div className="cf-task-risk">{overdue && <span>已逾期</span>}{dueToday && <span>今日到期</span>}{t.priority === 'high' && <span>高优先级</span>}</div>}
+                      <div className="cf-task-actions">
+                        {canEditTask && t.status === 'pending' && <Button disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>开始处理</Button>}
+                        {canEditTask && !completed && !['pending', 'waiting_client'].includes(t.status) && <Button onClick={() => { setCompleteTarget(t); setCompletionNote(''); }}><CheckCircle2 className="mr-1 h-4 w-4" />完成并记录</Button>}
+                        {canEditTask && t.status === 'waiting_client' && <Button disabled={statusBusyIds.has(t.id)} onClick={() => handleStatusChange(t.id, 'in_progress')}>客户已回复，继续处理</Button>}
+                        {(!canEditTask || completed) && <Button variant="outline" onClick={() => setTaskDetails(t)}>查看详情</Button>}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="icon" aria-label={`更多任务操作：${t.title}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-44">
+                            <DropdownMenuItem onSelect={() => setTaskDetails(t)}>任务详情与完整说明</DropdownMenuItem>
+                            {canOpenCustomers && t.customer_id && <DropdownMenuItem onSelect={() => navigate(buildReturnLink(`/customers?detail=${t.customer_id}`, getCurrentTaskPath(t.id), 'tasks'))}>打开客户</DropdownMenuItem>}
+                            {canEditTask && !completed && t.status !== 'waiting_client' && <DropdownMenuItem disabled={statusBusyIds.has(t.id)} onSelect={() => handleStatusChange(t.id, 'waiting_client')}>等客户</DropdownMenuItem>}
+                            {canEditTask && t.status === 'waiting_client' && <DropdownMenuItem onSelect={() => { setCompleteTarget(t); setCompletionNote(''); }}>完成并记录</DropdownMenuItem>}
+                            {canEditTask && <DropdownMenuItem onSelect={() => openEditTask(t)}>编辑任务</DropdownMenuItem>}
+                            {canDeleteTask && !t.automation_issue_id && <DropdownMenuItem className="text-rose-600" onSelect={() => setDeleteTarget(t)}>删除任务</DropdownMenuItem>}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>}
 
@@ -946,6 +901,30 @@ export default function Tasks() {
           {filtered.length > 0 && <PaginationFooter />}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(taskDetails)} onOpenChange={open => { if (!open) setTaskDetails(null); }}>
+        <CrmFormDialogContent className="cf-task-detail-dialog max-w-lg">
+          <CrmFormDialogHeader><DialogTitle>任务详情</DialogTitle></CrmFormDialogHeader>
+          <CrmFormDialogBody>{taskDetails && <div className="cf-task-details-content">
+            {taskDetails.customer_name && <h3 className="font-semibold">{taskDetails.customer_name}</h3>}
+            <p className="break-words font-medium">{taskDetails.title || '未命名任务'}</p>
+            <dl className="cf-task-detail-facts">
+              <div><dt>状态</dt><dd>{extendedStatusLabels[taskDetails.status] || taskDetails.status || '未设置'}</dd></div>
+              <div><dt>负责人</dt><dd>{taskDetails.assignee_name || '未分配'}</dd></div>
+              <div><dt>协作人员</dt><dd>{taskDetails.collaborator_names || '未设置'}</dd></div>
+              <div><dt>截止时间</dt><dd>{taskDetails.due_date ? getTaskDateKey(taskDetails.due_date) : '未设置'}</dd></div>
+              <div><dt>优先级</dt><dd>{priorityLabels[taskDetails.priority] || taskDetails.priority || '普通'}</dd></div>
+              <div><dt>类型</dt><dd>{taskTypeLabels[taskDetails.task_type] || taskDetails.task_type || '其他'}</dd></div>
+              <div><dt>来源</dt><dd><Badge className={taskSourceColors[getTaskSource(taskDetails)] || taskSourceColors.manual}>{taskSourceLabels[getTaskSource(taskDetails)]}</Badge>{taskDetails.automation_issue_id ? ' · 自动闭环' : ''}</dd></div>
+              <div><dt>更新时间</dt><dd>{taskDetails.updated_at || taskDetails.created_at || '待确认'}{isStaleTask(taskDetails) ? ' · 3天未更新' : ''}</dd></div>
+            </dl>
+            {taskDetails.notes && <section><h4>完整说明</h4><p className="cf-task-full-note whitespace-pre-wrap break-words">{taskDetails.notes}</p></section>}
+            {(taskDetails.completion_result || getCompletionSummary(taskDetails.notes)) && <section><h4>处理结果</h4><p className="whitespace-pre-wrap break-words">{taskDetails.completion_result || getCompletionSummary(taskDetails.notes)}</p></section>}
+            {taskDetails.attachment_link && <a className="inline-flex min-h-11 items-center text-blue-600" href={taskDetails.attachment_link} target="_blank" rel="noreferrer">查看附件</a>}
+          </div>}</CrmFormDialogBody>
+          <CrmFormDialogFooter><Button type="button" variant="outline" onClick={() => setTaskDetails(null)}>返回列表</Button></CrmFormDialogFooter>
+        </CrmFormDialogContent>
+      </Dialog>
 
       {canDeleteTask && (
         <ConfirmDialog
