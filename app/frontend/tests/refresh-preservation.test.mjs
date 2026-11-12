@@ -19,6 +19,14 @@ const hasProjection = tree => nodes(tree).some(isProjection);
 const hasMerchants = tree => nodes(tree).some(node => typeof node.type === 'function' && node.type.name === 'MerchantList' && !node.props.compact);
 const refresh = h => { button(h.render(), '刷新当前运营范围').props.onClick(); h.render(); h.effects(); return h.requests.at(-1); };
 const assertReadOnly = h => assert.ok(h.requests.every(request => request.options.method === 'GET'));
+function assertRefreshInSubtitle(tree) {
+  const subtitle = find(tree, node => node.type === 'p' && node.props.className?.includes('mwr-page-subtitle'));
+  const reserve = find(subtitle, node => node.type === 'span' && node.props['aria-hidden'] === true);
+  assert.equal(reserve.props.className, 'invisible', 'the original subtitle keeps its existing layout height');
+  const status = find(subtitle, node => node.type === 'span' && /正在更新，暂保留上次结果/.test(label(node)));
+  assert.match(status.props.className, /absolute/);
+  assert.equal(nodes(tree).some(node => node.props?.className?.includes('mw-notice') && /正在更新/.test(label(node))), false);
+}
 function responseFor(request, items = [row()]) {
   const url = new URL(request.options.url, 'http://local');
   const q = { ...query, customerId: Number(url.searchParams.get('customer_id')) || null, platform: url.searchParams.get('platform'), view: url.searchParams.get('view'), start: url.searchParams.get('start'), end: url.searchParams.get('end') };
@@ -35,8 +43,9 @@ test('same-scope projection reload retains the verified tree until its new respo
   const h = harness(); await shellReady(h);
   const previous = currentProjection(h.render()), request = refresh(h);
   assert.equal(currentProjection(h.render()), previous);
+  assertRefreshInSubtitle(h.render());
   assert.equal(find(h.render(), node => node.type === 'fieldset' && node.props['aria-label'] === '已读取运营记录').props.disabled, true);
-  assert.match(label(h.render()), /正在更新当前范围/);
+  assert.match(label(h.render()), /正在更新，暂保留上次结果/);
   request.resolve(responseFor(request, [row(12, { title: 'UPDATED LOCAL TASK' })])); await tick();
   assert.notEqual(currentProjection(h.render()), previous);
   assert.equal(currentProjection(h.render()).items[0].source_id, 12);
@@ -86,9 +95,10 @@ test('identity changes clear snapshots and reject a late prior-identity reload r
 test('merchant-list reload retains the same verified page while pending and after a network error', async () => {
   const h = harness(), previous = await merchantsReady(h), request = refresh(h);
   assert.equal(child(h.render(), 'MerchantList').props.page, previous);
+  assertRefreshInSubtitle(h.render());
   assert.equal(child(h.render(), 'MerchantList').props.onAction, undefined);
   assert.equal(find(h.render(), node => node.type === 'fieldset' && node.props['aria-label'] === '已读取商家清单').props.disabled, true);
-  assert.match(label(h.render()), /正在更新清单/);
+  assert.match(label(h.render()), /正在更新，暂保留上次结果/);
   request.reject({ status: 500, message: 'Synthetic merchant refresh unavailable' }); await tick();
   assert.equal(child(h.render(), 'MerchantList').props.page, previous);
   assert.equal(child(h.render(), 'MerchantList').props.onAction, undefined);
