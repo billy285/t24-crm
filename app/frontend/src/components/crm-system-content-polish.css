@@ -1,0 +1,24 @@
+/* Only list labels are shortened; their complete values remain in the DOM and details. */
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/sales-knowledge"] .knowledge-refined-page .sk-recent .csp-knowledge-recent-title {
+  display: block;
+  min-width: 0;
+  max-inline-size: min(240px, 65vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/sales-knowledge"] .knowledge-refined-page .knowledge-v4-list-item .csp-knowledge-title,
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .media-operations.mo-merchant-mode .mw-shell .mw-records .csp-media-title,
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .media-operations.mo-merchant-mode .mw-shell .mw-records .csp-media-identity,
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .media-operations.mo-merchant-mode .mw-shell .mw-calendar .csp-media-title,
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .media-operations.mo-merchant-mode .mw-shell .mw-calendar .csp-media-identity {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}

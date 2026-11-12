@@ -1,3 +1,4 @@
+import '@/components/crm-system-admin-polish.css';
 import './crm-org-compact.css';
 import './crm-org-visual-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
@@ -16,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock } from 'lucide-react';
+import { ShieldCheck, Save, RotateCcw, Eye, MousePointerClick, Database, Lock, ChevronDown } from 'lucide-react';
 import { logOperation } from '../lib/operation-log-helper';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { appNavigationItems } from '@/lib/app-navigation';
@@ -118,8 +119,14 @@ export default function Permissions() {
     <p className="text-sm text-slate-500">按角色查看访问范围；权限调整在电脑端完成。</p>
     <label className="block text-sm text-slate-600">查看角色<select aria-label="查看角色" value={selectedRole} onChange={event => setSelectedRole(event.target.value as SystemRole)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900">{roles.map(role => <option key={role} value={role}>{systemRoleLabels[role]}</option>)}</select></label>
     <Card><CardHeader><CardTitle className="text-base">数据与敏感信息</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['数据范围', dataScopeLabels[currentPerms.dataScope]], ['查看媒体密码', currentPerms.sensitiveFields.viewPassword ? '允许' : '禁止'], ['复制媒体密码', currentPerms.sensitiveFields.copyPassword ? '允许' : '禁止'], ['查看财务信息', currentPerms.sensitiveFields.viewFinance ? '允许' : '禁止']].map(([label,value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
-    <Card><CardHeader><CardTitle className="text-base">可访问页面 · {currentPerms.pages.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.pages.map(path => <li key={path} className="min-h-11 py-3">{permissionPageLabels[path] || path}</li>)}{!currentPerms.pages.length && <li className="text-slate-500">未开放页面</li>}</ul></CardContent></Card>
-    <Card><CardHeader><CardTitle className="text-base">允许操作 · {currentPerms.buttons.length}</CardTitle></CardHeader><CardContent><ul className="divide-y divide-slate-100 text-sm">{currentPerms.buttons.map(key => <li key={key} className="min-h-11 py-3">{buttonPermissionLabels[key] || key}</li>)}{!currentPerms.buttons.length && <li className="text-slate-500">未开放操作</li>}</ul></CardContent></Card>
+    <details key={`${selectedRole}:pages`} className="sap-disclosure sap-permission-disclosure">
+      <summary><strong>可访问页面</strong><span>{currentPerms.pages.length} 项</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+      <div className="sap-disclosure-body"><ul className="divide-y divide-slate-100 text-sm">{currentPerms.pages.map(path => <li key={path} className="min-h-11 py-3">{permissionPageLabels[path] || path}</li>)}{!currentPerms.pages.length && <li className="text-slate-500">未开放页面</li>}</ul></div>
+    </details>
+    <details key={`${selectedRole}:buttons`} className="sap-disclosure sap-permission-disclosure">
+      <summary><strong>允许操作</strong><span>{currentPerms.buttons.length} 项</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+      <div className="sap-disclosure-body"><ul className="divide-y divide-slate-100 text-sm">{currentPerms.buttons.map(key => <li key={key} className="min-h-11 py-3">{buttonPermissionLabels[key] || key}</li>)}{!currentPerms.buttons.length && <li className="text-slate-500">未开放操作</li>}</ul></div>
+    </details>
   </div>;
 
 

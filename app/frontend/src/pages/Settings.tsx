@@ -1,3 +1,4 @@
+import '@/components/crm-system-admin-polish.css';
 import './crm-org-compact.css';
 import './crm-org-visual-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
@@ -18,7 +19,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Bell, FileText, Download, Lock, Bot, KeyRound, TestTube2 } from 'lucide-react';
+import { Settings as SettingsIcon, Hash, Eye, RotateCcw, Save, Building2, BookOpen, Bell, FileText, Download, Lock, Bot, KeyRound, TestTube2, ChevronDown } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import { actionTypeLabels } from '../lib/operation-log-helper';
 import { type CustomerCodeSettings, defaultSettings, defaultIndustryPrefixes, loadSettings, saveSettings, previewCode } from '../lib/customer-code-settings';
@@ -71,6 +72,8 @@ const defaultAiSettings: AiSettings = {
   source: 'default',
   updated_at: null,
 };
+
+const settingsDictionaryLabels: Record<string, string> = { customerStatuses:'客户状态', customerLevels:'客户等级', sources:'客户来源', industries:'行业', products:'产品类型', platforms:'平台', serviceTypes:'服务类型', paymentMethods:'支付方式', paymentModes:'支付模式', callbackTypes:'回访类型', callbackStatuses:'回访状态', callbackResults:'回访结果', taskTypes:'任务类型', taskPriorities:'任务优先级', taskStatuses:'任务状态', statuses:'客户状态', levels:'客户等级', incomeTypes:'收入类型', customerPackages:'客户套餐', customerPackagePlatforms:'套餐平台', countries:'国家', billingCycles:'收费周期', customerExpenseTypes:'客户支出类型', companyExpenseTypes:'运营支出类型', subscriptionStatuses:'续费状态', followUpStages:'跟进阶段', followUpMethods:'跟进方式' };
 
 export default function Settings() {
   const { systemRole } = useRole();
@@ -458,16 +461,28 @@ export default function Settings() {
     const exportRoles = Array.isArray(exportConfig.exportRoles) ? exportConfig.exportRoles : [];
     const prefixRows = Array.isArray(codeSettings.industryPrefixes) ? codeSettings.industryPrefixes : [];
     const codePreview = typeof codeSettings.defaultPrefix === 'string' ? previewCode({ ...defaultSettings, ...codeSettings, industryPrefixes: prefixRows }, 'other') : '未设置';
+    const companyFields = [['名称', company.name], ['电话', company.phone], ['邮箱', company.email], ['地址', company.address], ['网站', company.website]];
+    const missingCompanyFields = companyFields.filter(([, value]) => !String(value || '').trim()).length;
+    const companySummary = String(company.name || '').trim() || `${missingCompanyFields} 项待补齐`;
     return <div className="crm-order-customer-org crm-order-readonly crm-order-settings crm-org-polish app-page space-y-4" data-testid="mobile-settings-summary">
       <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">系统设置</h2><Badge variant="secondary">只读摘要</Badge></div>
       {settingsLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新配置。<Button variant="outline" className="mt-2" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}
       <p className="text-sm text-slate-500">手机可查看业务规则；全局配置在电脑端调整。</p>
       {changedCategories.length > 0 && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">有未保存的修改，草稿已保留。请回到电脑布局继续保存。</p>}
-      <Card><CardHeader><CardTitle className="text-base">公司资料</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['名称', company.name], ['电话', company.phone], ['邮箱', company.email], ['地址', company.address], ['网站', company.website]].map(([label, value]) => <div key={label} className="grid grid-cols-[4rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="break-words text-slate-900">{value || '未设置'}</dd></div>)}</dl></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base">客户编号</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p>按行业区分前缀：{booleanText(codeSettings.useIndustryPrefix)}</p><div className="rounded-lg bg-slate-50 p-3 font-mono">{codePreview}</div><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">查看行业前缀</summary><dl className="space-y-2">{prefixRows.map(item => <div key={item.industry} className="flex justify-between gap-3"><dt>{item.label || industryLabels[item.industry] || item.industry}</dt><dd>{item.prefix}</dd></div>)}</dl></details></CardContent></Card>
       <Card><CardHeader><CardTitle className="text-base">提醒规则</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['跟进提醒', booleanText(reminderConfig.enableFollowUpReminder)], ['到期提醒', reminderConfig.enableExpiryReminder == null ? '未设置' : reminderConfig.enableExpiryReminder ? `提前 ${reminderConfig.expiryDaysBefore ?? '-'} 天` : '未开启'], ['长期未跟进', reminderConfig.enableNoFollowReminder == null ? '未设置' : reminderConfig.enableNoFollowReminder ? `${reminderConfig.noFollowDays ?? '-'} 天后提醒` : '未开启'], ['欠费提醒', booleanText(reminderConfig.enableOverduePayment)], ['任务延期', booleanText(reminderConfig.enableDelayedTask)]].map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
       <Card><CardHeader><CardTitle className="text-base">通知与导出</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p>浏览器通知：{booleanText(notifConfig.enableBrowserNotif)}</p><p>邮件通知：{booleanText(notifConfig.enableEmailNotif)}</p><p>默认导出：{typeof exportConfig.defaultFormat === 'string' ? exportConfig.defaultFormat.toUpperCase() : '未设置'}</p><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">可导出的角色</summary><p className="leading-7">{exportRoles.map(role => systemRoleLabels[role as keyof typeof systemRoleLabels] || role).join('、') || '未设置'}</p></details></CardContent></Card>
-      <Card><CardHeader><CardTitle className="text-base">业务字典</CardTitle></CardHeader><CardContent className="space-y-2">{Object.entries(dictConfig).map(([key, value]) => <details key={key} className="rounded-lg border border-slate-100 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">{({ customerStatuses:'客户状态', customerLevels:'客户等级', sources:'客户来源', industries:'行业', platforms:'平台', serviceTypes:'服务类型', paymentMethods:'支付方式', paymentModes:'支付模式', callbackTypes:'回访类型', callbackStatuses:'回访状态', callbackResults:'回访结果', taskTypes:'任务类型', taskPriorities:'任务优先级', taskStatuses:'任务状态', statuses:'客户状态', levels:'客户等级', incomeTypes:'收入类型', customerPackages:'客户套餐', customerPackagePlatforms:'套餐平台', countries:'国家', billingCycles:'收费周期', customerExpenseTypes:'客户支出类型', companyExpenseTypes:'运营支出类型', subscriptionStatuses:'续费状态', followUpStages:'跟进阶段', followUpMethods:'跟进方式' } as Record<string,string>)[key] || key}</summary><p className="break-words whitespace-pre-wrap pb-3 text-sm leading-6 text-slate-500">{String(value || '未设置')}</p></details>)}</CardContent></Card>
+      <details className="sap-disclosure sap-setting-disclosure">
+        <summary><strong>公司资料</strong><span title={companySummary}>{companySummary}</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+        <div className="sap-disclosure-body"><dl className="sap-company-fields space-y-3 text-sm">{companyFields.map(([label, value]) => <div key={label} className="grid grid-cols-[4rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="break-words text-slate-900">{value || '未设置'}</dd></div>)}</dl></div>
+      </details>
+      <details className="sap-disclosure sap-setting-disclosure">
+        <summary><strong>客户编号</strong><span title={codePreview}>{codePreview}</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+        <div className="sap-disclosure-body space-y-3 text-sm"><p>按行业区分前缀：{booleanText(codeSettings.useIndustryPrefix)}</p><div className="sap-code-preview rounded-lg bg-slate-50 p-3 font-mono">{codePreview}</div><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">查看行业前缀</summary><dl className="space-y-2">{prefixRows.map(item => <div key={item.industry} className="flex justify-between gap-3"><dt>{item.label || industryLabels[item.industry] || item.industry}</dt><dd>{item.prefix}</dd></div>)}</dl></details></div>
+      </details>
+      <details className="sap-disclosure sap-setting-disclosure">
+        <summary><strong>业务字典</strong><span>{Object.keys(dictConfig).length} 组</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+        <div className="sap-disclosure-body space-y-2">{Object.entries(dictConfig).map(([key, value]) => <details key={key} className="rounded-lg border border-slate-100 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">{settingsDictionaryLabels[key] || '其他业务选项'}</summary><p className="break-words whitespace-pre-wrap pb-3 text-sm leading-6 text-slate-500">{String(value || '未设置')}</p></details>)}</div>
+      </details>
     </div>;
   }
 
@@ -731,7 +746,7 @@ export default function Settings() {
               { key: 'statuses' as const, label: '客户状态' },
               { key: 'sources' as const, label: '客户来源' },
               { key: 'levels' as const, label: '客户等级' },
-              { key: 'products' as const, label: '产品类型' },
+              { key: 'products' as const, label: settingsDictionaryLabels.products },
               { key: 'customerPackages' as const, label: '客户意向套餐' },
               { key: 'countries' as const, label: '国家' },
               { key: 'billingCycles' as const, label: '计费周期' },

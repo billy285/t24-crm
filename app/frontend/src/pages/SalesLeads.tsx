@@ -705,7 +705,7 @@ function SalesLeadWorkspace() {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/10 p-1 backdrop-blur">
-                {[1, 7, 30].map(days => <button key={days} type="button" onClick={() => setCallReportDays(days)} className={`min-h-10 rounded-lg px-3 text-xs font-semibold transition ${callReportDays === days ? 'bg-white text-blue-800 shadow-sm' : 'text-blue-100 hover:bg-white/10'}`}>{days === 1 ? '今日' : `${days}天`}</button>)}
+                {[1, 7, 30].map(days => <button key={days} type="button" onClick={() => setCallReportDays(days)} className={`min-h-11 rounded-lg px-3 text-xs font-semibold transition ${callReportDays === days ? 'bg-white text-blue-800 shadow-sm' : 'text-blue-100 hover:bg-white/10'}`}>{days === 1 ? '今日' : `${days}天`}</button>)}
               </div>
             </div>
             <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs leading-5" role="status">{callReport.source.message || '以下为已同步的官方记录，历史覆盖尚未核验。未同步数据不能视为零拨打。'}</p>

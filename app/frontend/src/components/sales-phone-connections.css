@@ -39,3 +39,10 @@
 .sales-phone-warning{flex-wrap:wrap;align-items:center}
 .sales-sync-evidence>summary{min-height:32px;color:#64748b}
 @media(max-width:767px){.sales-phone-connections summary{padding:10px 12px;min-height:44px}.sales-phone-connections button,.sales-sync-evidence>summary{min-height:44px}.sales-phone-summary-warning{padding:10px 12px}.sales-phone-footnote{margin-top:10px}}
+
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main:is([data-crm-page="/sales-workbench"], [data-crm-page="/sales-leads"]) .sales-phone-connections .sales-sync-controls select {
+    height: 44px;
+    min-height: 44px;
+  }
+}

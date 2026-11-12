@@ -1,3 +1,4 @@
+import '@/components/crm-system-admin-polish.css';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { useEffect, useState, useRef } from 'react';
@@ -597,7 +598,7 @@ export default function Sales() {
                 <div key={row.id} className="crm-order-record rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <button type="button" className="min-w-0 text-left" onClick={() => openCustomerDetail(row.id)}>
-                      <p className="truncate font-semibold text-blue-700">{row.business_name}</p>
+                      <p className="sap-sales-name line-clamp-2 break-words whitespace-normal font-semibold text-blue-700" title={row.business_name}>{row.business_name}</p>
                       <p className="mt-1 text-xs text-slate-400">{row.customer_code || `客户#${row.id}`} · {row.sales_person || '未分配'}</p>
                     </button>
                     <Badge className={subStatusColors[row.service_status] || subStatusColors.none}>

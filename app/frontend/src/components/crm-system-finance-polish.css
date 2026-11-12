@@ -1,0 +1,56 @@
+/* The monthly table becomes three natural-height rows only on small screens. */
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    align-items: start;
+    gap: 6px 12px;
+    height: auto;
+    min-height: 0;
+    padding-block: 12px;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[data-label="月份"] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[data-label="扣点比例"] {
+    grid-column: 2;
+    grid-row: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[data-label="更新时间"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    overflow-wrap: anywhere;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[data-label="操作"] {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    gap: 8px;
+    padding-top: 2px;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[data-label="操作"] .t24-button {
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+  }
+
+  .t24-system.app-shell[data-crm-order="20261111"] main.crm-desktop-main[data-crm-page="/settings/deduction"] .crm-order-deduction.app-page .deduction-responsive-table tbody td[colspan] {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    padding: 16px 12px;
+  }
+}

@@ -12,6 +12,7 @@ import { invokeWithAuth } from '@/lib/tokenStore';
 import { getDefaultDeduction, updateDefaultDeduction, importMonthlyDeductions } from '@/lib/api';
 import { useRole } from '@/lib/role-context';
 import './mobile-payroll-settings.css';
+import '@/components/crm-system-finance-polish.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import PageLoadState from '@/components/PageLoadState';
 import ConfirmDialog from '@/components/ConfirmDialog';
