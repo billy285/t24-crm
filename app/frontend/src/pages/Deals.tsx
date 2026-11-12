@@ -448,6 +448,10 @@ export default function Deals() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const readScope = `${employee?.id || 'guest'}:${employee?.name || ''}:${dataScope}`;
+  const readScopeRef = useRef(readScope); readScopeRef.current = readScope;
+  const [resolvedReadScope, setResolvedReadScope] = useState(readScope);
   const [listParams] = useState(() => new URLSearchParams(window.location.search));
   const [search, setSearch] = useState(() => (listParams.get('search') || '').slice(0, 200));
   const [filterProduct, setFilterProduct] = useState(() => (listParams.get('product') || 'all').slice(0, 30));
@@ -506,6 +510,9 @@ export default function Deals() {
 
   const loadData = async () => {
     const requestSeq = ++loadRequestSeqRef.current;
+    const capturedScope = readScope;
+    const isLatestRead = () => requestSeq === loadRequestSeqRef.current && capturedScope === readScopeRef.current;
+    setRefreshing(true);
     try {
       const [dRes, cRes] = await loadWithRetry(() => Promise.all([
         client.entities.deals.query({ limit: 1000, sort: '-deal_date' }),
@@ -527,23 +534,26 @@ export default function Deals() {
         );
       }
 
-      if (requestSeq !== loadRequestSeqRef.current) return;
+      if (!isLatestRead()) return;
       setDeals(dealItems);
       setCustomers(custItems);
       setLoadError(null);
     } catch (err) {
-      if (requestSeq !== loadRequestSeqRef.current) return;
+      if (!isLatestRead()) return;
       console.error(err);
+      const status = Number((err as any)?.response?.status || (err as any)?.status || (err as any)?.data?.status);
+      if ([401, 403, 404].includes(status)) { setDeals([]); setCustomers([]); }
       setLoadError(getLoadErrorMessage(err));
     } finally {
-      if (requestSeq === loadRequestSeqRef.current) setLoading(false);
+      if (isLatestRead()) { setLoading(false); setRefreshing(false); }
     }
   };
 
   useEffect(() => {
-    setLoading(true);
+    setDeals([]); setCustomers([]); setLoadError(null); setLoading(true); setResolvedReadScope(readScope);
     void loadData();
-  }, [dataScope, employee?.id, employee?.name]);
+    return () => { loadRequestSeqRef.current += 1; };
+  }, [readScope]);
 
   const loadBoards = async () => {
     const requestSeq = ++boardsRequestSeq.current;
@@ -1332,6 +1342,7 @@ export default function Deals() {
     finally { setDeleting(false); }
   };
 
+  if (resolvedReadScope !== readScope) return <PageLoadState loading message="正在切换成交记录范围…" />;
   if (loading && deals.length === 0) {
     return <PageLoadState loading message="正在核对成交记录与交付状态…" />;
   }
@@ -1387,6 +1398,7 @@ export default function Deals() {
         </div>
       </div>
 
+      {loadError && deals.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"><div className="min-w-0"><strong>当前显示上次结果，数据可能已过期</strong><p className="mt-1 break-words text-xs">{loadError}</p></div><Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={refreshing} onClick={() => void loadData()}>{refreshing ? '重新读取中…' : '重新读取'}</Button></div>}
       <div className="crm-order-summary calm-record-metrics grid grid-cols-2 gap-3 xl:grid-cols-5" aria-label="当前可见范围的成交记录概览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">成交记录</p><p className="mt-1 text-2xl font-semibold text-slate-900">{deals.length}</p><p className="mt-1 text-xs text-slate-400">总额 ${totalAmount.toLocaleString()}</p></CardContent></Card>
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-xs text-slate-500">已付款</p><p className="mt-1 text-2xl font-semibold text-emerald-600">{paidDealCount}</p><p className="mt-1 text-xs text-slate-400">成交记录中的付款标记</p></CardContent></Card>
@@ -1583,11 +1595,16 @@ export default function Deals() {
                     <div><p className="text-xs text-slate-400">交接</p><p className="mt-1 text-slate-700">{d.is_handed_over ? '已交接' : '待交接'}</p></div>
                     <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>
-                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1 border-emerald-200 text-emerald-700" disabled={generatingBoardId === d.id || boardsLoading || boardsError} onClick={() => openBoard(d)}><ClipboardCheck className="mr-1 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '看板暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}</Button>}
-                    {hasPermission('deal_edit') && <Button size="sm" variant="outline" className="h-11 flex-1" onClick={() => openHandoff(d)}><Edit className="mr-1 h-4 w-4" />编辑交接</Button>}
-                    {hasPermission('deal_edit') && <Button size="sm" variant="ghost" onClick={() => openEditDeal(d)}>编辑成交</Button>}
+                  <div className="deal-mobile-primary-actions mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+                    {hasPermission('deal_edit') ? <>
+                      <Button size="sm" className="min-h-11 min-w-0 flex-1" onClick={() => openHandoff(d)}><Edit className="mr-1 h-4 w-4" />交接安排</Button>
+                      <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 gap-1.5" aria-label={`更多成交操作：${d.customer_name}`}><MoreHorizontal className="h-4 w-4" />更多</Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}><ExternalLink className="mr-2 h-4 w-4" />客户详情</DropdownMenuItem>
+                        <DropdownMenuItem disabled={generatingBoardId === d.id || boardsLoading || boardsError} onSelect={() => openBoard(d)}><ClipboardCheck className="mr-2 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '看板暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => openEditDeal(d)}><Edit className="mr-2 h-4 w-4" />编辑成交</DropdownMenuItem>
+                      </DropdownMenuContent></DropdownMenu>
+                    </> : <Button size="sm" variant="outline" className="min-h-11 w-full" onClick={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}><ExternalLink className="mr-1 h-3.5 w-3.5" />客户详情</Button>}
                   </div>
                 </div>
                 );
@@ -1636,10 +1653,10 @@ export default function Deals() {
                       <td className="px-4 py-3 hidden md:table-cell">{d.is_paid ? <Badge className="bg-green-100 text-green-700 text-xs">已付</Badge> : <Badge className="bg-red-100 text-red-700 text-xs">未付</Badge>}</td>
                       <td className="px-4 py-3 hidden lg:table-cell"><div className="flex flex-wrap gap-1"><Badge variant="outline" className={d.is_handed_over ? 'border-emerald-200 text-emerald-700' : 'border-amber-200 text-amber-700'}>{d.is_handed_over ? '已交接' : '待交接'}</Badge><span className="text-xs text-slate-500">{d.is_transferred_ops ? '已转运营' : '待转运营'}</span></div></td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
+                        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                           <Button
                             size="sm"
-                            variant="ghost"
+                            variant="outline"
                             className="min-h-8 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                             disabled={generatingBoardId === d.id || boardsLoading || boardsError}
                             onClick={() => openBoard(d)}

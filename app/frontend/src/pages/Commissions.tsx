@@ -108,6 +108,9 @@ export default function Commissions() {
   const actorKey = String(employee?.id ?? 'guest');
   const actorRef = useRef(actorKey);
   actorRef.current = actorKey;
+  const dashboardReadScope = `${actorKey}:${month}`;
+  const dashboardReadScopeRef = useRef(dashboardReadScope); dashboardReadScopeRef.current = dashboardReadScope;
+  const [loadedDashboardScope, setLoadedDashboardScope] = useState('');
   const [mobileView, setMobileView] = useState('ledger');
   const [entryStatus, setEntryStatus] = useState('all');
   const [visibleLimit, setVisibleLimit] = useState(20);
@@ -168,19 +171,20 @@ export default function Commissions() {
   const loadAuxiliaryOptions = () => { void loadOptions(); void loadLoginOptions(); };
   const load = async (refreshOptions = true) => {
     const sequence = ++loadSequence.current;
+    const capturedScope = dashboardReadScope;
     setLoading(true);
     if (refreshOptions) loadAuxiliaryOptions();
     try {
       const dashboardResponse = await invokeWithAuth({ url: `/api/v1/commissions/dashboard${month ? `?month=${month}` : ''}`, method: 'GET' });
-      if (sequence !== loadSequence.current || actorRef.current !== actorKey) return;
-      setData(dashboardResponse.data); setLoadError(null);
-    } catch (error) { if (sequence === loadSequence.current && actorRef.current === actorKey) setLoadError(errorMessage(error)); }
-    finally { if (sequence === loadSequence.current && actorRef.current === actorKey) setLoading(false); }
+      if (sequence !== loadSequence.current || actorRef.current !== actorKey || dashboardReadScopeRef.current !== capturedScope) return;
+      setData(dashboardResponse.data); setLoadedDashboardScope(capturedScope); setLoadError(null);
+    } catch (error) { if (sequence === loadSequence.current && actorRef.current === actorKey && dashboardReadScopeRef.current === capturedScope) { const status = Number((error as any)?.response?.status || (error as any)?.status || (error as any)?.data?.status); if ([401, 403, 404].includes(status)) { setData(null); setLoadedDashboardScope(''); } setLoadError(errorMessage(error)); } }
+    finally { if (sequence === loadSequence.current && actorRef.current === actorKey && dashboardReadScopeRef.current === capturedScope) setLoading(false); }
   };
 
-  useEffect(() => { void load(false); return () => { loadSequence.current += 1; }; }, [isMobile, month, actorKey]);
+  useEffect(() => { setLoadError(null); void load(false); return () => { loadSequence.current += 1; }; }, [isMobile, month, actorKey]);
   useEffect(() => {
-    setData(null); setOptions(null); setLoginOptions([]); setLoadError(null);
+    setData(null); setLoadedDashboardScope(''); setOptions(null); setLoginOptions([]); setLoadError(null);
     loadAuxiliaryOptions();
     return () => { optionsSequence.current += 1; loginOptionsSequence.current += 1; };
   }, [isMobile, actorKey]);
@@ -370,10 +374,12 @@ export default function Commissions() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading && !data) return <div className="app-page"><div className="app-loading">正在读取渠道与分润台账...</div></div>;
+  const hasCurrentDashboard = Boolean(data && loadedDashboardScope === dashboardReadScope);
+  if (!hasCurrentDashboard && loadError && !loading) return <div className="app-page commission-page"><PageLoadState error={`渠道与分润读取失败：${loadError}。当前范围尚未成功读取，不能据此判断没有记录。`} onRetry={() => void load()} /></div>;
+  if (!hasCurrentDashboard) return <div className="app-page"><div className="app-loading">正在读取渠道与分润台账...</div></div>;
 
   return <div className="financial-workspace financial-workspace--commissions crm-org-compact app-page commission-page odf-page odf-commissions">
-    {loadError && <PageLoadState error={`分润数据读取失败：${loadError}${data ? '，当前保留上次数据，修改暂不可用' : ''}`} onRetry={() => void load()} />}
+    {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"><div className="min-w-0"><strong>当前保留上次分润结果，数据可能已过期</strong><p className="mt-1 break-words text-xs">{loadError}；重新读取成功前暂不能修改。</p></div><Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={loading} onClick={() => void load()}>{loading ? '重新读取中…' : '重新读取'}</Button></div>}
     {optionsError && optionsNotice}{loginOptionsError && loginOptionsNotice}
     <div className="commission-heading">
       <div><p className="text-xs text-slate-500">渠道合作</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">渠道与分润</h1></div>

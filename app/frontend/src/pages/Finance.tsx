@@ -4271,8 +4271,9 @@ function FinanceWorkspace() {
           }} />
 
           {loadError && hasFinanceData && (
-            <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              当前显示上一次成功同步的数据，刷新后会自动重试。
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="min-w-0"><strong>当前显示上次核对结果，数据可能已过期</strong><p className="mt-1 break-words text-xs">{loadError}</p></div>
+              <Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={loading} onClick={() => { setLoading(true); void loadData(); }}>{loading ? '重新读取中…' : '重新读取'}</Button>
             </div>
           )}
 

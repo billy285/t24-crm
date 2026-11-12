@@ -167,6 +167,9 @@ export default function MerchantPool() {
   const [loadedItems, setItems] = useState<Merchant[]>([]);
   const [assignees, setAssignees] = useState<{ id: number; name: string }[]>([]);
   const [selectedMerchantIds, setSelectedMerchantIds] = useState<number[]>([]);
+  const selectionOffsets = useRef<Record<number, number>>({});
+  const [pendingSelectionPreview, setPendingSelectionPreview] = useState<{ scope: string; merchantId: number; page: number; pageSize: number } | null>(null);
+  const [selectionPreviewMessage, setSelectionPreviewMessage] = useState('');
   const selectionStatuses = useRef<Record<number,string>>({});
   const selectionQualities = useRef<Record<number,string>>({});
   const [selectedSalesId, setSelectedSalesId] = useState('');
@@ -215,6 +218,9 @@ export default function MerchantPool() {
 
   const authScope = `${employee?.id || ''}:${role}`;
   const viewParams = merchantListParams({ page, pageSize, search, poolStatus, regions, industry, qualityStatus, source, timezoneGroup, batchId: batchScope?.id });
+  const selectionParams = new URLSearchParams(viewParams);
+  selectionParams.delete('skip'); selectionParams.delete('limit');
+  const selectionScope = JSON.stringify([authScope, selectionParams.toString()]);
   const viewKey = JSON.stringify([authScope, viewParams.toString()]);
   const currentView = useRef({ key: viewKey, params: viewParams.toString(), page });
   // Invalidate during render: an older reply/focus refresh can arrive before
@@ -244,6 +250,7 @@ export default function MerchantPool() {
     // Read the latest render's view even when useAutoRefresh still holds the
     // previous callback, or an earlier search debounce is completing.
     const requestedView = currentView.current;
+    const requestedPageSize = Number(new URLSearchParams(requestedView.params).get('limit') || 20);
     if (options?.page != null && options.page !== requestedView.page) return;
     const pending = pendingListLoad.current;
     // Mutation callbacks call loadData() without coalescing: a read started
@@ -276,7 +283,7 @@ export default function MerchantPool() {
         setIndustryFacets(Array.isArray(listResult.value.data?.industry_facets) ? listResult.value.data.industry_facets : null);
         setFacetTotal(typeof listResult.value.data?.facet_total === 'number' ? listResult.value.data.facet_total : null);
         setAcceptedViewKey(requestedView.key); setFailedViewKey(null);
-        nextItems.forEach((item: Merchant) => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; });
+        nextItems.forEach((item: Merchant, index: number) => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; selectionOffsets.current[item.id] = (requestedView.page - 1) * requestedPageSize + index; });
         setSelectedMerchantIds(current => current.filter(id => !nextItems.some((item: Merchant) => item.id === id && ['converted','archived'].includes(item.pool_status))));
       } else {
         clearUnavailableList();
@@ -308,8 +315,14 @@ export default function MerchantPool() {
     setSelectedMerchantIds([]);
     setSelectedSalesId('');
     selectionStatuses.current = {}; selectionQualities.current = {};
+    selectionOffsets.current = {}; setPendingSelectionPreview(null); setSelectionPreviewMessage('');
     setClassifyOpen(false);
-  }, [search, poolStatus, regions, industry, source, timezoneGroup, qualityStatus, batchScope?.id]);
+  }, [search, poolStatus, regions, industry, source, timezoneGroup, qualityStatus, batchScope?.id, authScope]);
+
+  useEffect(() => {
+    const selected = new Set(selectedMerchantIds.map(String));
+    selectionOffsets.current = Object.fromEntries(Object.entries(selectionOffsets.current).filter(([id]) => selected.has(id)));
+  }, [selectedMerchantIds]);
 
   useEffect(() => {
     if (!reviewing || loading) return;
@@ -333,7 +346,7 @@ export default function MerchantPool() {
       .catch(() => toast.error('电话销售人员列表加载失败'));
   }, [canManagePool]);
 
-  useAutoRefresh(() => loadData({ coalesce: true }), { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing && !classifyOpen && !dispatchOpen && !bulkAssigning && !bulkUpdating });
+  useAutoRefresh(() => loadData({ coalesce: true }), { intervalMs: 30000, enabled: !importOpen && !editing && !reviewing && !pendingSelectionPreview && !classifyOpen && !dispatchOpen && !bulkAssigning && !bulkUpdating });
 
   const openEdit = (merchant: Merchant) => {
     if (listError || loading) { toast.error('请重新加载商家列表后再操作'); return; }
@@ -424,7 +437,8 @@ export default function MerchantPool() {
 
   const toggleMerchantSelection = (merchantId: number, checked?: boolean) => {
     if (listError || loading) return;
-    const item = items.find(item => item.id === merchantId); if (item) selectionStatuses.current[merchantId] = item.pool_status;
+    const index = items.findIndex(item => item.id === merchantId);
+    const item = items[index]; if (item) { selectionStatuses.current[merchantId] = item.pool_status; selectionOffsets.current[merchantId] = (page - 1) * pageSize + index; }
     setSelectedMerchantIds(current => {
       const selected = current.includes(merchantId);
       if (checked === true || (checked === undefined && !selected)) { if (current.length >= 200) { toast.error('一次最多选择200家商家'); return current; } return [...current, merchantId]; }
@@ -434,7 +448,7 @@ export default function MerchantPool() {
 
   const toggleCurrentPageSelection = (checked: boolean) => {
     if (listError || loading) return;
-    const selectableIds = items.filter(item => !['converted','archived'].includes(item.pool_status)).map(item => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; return item.id; });
+    const selectableIds = items.filter(item => !['converted','archived'].includes(item.pool_status)).map(item => { selectionStatuses.current[item.id] = item.pool_status; selectionQualities.current[item.id] = item.prospect_quality?.status || 'pending'; selectionOffsets.current[item.id] = (page - 1) * pageSize + items.indexOf(item); return item.id; });
     setSelectedMerchantIds(current => checked
       ? Array.from(new Set([...current, ...selectableIds])).slice(0, 200)
       : current.filter(id => !selectableIds.includes(id)));
@@ -597,6 +611,34 @@ export default function MerchantPool() {
     if (merchant.converted_lead_id) { setReviewing(null); setDossierId(merchant.converted_lead_id); }
     else setReviewing(merchant);
   };
+  const openSelectedMerchant = () => {
+    if (!canManagePool || loading || listError || bulkUpdating || bulkAssigning || pendingSelectionPreview) return;
+    const current = items.find(item => selectedMerchantIds.includes(item.id) && !['converted', 'archived'].includes(item.pool_status));
+    if (current) { setSelectionPreviewMessage(''); openMerchant(current); return; }
+    if (!confirmDiscardAllChanges()) return;
+    const merchantId = selectedMerchantIds.find(id => Number.isInteger(selectionOffsets.current[id]) && selectionOffsets.current[id] >= 0);
+    if (merchantId === undefined) { setSelectionPreviewMessage('暂时无法定位所选商家，选择仍保留；请核对列表。'); return; }
+    const targetPage = Math.min(totalPages, Math.floor(selectionOffsets.current[merchantId] / pageSize) + 1);
+    setReviewing(null);
+    setSelectionPreviewMessage(`正在定位第 ${targetPage} 页的已选商家…`);
+    setPendingSelectionPreview({ scope: selectionScope, merchantId, page: targetPage, pageSize });
+    setPage(targetPage);
+  };
+  useEffect(() => {
+    if (!pendingSelectionPreview) return;
+    if (pendingSelectionPreview.scope !== selectionScope || !canManagePool || listError) { setPendingSelectionPreview(null); return; }
+    if (pendingSelectionPreview.pageSize !== pageSize) { setPendingSelectionPreview(null); setSelectionPreviewMessage('每页数量已调整，选择仍保留；请再次查看所选资料。'); return; }
+    if (loading || !hasCurrentList || page !== pendingSelectionPreview.page) return;
+    const current = items.find(item => item.id === pendingSelectionPreview.merchantId && selectedMerchantIds.includes(item.id) && !['converted', 'archived'].includes(item.pool_status))
+      || items.find(item => selectedMerchantIds.includes(item.id) && !['converted', 'archived'].includes(item.pool_status));
+    setPendingSelectionPreview(null);
+    if (current) { setSelectionPreviewMessage(`已定位第 ${page} 页的所选商家`); openMerchant(current); }
+    else {
+      const message = '该页暂未找到所选商家，选择仍保留；请核对列表。';
+      setSelectionPreviewMessage(message); toast.error(message);
+    }
+    // The accepted list owns the reviewed record; never open an off-page snapshot.
+  }, [pendingSelectionPreview, selectionScope, canManagePool, listError, loading, hasCurrentList, page, pageSize, items, selectedMerchantIds]);
   const merchantAction = (merchant: Merchant) => canManagePool && merchant.pool_status === 'pending' ? (
     <Button size="sm" variant="ghost" className="mp-inspect-action" disabled={listError || loading} aria-label={`${selectedMerchantIds.includes(merchant.id) ? '移出待分配' : '分配'}：${merchant.business_name}`} aria-pressed={selectedMerchantIds.includes(merchant.id)} onClick={() => toggleMerchantSelection(merchant.id)}>{selectedMerchantIds.includes(merchant.id) ? '已选择' : '选择'}</Button>
   ) : (
@@ -629,22 +671,23 @@ export default function MerchantPool() {
   );
 
   const selectionBar = canManagePool && selectedMerchantIds.length > 0 && (
-        <Card className="mp-selection-bar" role="region" aria-label="商家批量操作">
+        <Card className="mp-selection-bar" role="region" aria-label="商家批量操作" aria-busy={Boolean(pendingSelectionPreview)}>
           <CardContent className="mp-selection-content">
             <div className="mp-selection-main">
-              <div className="mp-selection-context"><div className="mp-selection-count"><CheckSquare className="h-5 w-5" />跨页已选 {selectedMerchantIds.length} 家商家{categoryLabel && <span className="mp-selection-category">{categoryLabel}</span>}{timezoneGroup && <span className="mp-selection-category">{contactTimezoneLabels[timezoneGroup as keyof typeof contactTimezoneLabels]}</span>}</div><Button size="sm" variant="outline" disabled={loading || listError || bulkUpdating || bulkAssigning} onClick={() => { setBulkIndustry(''); setClassifyOpen(true); }}>设置行业</Button><Button size="sm" variant="outline" disabled={loading || listError || bulkUpdating || bulkAssigning} onClick={() => { if (confirmDiscardAllChanges()) setDispatchOpen(true); }}>均衡派单</Button>{isMobile && <div className="mp-selection-mobile-tools"><Button variant="ghost" size="icon" aria-label="查看所选资料" title="查看所选资料" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}><ArrowUpRight className="h-4 w-4" /></Button><Button variant="ghost" aria-label="取消选择" disabled={bulkAssigning || bulkUpdating} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); }}>取消</Button></div>}</div>
+              <div className="mp-selection-context"><div className="mp-selection-count"><CheckSquare className="h-5 w-5" />跨页已选 {selectedMerchantIds.length} 家商家{categoryLabel && <span className="mp-selection-category">{categoryLabel}</span>}{timezoneGroup && <span className="mp-selection-category">{contactTimezoneLabels[timezoneGroup as keyof typeof contactTimezoneLabels]}</span>}</div><Button size="sm" variant="outline" disabled={loading || listError || bulkUpdating || bulkAssigning} onClick={() => { setBulkIndustry(''); setClassifyOpen(true); }}>设置行业</Button><Button size="sm" variant="outline" disabled={loading || listError || bulkUpdating || bulkAssigning} onClick={() => { if (confirmDiscardAllChanges()) setDispatchOpen(true); }}>均衡派单</Button>{isMobile && <div className="mp-selection-mobile-tools"><Button variant="ghost" size="icon" style={{ minWidth: 44, width: 44, minHeight: 44 }} disabled={loading || listError || bulkUpdating || bulkAssigning || Boolean(pendingSelectionPreview)} aria-label={pendingSelectionPreview ? '正在定位所选商家' : '查看所选资料'} title="查看所选资料" onClick={openSelectedMerchant}><ArrowUpRight className="h-4 w-4" /></Button><Button variant="ghost" aria-label="取消选择" disabled={bulkAssigning || bulkUpdating} onClick={() => { setSelectedMerchantIds([]); setSelectedSalesId(''); setPendingSelectionPreview(null); setSelectionPreviewMessage(''); }}>取消</Button></div>}</div>
               <div className="mp-assignment-controls">
                 <div className="mp-assignee-field"><span className="mp-assignee-label">销售</span><label><span className="sr-only">选择销售负责人</span><NativeSelect value={selectedSalesId} onChange={setSelectedSalesId} options={[{ value: '', label: isMobile ? '选择销售' : '选择销售负责人' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label></div>
                 {isMobile ? <>
                   <Button disabled={bulkAssigning || bulkUpdating || loading || listError || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-1.5 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
                 </> : <>
                   <Button disabled={bulkAssigning || bulkUpdating || loading || listError || !selectedSalesId} onClick={() => void assignSelectedMerchants()}><Send className="mr-2 h-4 w-4" />{bulkAssigning ? '分配中...' : '确认分配'}</Button>
-                  <Button variant="ghost" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); }}>取消选择</Button>
+                  <Button variant="ghost" disabled={bulkUpdating || bulkAssigning || enrichmentLoading} onClick={() => { setSelectedMerchantIds([]); setBulkIndustry(''); setSelectedSalesId(''); setPendingSelectionPreview(null); setSelectionPreviewMessage(''); }}>取消选择</Button>
                 </>}
               </div>
             </div>
+            {selectionPreviewMessage && <p role="status" className="text-xs leading-5 text-slate-500">{selectionPreviewMessage}</p>}
             {!isMobile && <details className="calm-pool-bulk-tools mp-selection-utilities"><summary>其他批量操作<ChevronDown className="h-4 w-4" /></summary><div className="calm-pool-bulk-content">
-              <Button variant="ghost" size="sm" onClick={() => setReviewing(items.find(item => selectedMerchantIds.includes(item.id)) || null)}>查看所选资料</Button>
+              <Button variant="ghost" size="sm" className="min-h-11" disabled={loading || listError || bulkUpdating || bulkAssigning || Boolean(pendingSelectionPreview)} onClick={openSelectedMerchant}>{pendingSelectionPreview ? '正在定位…' : '查看所选资料'}</Button>
               <Button variant="outline" disabled={listError || loading || bulkUpdating || bulkAssigning || enrichmentLoading || selectedMerchantIds.length > 20} onClick={() => void suggestEnrichment()}><Sparkles className="mr-2 h-4 w-4" />{enrichmentLoading ? '分析中...' : 'AI 补充空白资料'}</Button>
               {isAdmin && <Button variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-50" disabled={listError || loading || bulkUpdating || bulkAssigning} onClick={() => void deleteSelectedMerchants()}><Trash2 className="mr-2 h-4 w-4" />批量删除</Button>}
             </div></details>}

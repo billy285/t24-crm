@@ -1,0 +1,20 @@
+/* Explicit home/task route scope; status colors and business controls keep their roles. */
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first > .sf-exception-list { margin-top: 10px; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .sf-work-lanes { grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); margin-top: 12px; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .sf-owner-quiet-statuses > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; color: var(--order-muted); cursor: pointer; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .sf-owner-quiet-statuses > summary > small { margin-left: auto; font-size: 12px; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first > .shr-reminders { margin: 10px 0 0; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; min-height: 44px; list-style: none; color: var(--order-ink); cursor: pointer; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure > summary::-webkit-details-marker { display: none; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure > summary > span { font-size: 13px; font-weight: 600; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure > summary > small { grid-row: 2; grid-column: 1; color: var(--order-muted); font-size: 11px; line-height: 18px; overflow-wrap: anywhere; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure > summary > svg { grid-row: 1 / 3; grid-column: 2; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-disclosure[open] > summary > svg { transform: rotate(180deg); }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .shr-routine-content { padding-top: 8px; border-top: 1px solid var(--order-line); }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/tasks"] .dc-tasks :is(.fp-task-title, .fp-task-customer) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; min-width: 0; max-width: 100%; overflow: hidden; overflow-wrap: anywhere; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/tasks"] .dc-tasks .dc-task-desktop > div:first-child { min-width: 0; }
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/tasks"] .dc-tasks .dc-task-desktop .fp-task-title { flex: 1 1 18rem; }
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first :is(.sf-owner-counts button, .shr-reminders button, summary) { min-height: 44px; }
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .sf-footer > button { min-height: 44px; }
+}

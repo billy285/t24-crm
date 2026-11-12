@@ -222,6 +222,8 @@ function SalesLeadWorkspace() {
   const [callReportDays, setCallReportDays] = useState(7);
   const [callReport, setCallReport] = useState<SalesCallReport | null>(null);
   const [missingCRMOnly, setMissingCRMOnly] = useState(false);
+  const [recentCallsVisibleCount, setRecentCallsVisibleCount] = useState(12);
+  useEffect(() => { setRecentCallsVisibleCount(12); }, [callReportDays, missingCRMOnly]);
   const [callHistory, setCallHistory] = useState<CallHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const historyRequestRef = useRef(0);
@@ -661,6 +663,10 @@ function SalesLeadWorkspace() {
   const providerDuration = (value: number) => callEvidence?.available ? formatDuration(value) : '—';
   const employeeValue = (item: CallEvidence, value: number) => callEvidenceState(item).available ? value : '—';
   const employeeDuration = (item: CallEvidence, value: number) => callEvidenceState(item).available ? formatDuration(value) : '—';
+  const loadedRecentCalls = callReport?.recent_calls || [];
+  const filteredRecentCalls = loadedRecentCalls.filter(call => !missingCRMOnly || !call.crm_recorded);
+  const visibleRecentCalls = filteredRecentCalls.slice(0, recentCallsVisibleCount);
+  const remainingRecentCalls = filteredRecentCalls.length - visibleRecentCalls.length;
   return (
     <div className={`t24-directory-page t24-sales-leads-page mfc-sales-leads sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}${view === 'leads' ? ' sl-order-page' : ''}`}>
       <div className="sc-section-heading slr-page-heading">
@@ -750,7 +756,8 @@ function SalesLeadWorkspace() {
 
             <section>
               <div className="flex flex-wrap items-center justify-between gap-3"><div><h4 className="font-semibold text-slate-900">最近官方通话</h4><p className="mt-1 text-xs text-slate-500">仅筛选最近载入的 {callReport.recent_calls.length} 条；补录CRM结果不会改变官方接通事实。</p></div><Button size="sm" variant="outline" aria-pressed={missingCRMOnly} onClick={() => setMissingCRMOnly(value => !value)}>{missingCRMOnly ? '查看全部最近记录' : '只看待补CRM结果'}</Button></div>
-              <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">{callReport.recent_calls.filter(call => !missingCRMOnly || !call.crm_recorded).slice(0, 12).map(call => <div key={call.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_140px_100px_140px] sm:items-center"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{call.business_name || (call.remote_phone ? formatPhoneNumber(call.remote_phone) : '未匹配商家')}</p><p className="mt-1 truncate text-xs text-slate-500">{call.salesperson} · {formatDate(call.started_at)}</p></div><Badge className={call.connected ? 'w-fit bg-emerald-100 text-emerald-700' : 'w-fit bg-rose-100 text-rose-700'}>{call.result}</Badge><p className="text-xs text-slate-600">{formatDuration(call.duration_seconds)}</p><div className={`text-xs font-medium ${call.crm_recorded ? 'text-blue-700' : 'text-amber-700'}`}><p>{call.crm_recorded ? '已记录结果' : '待补CRM结果'}</p>{!call.crm_recorded && (call.lead_id ? <Button size="sm" variant="outline" className="mt-1" onClick={() => setDossierId(call.lead_id!)}>打开档案补录</Button> : <p className="mt-1 font-normal text-slate-500">未匹配商家，请核对号码及当前分配</p>)}</div></div>)}{callReport.recent_calls.filter(call => !missingCRMOnly || !call.crm_recorded).length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-400">{missingCRMOnly ? '最近载入记录中没有待补CRM结果' : '统计期内暂无RingCentral官方通话记录'}</p>}</div>
+              <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">{visibleRecentCalls.map(call => <div key={call.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_140px_100px_140px] sm:items-center"><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{call.business_name || (call.remote_phone ? formatPhoneNumber(call.remote_phone) : '未匹配商家')}</p><p className="mt-1 truncate text-xs text-slate-500">{call.salesperson} · {formatDate(call.started_at)}</p></div><Badge className={call.connected ? 'w-fit bg-emerald-100 text-emerald-700' : 'w-fit bg-rose-100 text-rose-700'}>{call.result}</Badge><p className="text-xs text-slate-600">{formatDuration(call.duration_seconds)}</p><div className={`text-xs font-medium ${call.crm_recorded ? 'text-blue-700' : 'text-amber-700'}`}><p>{call.crm_recorded ? '已记录结果' : '待补CRM结果'}</p>{!call.crm_recorded && (call.lead_id ? <Button size="sm" variant="outline" className="mt-1" onClick={() => setDossierId(call.lead_id!)}>打开档案补录</Button> : <p className="mt-1 font-normal text-slate-500">未匹配商家，请核对号码及当前分配</p>)}</div></div>)}{filteredRecentCalls.length === 0 && <p className="px-4 py-10 text-center text-sm text-slate-400">{missingCRMOnly ? '最近载入记录中没有待补CRM结果' : '统计期内暂无RingCentral官方通话记录'}</p>}</div>
+              {filteredRecentCalls.length > 0 && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500" aria-label="已载入通话显示范围"><span role="status" aria-live="polite">当前显示 {visibleRecentCalls.length} / {filteredRecentCalls.length} 条{missingCRMOnly ? '待补记录' : ''} · 仅限已载入的 {loadedRecentCalls.length} 条</span><div className="flex flex-wrap gap-2">{remainingRecentCalls > 0 && <Button type="button" size="sm" variant="outline" className="min-h-11" onClick={() => setRecentCallsVisibleCount(count => count + 12)}>显示更多（剩余 {remainingRecentCalls} 条）</Button>}{recentCallsVisibleCount > 12 && filteredRecentCalls.length > 12 && <Button type="button" size="sm" variant="ghost" className="min-h-11" onClick={() => setRecentCallsVisibleCount(12)}>收起至12条</Button>}</div></div>}
             </section>
           </div>
         </CardContent>

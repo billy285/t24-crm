@@ -137,6 +137,11 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   useListScroll('sales', !loading);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const readScope = `${employee?.id || 'guest'}:${employee?.name || ''}:${dataScope}:${canViewFinance ? 'finance' : 'restricted'}`;
+  const readScopeRef = useRef(readScope); readScopeRef.current = readScope;
+  const loadSequence = useRef(0);
+  const [resolvedReadScope, setResolvedReadScope] = useState(readScope);
   const [search, setSearch] = useRetainedView('Sales:search', '');
   const [filterCustomerId, setFilterCustomerId] = useRetainedView('Sales:filterCustomerId', 'all');
   const [filterServiceStatus, setFilterServiceStatus] = useRetainedView('Sales:filterServiceStatus', 'all');
@@ -164,9 +169,16 @@ export default function Sales() {
     { label: '负责人', indexes: [ledgerHeaders.indexOf('负责销售')], width: 12 },
   ];
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    setRows([]); setLoadError(null); setLoading(true); setResolvedReadScope(readScope);
+    void loadData();
+    return () => { loadSequence.current += 1; };
+  }, [readScope]);
 
   const loadData = async () => {
+    const request = ++loadSequence.current, capturedScope = readScope;
+    const isLatestRead = () => request === loadSequence.current && capturedScope === readScopeRef.current;
+    setRefreshing(true);
     try {
       const [customerRes, dealRes, subRes, paymentRes] = await loadWithRetry(() => Promise.all([
         client.entities.customers.query({ limit: 1000, sort: '-updated_at' }),
@@ -314,13 +326,17 @@ export default function Sales() {
           return bTime - aTime;
         });
 
+      if (!isLatestRead()) return;
       setRows(closedRows);
       setLoadError(null);
     } catch (err) {
+      if (!isLatestRead()) return;
       console.error(err);
+      const status = Number((err as any)?.response?.status || (err as any)?.status || (err as any)?.data?.status);
+      if ([401, 403, 404].includes(status)) setRows([]);
       setLoadError(getLoadErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (isLatestRead()) { setLoading(false); setRefreshing(false); }
     }
   };
 
@@ -441,6 +457,7 @@ export default function Sales() {
     );
   };
 
+  if (resolvedReadScope !== readScope) return <PageLoadState loading message="正在切换成交客户范围…" />;
   if (loading && rows.length === 0) {
     return <PageLoadState loading message="正在核对成交客户与服务状态…" />;
   }
@@ -488,6 +505,7 @@ export default function Sales() {
         />
       </div>
 
+      {loadError && rows.length > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900"><div className="min-w-0"><strong>当前显示上次结果，数据可能已过期</strong><p className="mt-1 break-words text-xs">{loadError}</p></div><Button type="button" variant="outline" className="min-h-11 shrink-0" disabled={refreshing} onClick={() => void loadData()}>{refreshing ? '重新读取中…' : '重新读取'}</Button></div>}
       <p className="text-xs text-slate-500">可访问成交客户总览 · 以下统计不随列表筛选变化</p>
       <div className="crm-order-summary calm-record-metrics grid grid-cols-2 xl:grid-cols-4 gap-3" aria-label="可访问成交客户总览">
         <Card className="border-slate-200"><CardContent className="p-4"><p className="text-sm text-slate-500">成交客户</p><p className="text-2xl font-semibold text-slate-800 mt-1">{totalClosedCustomers}</p></CardContent></Card>

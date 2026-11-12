@@ -1,3 +1,4 @@
+import '@/components/crm-final-home-tasks.css';
 import './crm-customer-delivery-compact.css';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
@@ -813,10 +814,10 @@ export default function Tasks() {
                   >
                     {isMobile && <div className="cf-task-record md:hidden">
                       <div className="cf-task-record-heading">
-                        <h3 className={completed ? 'line-through text-slate-500' : ''}>{customerName || mobileTitle}</h3>
+                        <h3 className={`fp-task-title ${completed ? 'line-through text-slate-500' : ''}`} title={customerName || mobileTitle}>{customerName || mobileTitle}</h3>
                         <Badge className={`cf-task-status ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
                       </div>
-                      {customerName && mobileActionTitle && <p className="cf-task-next">{mobileActionTitle}</p>}
+                      {customerName && mobileActionTitle && <p className="cf-task-next fp-task-title" title={mobileActionTitle}>{mobileActionTitle}</p>}
                       <div className="cf-task-timing">
                         <span>{t.assignee_name || '负责人未分配'}</span>
                         <span className={overdue ? 'text-rose-600' : ''}>{t.due_date ? `截止 ${getTaskDateKey(t.due_date)}` : '截止时间未设置'}</span>
@@ -844,12 +845,12 @@ export default function Tasks() {
                     {!isMobile && <div className="dc-task-desktop hidden flex-col gap-3 md:flex lg:flex-row lg:items-start lg:justify-between">
                       <div className="flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <span className={`font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
+                          <span title={t.title} className={`fp-task-title font-medium text-sm ${completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>{t.title}</span>
                           <Badge className={`text-xs ${statusColors[t.status] || 'bg-slate-100 text-slate-600'}`}>{extendedStatusLabels[t.status] || t.status || '未设置'}</Badge>
                           <span className="dc-task-auxiliary"><span>{priorityLabels[t.priority] || t.priority || '普通'}优先级</span><span>{taskSourceLabels[source]}</span>{t.automation_issue_id && <span>自动闭环</span>}{overdue && <span className="is-overdue">已逾期</span>}{dueToday && <span className="is-urgent">今日到期</span>}{waitingClient && t.status !== 'waiting_client' && <span>等待客户</span>}{stale && <span>3天未更新</span>}</span>
                         </div>
                         <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                          {t.customer_name && <span>客户: {t.customer_name}</span>}
+                          {t.customer_name && <span className="fp-task-customer" title={t.customer_name}>客户: {t.customer_name}</span>}
                           <span>负责: {t.assignee_name || '未分配'}</span>
                           {t.collaborator_names && <span>协作: {t.collaborator_names}</span>}
                           <span>类型: {taskTypeLabels[t.task_type] || t.task_type || '其他'}</span>
