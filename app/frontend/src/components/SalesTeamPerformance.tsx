@@ -1,6 +1,7 @@
 import '@/pages/crm-sales-visual-polish.css';
 import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { CheckCircle2, Plus, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -96,19 +97,35 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
   targetDate: string;
   onOpenWorkbench: (employeeId: number) => void;
 }) {
-  const [summary, setSummary] = useState<DailyTeamSummary | null>(null);
+  const navigate = useNavigate();
+  const { employee: actorEmployee, role: actorRole } = useRole();
+  const scope = JSON.stringify([actorEmployee?.id, actorRole, targetDate, employees.map(employee => [employee.id, employee.name])]);
+  const scopeRef = useRef(scope);
+  const loadedScopeRef = useRef<string | null>(null);
+  scopeRef.current = scope;
+  const [loadedSummary, setSummary] = useState<DailyTeamSummary | null>(null);
+  const summary = loadedScopeRef.current === scope ? loadedSummary : null;
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  const [readError, setReadError] = useState(false);
 
   useEffect(() => {
     let live = true;
-    setSummary(null);
+    let accessDenied = false;
+    const requestScope = scopeRef.current;
+    const current = () => live && scopeRef.current === requestScope;
+    const isDenied = (error: any) => [401, 403].includes(error?.response?.status || error?.data?.status || error?.status);
+    const withdraw = () => {
+      accessDenied = true;
+      if (current()) { loadedScopeRef.current = null; setSummary(null); setReadError(true); }
+    };
+    if (loadedScopeRef.current !== requestScope) { setSummary(null); setReadError(false); }
     setLoading(true);
     const read = async () => {
       const rows: DailyTeamRow[] = employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
       let cursor = 0;
       const readRows = async () => {
-        while (live && cursor < employees.length) {
+        while (current() && !accessDenied && cursor < employees.length) {
           const index = cursor++;
           const employee = employees[index];
           try {
@@ -118,7 +135,7 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
             if (Number(data?.salesperson?.id) === employee.id && (!data.target_date || data.target_date === targetDate)) {
               rows[index] = { ...employee, quota: dailyCount(data.quota), completed: dailyCount(data.completed_count), remaining: dailyCount(data.remaining_count) };
             }
-          } catch { /* An unreadable row stays unknown rather than becoming zero. */ }
+          } catch (error) { if (isDenied(error)) withdraw(); /* Other unreadable rows stay unknown. */ }
         }
       };
       const requests = [
@@ -130,7 +147,9 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
         Promise.allSettled(requests),
         Promise.all(Array.from({ length: Math.min(4, employees.length) }, () => readRows())),
       ]);
-      if (!live) return;
+      if (!current()) return;
+      if (results.some(result => result.status === "rejected" && isDenied(result.reason))) withdraw();
+      if (accessDenied) { setLoading(false); return; }
       const management = results[0].status === "fulfilled" ? results[0].value?.data : null;
       const pool = results[1].status === "fulfilled" ? results[1].value?.data : null;
       const report = results[2].status === "fulfilled" ? results[2].value?.data : null;
@@ -141,31 +160,33 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
       const stalled = dateMatches ? dailyCount(management?.owner_attention?.high_intent_stale) : null;
       const unassigned = dailyCount(pool?.pending);
       const connected = reportCurrent ? dailyCount(report?.summary?.connected) : null;
+      loadedScopeRef.current = requestScope;
       setSummary({ rows, connected, overdue, stalled, unassigned, incomplete: rows.some(row => row.completed === null || row.quota === null || row.remaining === null) || overdue === null || stalled === null || unassigned === null });
+      setReadError(false);
       setLoading(false);
     };
     void read();
     return () => { live = false; };
-  }, [employees, targetDate, reload]);
+  }, [employees, targetDate, reload, actorEmployee?.id, actorRole]);
 
-  const value = (count: number | null | undefined) => loading ? "—" : count === null || count === undefined ? "待确认" : count;
+  const value = (count: number | null | undefined) => loading && !summary ? "—" : count === null || count === undefined ? "待确认" : count;
   const dateLabel = targetDate === businessDateKey() ? "今日" : "当日";
   const recorded = summary && summary.rows.every(row => row.completed !== null) ? summary.rows.reduce((total, row) => total + (row.completed as number), 0) : null;
   const taskRows = summary?.rows || employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
-  const openProgress = (signal?: "overdue") => window.location.assign(`/sales-leads?view=intelligence&panel=leads${signal ? `&signal=${signal}` : ""}`);
-  return <div className="sw-team-today" aria-label="团队今日任务">
+  const openProgress = (signal?: "overdue") => navigate(`/sales-leads?view=intelligence&panel=leads${signal ? `&signal=${signal}` : ""}`);
+  return <div className="sw-team-today" aria-label="团队今日任务" aria-busy={loading}>
     <section className="sw-team-summary" aria-label="团队任务概况">
       <div><span>{dateLabel}已记录</span><strong>{value(recorded)}</strong></div>
       <div title="仅显示所选日期为今天、且已核验的 RingCentral 官方通话记录"><span>官方接通</span><strong>{value(summary?.connected)}</strong></div>
       <div><span>逾期回访</span><strong className={summary?.overdue ? "sw-count-attention" : undefined}>{value(summary?.overdue)}</strong></div>
     </section>
-    {summary?.incomplete && <div className="sw-team-error" role="alert"><span>部分任务数据暂不可用</span><Button variant="outline" onClick={() => setReload(current => current + 1)}>重新读取</Button></div>}
+    {(readError || summary?.incomplete) && <div className="sw-team-error" role="alert"><span>{readError ? '任务授权暂不可用，请重新读取' : '部分任务数据暂不可用'}</span><Button variant="outline" disabled={loading} onClick={() => setReload(current => current + 1)}>重新读取</Button></div>}
     <section className="sw-team-panel" aria-label="团队需要处理">
       <h2>需要处理</h2>
       <div className="sw-team-actions">
-        <div title="当前未分配商家，不随任务日期变化"><div><span>待分配商家</span><strong>{value(summary?.unassigned)}</strong></div><Button disabled={loading || summary?.unassigned === null} onClick={() => window.location.assign("/merchant-pool")}>分配商家</Button></div>
-        <div><div><span>逾期回访</span><strong className={summary?.overdue ? "sw-count-attention" : undefined}>{value(summary?.overdue)}</strong></div><Button variant="outline" title="查看当前线索" disabled={loading || summary?.overdue === null} onClick={() => openProgress("overdue")}>查看</Button></div>
-        <div><div><span>商机待跟进</span><strong>{value(summary?.stalled)}</strong></div><Button variant="outline" title="查看当前商机" disabled={loading || summary?.stalled === null} onClick={() => openProgress()}>查看</Button></div>
+        <div title="当前未分配商家，不随任务日期变化"><div><span>待分配商家</span><strong>{value(summary?.unassigned)}</strong></div><Button disabled={loading || summary?.unassigned == null} onClick={() => navigate("/merchant-pool")}>分配商家</Button></div>
+        <div><div><span>逾期回访</span><strong className={summary?.overdue ? "sw-count-attention" : undefined}>{value(summary?.overdue)}</strong></div><Button variant="outline" title="查看当前线索" disabled={loading || summary?.overdue == null} onClick={() => openProgress("overdue")}>查看</Button></div>
+        <div><div><span>商机待跟进</span><strong>{value(summary?.stalled)}</strong></div><Button variant="outline" title="查看当前商机" disabled={loading || summary?.stalled == null} onClick={() => openProgress()}>查看</Button></div>
       </div>
     </section>
     <section className="sw-team-panel sw-team-progress" aria-label="团队进度">

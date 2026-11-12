@@ -175,11 +175,12 @@ function SalesLeadWorkspace() {
   const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
   const [items, setItems] = useState<SalesLead[]>([]);
+  const [itemsScope, setItemsScope] = useState('');
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
   const [statsReady, setStatsReady] = useState(false);
   const [callReportError, setCallReportError] = useState(false);
-  const [leadInsights, setLeadInsights] = useState<Record<number, LeadInsight>>({});
+  const [insightsState, setInsightsState] = useState<{ scope: string; items: Record<number, LeadInsight> }>({ scope: '', items: {} });
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState(false);
   const [insightRetry, setInsightRetry] = useState(0);
@@ -200,6 +201,10 @@ function SalesLeadWorkspace() {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(initialParams.get('page')) || 1)));
   const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(initialParams.get('page_size'))) ? Number(initialParams.get('page_size')) : 20);
+  const listScope = JSON.stringify([employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, page, pageSize]);
+  const insightsScopeRef = useRef(listScope);
+  insightsScopeRef.current = listScope;
+  const leadInsights = insightsState.scope === listScope && itemsScope === listScope ? insightsState.items : {};
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [followUpOnly, setFollowUpOnly] = useState(false);
@@ -245,6 +250,7 @@ function SalesLeadWorkspace() {
   const loadData = async (options?: { page?: number; background?: boolean }) => {
     const requestId = ++loadRequestSeqRef.current;
     const requestPage = options?.page ?? page;
+    const requestListScope = JSON.stringify([employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, requestPage, pageSize]);
     if (!options?.background) setLoading(true);
     setAuxiliaryLoading(true);
     const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
@@ -259,12 +265,17 @@ function SalesLeadWorkspace() {
         if (requestId !== loadRequestSeqRef.current) return response;
         const nextItems = response.data?.items || [];
         setItems(nextItems);
+        setItemsScope(requestListScope);
         setListError(false);
         setTotal(response.data?.total || 0);
         setSelectedLeadIds(current => current.filter(id => nextItems.some((item: SalesLead) => item.id === id)));
         return response;
       }, error => {
-        if (requestId === loadRequestSeqRef.current) { setListError(true); setSelectedLeadIds([]); }
+        if (requestId === loadRequestSeqRef.current) {
+          setListError(true); setSelectedLeadIds([]);
+          const status = error?.response?.status || error?.data?.status || error?.status;
+          if (status === 401 || status === 403) { setItems([]); setItemsScope(''); setTotal(0); setInsightsState({ scope: '', items: {} }); }
+        }
         throw error;
       }).finally(() => {
         if (requestId === loadRequestSeqRef.current) setLoading(false);
@@ -323,19 +334,28 @@ function SalesLeadWorkspace() {
   useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !showForm && !dealLeadId });
 
   useEffect(() => {
-    if (view !== 'leads' || !items.length) return;
+    if (view !== 'leads' || !items.length || itemsScope !== listScope) return;
     let current = true;
+    const requestScope = listScope;
+    const isCurrent = () => current && insightsScopeRef.current === requestScope;
     setInsightsLoading(true);
     setInsightsError(false);
-    setLeadInsights({});
+    const ids = new Set(items.map(item => String(item.id)));
+    setInsightsState(previous => ({ scope: requestScope, items: previous.scope === requestScope
+      ? Object.fromEntries(Object.entries(previous.items).filter(([id]) => ids.has(id))) : {} }));
     const params = new URLSearchParams({ limit: String(items.length) });
     items.forEach(item => params.append('lead_ids', String(item.id)));
     salesApi<{ items: LeadInsight[] }>(`/leads?${params}`)
-      .then(data => { if (current) setLeadInsights(Object.fromEntries(data.items.map(item => [item.id, item]))); })
-      .catch(() => { if (current) setInsightsError(true); })
-      .finally(() => { if (current) setInsightsLoading(false); });
+      .then(data => { if (isCurrent()) setInsightsState({ scope: requestScope, items: Object.fromEntries(data.items.filter(item => ids.has(String(item.id))).map(item => [item.id, item])) }); })
+      .catch((error: any) => {
+        if (!isCurrent()) return;
+        const status = error?.response?.status || error?.data?.status || error?.status;
+        if (status === 401 || status === 403) setInsightsState({ scope: '', items: {} });
+        setInsightsError(true);
+      })
+      .finally(() => { if (isCurrent()) setInsightsLoading(false); });
     return () => { current = false; };
-  }, [items, view, insightRetry]);
+  }, [items, itemsScope, listScope, view, insightRetry]);
 
   const scopeText = useMemo(() => {
     if (isAdmin) return '全部销售';
@@ -825,7 +845,7 @@ function SalesLeadWorkspace() {
           </div>
           {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
           {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
-          <div data-testid="sales-leads-mobile-list" className="slr-mobile-list sl-order-mobile-list divide-y divide-slate-100 md:hidden">
+          <div data-testid="sales-leads-mobile-list" aria-busy={loading || insightsLoading} className="slr-mobile-list sl-order-mobile-list divide-y divide-slate-100 md:hidden">
             {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
               : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">当前范围暂无销售线索</p>
               : items.map(lead => {

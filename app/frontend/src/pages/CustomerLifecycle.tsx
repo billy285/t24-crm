@@ -199,8 +199,8 @@ export default function CustomerLifecycle() {
   useEffect(() => { void loadData(); }, []);
   useEffect(() => { if (firstFilterRender.current) { firstFilterRender.current = false; return; } setPage(1); }, [search, statusFilter, drilldownFilter, stopReasonFilter]);
   useEffect(() => {
-    if (isMobile && activeSection === 'overview') setActiveSection('customers');
-  }, [activeSection, isMobile]);
+    if (isMobile) setActiveSection(current => current === 'overview' ? 'customers' : current);
+  }, [isMobile]);
 
   const last30Start = useMemo(() => {
     const date = new Date(`${asOf}T00:00:00Z`);

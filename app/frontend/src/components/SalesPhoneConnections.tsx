@@ -69,6 +69,11 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
   const [busy, setBusy] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<{ employeeId: number; text: string; failed: boolean } | null>(null);
   const actor = `${employee?.id || ''}:${role}`;
+  const scope = `${actor}:${periodDays}`;
+  const scopeRef = useRef(scope);
+  const loadedScopeRef = useRef<string | null>(null);
+  scopeRef.current = scope;
+  const currentItems = loadedScopeRef.current === scope ? items : null;
   const actorRef = useRef<string | null>(actor);
   const actionRef = useRef<object | null>(null);
   actorRef.current = actor;
@@ -81,16 +86,24 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
 
   useEffect(() => {
     let live = true;
+    const requestScope = scopeRef.current;
+    const current = () => live && requestScope === scopeRef.current;
     const load = async () => {
-      if (live) setLoading(true);
+      if (current()) setLoading(true);
       try {
         const response = await invokeWithAuth({ url: `/api/ringcentral/team-status?days=${periodDays}`, method: 'GET' });
         if (!Array.isArray(response.data?.items)) throw new Error('Invalid connection response');
-        if (live) { setItems(response.data.items); setError(false); }
-      } catch { if (live) setError(true); }
-      finally { if (live) setLoading(false); }
+        if (current()) { loadedScopeRef.current = requestScope; setItems(response.data.items); setError(false); }
+      } catch (failure: any) {
+        if (current()) {
+          const status = failure?.response?.status || failure?.data?.status || failure?.status;
+          if (status === 401 || status === 403) { loadedScopeRef.current = null; setItems(null); }
+          setError(true);
+        }
+      }
+      finally { if (current()) setLoading(false); }
     };
-    setItems(null);
+    if (loadedScopeRef.current !== requestScope) { setItems(null); setError(false); }
     void load();
     const timer = window.setInterval(() => void load(), 30000);
     return () => { live = false; window.clearInterval(timer); };
@@ -98,7 +111,7 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
 
   const needsAction = (item: PhoneConnection) => connectionLabel(item) !== '实时同步已启用' || !!item.coverage?.needs_retry || !item.coverage?.last_attempt;
   const runAction = async (item: PhoneConnection, action: 'sync' | 'repair' | 'connect') => {
-    if (Number(employee?.id) !== item.employee_id || item.binding_conflict || actionRef.current) return;
+    if (Number(employee?.id) !== item.employee_id || item.binding_conflict || actionRef.current || loading || error || loadedScopeRef.current !== scopeRef.current) return;
     const ticket = {};
     actionRef.current = ticket;
     const current = () => actorRef.current === actor && actionRef.current === ticket;
@@ -117,6 +130,7 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
         await invokeWithAuth({ url: '/api/ringcentral/subscription/ensure', method: 'POST' });
         if (!current()) return;
       }
+      if (loadedScopeRef.current !== scopeRef.current) return;
       const result = await invokeWithAuth({ url: `/api/ringcentral/sync?days=${syncDays}`, method: 'POST' });
       if (!current()) return;
       const partial = result.data?.sync_window?.status !== 'completed';
@@ -129,16 +143,16 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
     }
   };
 
-  const attention = items?.filter(needsAction).length || 0;
-  const displayed = items?.filter(item => !attentionOnly || needsAction(item));
+  const attention = currentItems?.filter(needsAction).length || 0;
+  const displayed = currentItems?.filter(item => !attentionOnly || needsAction(item));
   return <section className="sales-phone-connections" aria-label={managing ? '团队电话接入' : '我的电话接入'} aria-busy={loading}>
     <details>
-      <summary><span><strong>{managing ? '团队电话接入' : '我的电话接入'}</strong><small>{error ? '连接状态读取失败' : !items ? '正在检查连接…' : items.length === 0 ? '暂无可统计销售' : attention ? `${items.length} 位销售 · ${attention} 位需处理` : `${items.length} 位销售 · 实时同步已启用`}</small></span><ChevronDown size={16} /></summary>
+      <summary><span><strong>{managing ? '团队电话接入' : '我的电话接入'}</strong><small>{error ? '连接状态读取失败' : !currentItems ? '正在检查连接…' : currentItems.length === 0 ? '暂无可统计销售' : attention ? `${currentItems.length} 位销售 · ${attention} 位需处理` : `${currentItems.length} 位销售 · 实时同步已启用`}{loading && currentItems && ' · 更新中'}</small></span><ChevronDown size={16} /></summary>
       <div className="sales-phone-body">
         <div className="sales-phone-actions"><p>每位销售用自己的CRM账号连接已分配的RingCentral账号或分机，通话按绑定销售归属。</p><Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}><RefreshCw size={14} />刷新状态</Button></div>
-        <div className="sales-sync-controls"><Button size="sm" variant="outline" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(value => !value)}>{attentionOnly ? '查看全部员工' : `只看需处理（${attention}）`}</Button><label>本人补同步期间<select value={syncDays} onChange={event => setSyncDays(Number(event.target.value))} disabled={!!busy}>{[1, 7, 30].map(days => <option key={days} value={days}>最近{days}天</option>)}</select></label></div>
-        {error && <p className="sales-phone-warning" role="alert"><AlertCircle size={15} />连接状态暂不可用，不能据此判断销售没有拨打。{items && ' 下方保留上次读取结果。'}<Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}>重新读取连接状态</Button></p>}
-        {displayed && displayed.length === 0 && items && items.length > 0 && <p role="status">当前没有需要处理的接入或补同步记录。</p>}
+        <div className="sales-sync-controls"><Button size="sm" variant="outline" aria-pressed={attentionOnly} onClick={() => setAttentionOnly(value => !value)}>{attentionOnly ? '查看全部员工' : `只看需处理（${attention}）`}</Button><label>本人补同步期间<select value={syncDays} onChange={event => setSyncDays(Number(event.target.value))} disabled={!!busy || loading || error}>{[1, 7, 30].map(days => <option key={days} value={days}>最近{days}天</option>)}</select></label></div>
+        {error && <p className="sales-phone-warning" role="alert"><AlertCircle size={15} />连接状态暂不可用，不能据此判断销售没有拨打。{currentItems && ' 下方保留上次读取结果。'}<Button type="button" size="sm" variant="outline" disabled={loading} onClick={retry}>重新读取连接状态</Button></p>}
+        {displayed && displayed.length === 0 && currentItems && currentItems.length > 0 && <p role="status">当前没有需要处理的接入或补同步记录。</p>}
         {displayed && displayed.length > 0 && <div className="sales-phone-grid">{displayed.map(item => {
           const label = connectionLabel(item);
           const healthy = label === '实时同步已启用';
@@ -151,7 +165,7 @@ export default function SalesPhoneConnections({ onConnectMine, periodDays = 7, o
             <SyncCoverageDetails coverage={item.coverage} />
             {actionNotice?.employeeId === item.employee_id && <p className={actionNotice.failed ? 'sales-phone-error' : 'sales-sync-success'} role="status">{actionNotice.text}</p>}
             {item.binding_conflict ? <p className="sales-phone-error">同一分机绑定了多个员工，请管理员核对归属后处理。</p> : item.last_error ? <p className="sales-phone-error">{item.last_error}</p> : !healthy && <p>{item.message || '请销售连接自己的电话账号，并检查同步状态。'}</p>}
-            {mine && !item.binding_conflict ? <div className="sales-sync-buttons">{(!healthy || !item.connected) && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => void runAction(item, 'connect')}>{item.connected || item.needs_reconnect ? '重新连接我的账号' : '连接我的RingCentral'}</Button>}{item.connected && !item.needs_reconnect && <><Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => void runAction(item, 'sync')}>{busy === 'sync' ? '正在补同步…' : '补同步我的通话'}</Button>{!item.realtime_sync_enabled && <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => void runAction(item, 'repair')}>{busy === 'repair' ? '正在修复…' : '修复实时同步并补同步'}</Button>}</>}</div> : !healthy && <p className="sales-phone-help">请该销售登录自己的CRM账号处理；主管不能代替授权或补同步。</p>}
+            {mine && !item.binding_conflict ? <div className="sales-sync-buttons">{(!healthy || !item.connected) && <Button type="button" size="sm" variant="outline" disabled={!!busy || loading || error} onClick={() => void runAction(item, 'connect')}>{item.connected || item.needs_reconnect ? '重新连接我的账号' : '连接我的RingCentral'}</Button>}{item.connected && !item.needs_reconnect && <><Button type="button" size="sm" variant="outline" disabled={!!busy || loading || error} onClick={() => void runAction(item, 'sync')}>{busy === 'sync' ? '正在补同步…' : '补同步我的通话'}</Button>{!item.realtime_sync_enabled && <Button type="button" size="sm" variant="outline" disabled={!!busy || loading || error} onClick={() => void runAction(item, 'repair')}>{busy === 'repair' ? '正在修复…' : '修复实时同步并补同步'}</Button>}</>}</div> : !healthy && <p className="sales-phone-help">请该销售登录自己的CRM账号处理；主管不能代替授权或补同步。</p>}
           </article>;
         })}</div>}
         <p className="sales-phone-footnote">以上按北京时间核对最近{periodDays}个自然日；重新绑定前的期间不会算作新绑定凭据。未核验区间与0条记录都不能证明没有拨打。真实员工授权及受控通话仍需逐人现场验收。</p>

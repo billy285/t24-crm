@@ -10,7 +10,7 @@ import './delivery-workspace.css';
 import './crm-delivery-refinement.css';
 import './delivery-records-refined.css';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
 import { businessDateDifference, businessDateKey, businessWeekRange } from '../lib/business-date';
@@ -1643,7 +1643,7 @@ export default function ServiceBoard() {
   ];
 
   // ==================== Progress Card Component ====================
-  const ProgressCard = ({ sp }: { sp: ServiceProgress }) => {
+  const renderProgressCard = ({ sp }: { sp: ServiceProgress }) => {
     const ts = getTaskStats(sp.id);
     const overdue = isOverdue(sp);
     const expiring = sp.service_stage !== 'ended' && isExpiringSoon(sp);
@@ -3152,7 +3152,7 @@ export default function ServiceBoard() {
               <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看交付</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新进展</Button></>}{canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-8 w-8 shrink-0 px-0" aria-label={`更多服务操作：${sp.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{nextStage && <DropdownMenuItem onSelect={() => handleAdvanceStage(sp)}>推进到{allStageLabels[nextStage] || nextStage}</DropdownMenuItem>}<DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-slate-700" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /><span>编辑服务资料</span></Button></DropdownMenuItem>{canEdit && canDelete && <DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-rose-600 hover:bg-rose-50" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /><span>删除服务</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div></td>
             </tr>;
           })}</tbody></CompactFinanceTable></div>}
-          {isMobile && <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}</div>}
+          {isMobile && <div className="dc-mobile-progress md:hidden">{paginatedProgresses.items.map(sp => <Fragment key={sp.id}>{renderProgressCard({ sp })}</Fragment>)}</div>}
         </>}
         <ProgressPaginationFooter />
       </section>}
@@ -3231,7 +3231,7 @@ export default function ServiceBoard() {
                     {opsStats && opsStats.pending > 0 && <Badge className="bg-blue-100 text-blue-700 text-xs">{opsStats.pending} 待办任务</Badge>}
                   </div>
                   <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {items.map(sp => <ProgressCard key={sp.id} sp={sp} />)}
+                    {items.map(sp => <Fragment key={sp.id}>{renderProgressCard({ sp })}</Fragment>)}
                   </div>
                 </div>
               );
