@@ -1,0 +1,27 @@
+{
+  "baseline_git_commit": "78a6a42c84200a92d70e11406d74ca9d97e650a6",
+  "baseline_source_sha": "3e53c8a373861b8c5097935e8d9f25ce2dc56493",
+  "build_receipt_sha256": "2c014609bc378f32abc127272d8540d1aa57857a036668e45a196e01838de224",
+  "changed_source_files": {
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "3b7ea7149f0e82493ef4f800a2fe7711c6127e213097f6ba8694f478dddd635d",
+    "app/frontend/src/components/crm-system-admin-polish.css": "ab55a39d1eec397c6ea515d60c38f05345e19e6aa894bc09c0008735f337f13c",
+    "app/frontend/src/components/crm-system-callback-polish.css": "941320dd32e7bbcfde9a7fe64176638dbbc846f633b14a5d4480f7237f688d65",
+    "app/frontend/src/components/crm-system-content-polish.css": "7733a73d51b82effbb09b6ed1e72ff2f36af2293e67fc6a2fadd976d71372db8",
+    "app/frontend/src/components/crm-system-finance-polish.css": "51f6cb8fbc715f1a41e847b5b9886a7eb7b3f0cbe308d7e985ae132c5ebbaf89",
+    "app/frontend/src/components/sales-phone-connections.css": "8412a41998016a693a60cacf245db7df5b44671bc38724c9b311e98717486d3e",
+    "app/frontend/src/pages/Callbacks.tsx": "70071ed4211dc6cc6a35f0b33061bcb299ba57a8e28a3858fa4ed142638a8c63",
+    "app/frontend/src/pages/MonthlyDeduction.tsx": "50e64e02b64000e153a0d4297c6e26bbfdc99646389d8d7db30de6f545194897",
+    "app/frontend/src/pages/Permissions.tsx": "9d2d97020bda1f4dcb8d88e61f785f33631f7ed0b94acf88c18b68d78aa13d94",
+    "app/frontend/src/pages/Sales.tsx": "29159920c54d4978eaf024c58c101e17ceac409f72cdf2c9fb0accd6d93e053a",
+    "app/frontend/src/pages/SalesKnowledge.tsx": "55e5074f2ad71752a3c54359f7ba53f609c5f854bd65fa966d73ceac02202627",
+    "app/frontend/src/pages/SalesLeads.tsx": "cd7fd6d8c0b6a8a606d6c498cb018e8af39b7cd0ad230fd9d8e90f76d452d935",
+    "app/frontend/src/pages/Settings.tsx": "12fc1d4ae241c8dea664c3240c2ebdfc8a7925aeb47e7e52c5559509bf9532de"
+  },
+  "dist_inventory_sha256": "d27495b468008599d6ad8f860688154c564e7aaf1712d1adfdfa03232d286bd4",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "56856883169a",
+  "source_commit_bytes_verified": true,
+  "source_sha": "4f1770c9b830fcadd896fc06a90de817cae9b14c",
+  "stage": "CRM_SYSTEM_UI_AUDIT_SOURCE_FREEZE"
+}
