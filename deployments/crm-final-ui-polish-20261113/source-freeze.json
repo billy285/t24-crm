@@ -1,0 +1,27 @@
+{
+  "baseline_git_commit": "bcc24b45d0aa9f4b67dcc3ba56ac27ace8d2cc42",
+  "baseline_source_sha": "0942925209970afe869ac9769c26880d27cc4471",
+  "build_receipt_sha256": "d17bd34e31b8799840559b64ac64915d45377137ef599267fa110c7ffae162ad",
+  "changed_source_files": {
+    "app/frontend/src/components/ServiceFollowThrough.tsx": "ca3dcc54406d22e4d996d3fb3b8ba844ff5dd976ebd865194fc08dca9dc53476",
+    "app/frontend/src/components/StripeHistoryReminders.tsx": "a19b81f76dadd8c5af148226ff3f1b06440986834e8588ea3257abc3e81fcd40",
+    "app/frontend/src/components/crm-final-home-tasks.css": "d3f213de92615f68ef11afee9c6a12029142109647a040318947a690c598a34f",
+    "app/frontend/src/pages/Commissions.tsx": "ce0b0cc9f6cc9e6f82772f490b4793c2b6d6ee4403650d031146aab925a25b4d",
+    "app/frontend/src/pages/Deals.tsx": "b24a890d47f1c387aeadc77829f62ca20c9e3dbd5043ab605e3421f657007e07",
+    "app/frontend/src/pages/Finance.tsx": "dbfc2d2fa6e155b95a29b299ac26a8762bfe9bbe494620c350b23471975f2309",
+    "app/frontend/src/pages/MerchantPool.tsx": "f7679d682e94515b24af02e163a3232e2ed1efae961f4c6bcc729ce392c03ef4",
+    "app/frontend/src/pages/Sales.tsx": "8d0fde9135f727d075b2a104ddf0249eb22fc639a29458a050629197c6dee24e",
+    "app/frontend/src/pages/SalesLeads.tsx": "68a56848b245c033b23c1795d37326b9298cf013464e6a12d52cf632cb74fd8d",
+    "app/frontend/src/pages/Tasks.tsx": "adb4469bb03bbe903dd6e96fc96f4b88885311ff84d5d942e36e995b1dc069af",
+    "app/frontend/tests/final-ui-read-states.test.mjs": "583dbbc42a03dcfad5099f98cb1a21f4e04d926108e161669bf3d577d8b51590",
+    "app/frontend/tests/home-task-focus.test.mjs": "6977714e0e069be4e0fa0870e9af36096f66f69c58fc0738c6bd3e4e0d4db457",
+    "app/frontend/tests/sales-list-interactions.test.mjs": "fd7ce50af7387924790cd0dcff8d94cb1b4c9ebcdbf9105ac8308e169f7df9fd"
+  },
+  "dist_inventory_sha256": "2ba91dcd0fcaa875cd09fff395e28ba6379918df74830018c7021e51c5cc330c",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "067ffd2185c2",
+  "source_commit_bytes_verified": true,
+  "source_sha": "3e53c8a373861b8c5097935e8d9f25ce2dc56493",
+  "stage": "CRM_FINAL_UI_POLISH_SOURCE_FREEZE"
+}
