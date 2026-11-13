@@ -23,6 +23,7 @@ from models.commissions import CustomerCommissionAttribution, SalesPartner
 from models.customers import Customers
 from models.deals import Deals
 from models.employees import Employees
+from services.customer_codes import allocate_customer_code
 from models.management_decisions import BusinessLine, CustomerEngagement, EngagementSourceLink, ProductCatalog, ProductPlan
 from models.sales_call_activities import SalesCallActivities
 from models.sales_deal_controls import SalesQuoteRequests
@@ -399,7 +400,8 @@ async def register(db, lead_id, payload, user):
     new_customer = customer is None
     if new_customer:
         preferred = next((item for item in source["contacts"] if item.get("id") == source["preferred_contact_id"]), source["contacts"][0])
-        customer = Customers(customer_code=f"C{now:%Y%m%d}-{uuid4().hex[:10].upper()}", sales_lead_id=lead.id,
+        customer_code = await allocate_customer_code(db, industry=lead.industry)
+        customer = Customers(customer_code=customer_code, sales_lead_id=lead.id,
             **{key: getattr(lead, key) for key in ("business_name", "contact_name", "phone", "address", "city", "state", "country", "industry", "website", "source")},
             email=preferred.get("email"), wechat=preferred.get("wechat"),
             sales_person=lead.assigned_sales_name, sales_employee_id=lead.assigned_sales_id, status="closed",

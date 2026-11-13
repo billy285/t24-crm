@@ -40,7 +40,7 @@ for (const width of [1093, 390]) {
   test(`老板异常总览 ${width}：有重点、可直达、核款仍由老板完成`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 }); const { writes } = await fixture(page); await page.goto(baseUrl);
     const panel = page.getByRole('region', { name: '老板异常总览' }); await expect(panel.getByText('核对客户收款', { exact: true })).toBeVisible(); await expect(panel.getByText('已等待 3 天', { exact: false })).toBeVisible();
-    await panel.getByRole('button', { name: '续费待核对 1', exact: true }).click(); await expect(page).toHaveURL(/view=renewals/); await expect(page.getByText('扣款失败，待老板核对')).toBeVisible(); await overflow(page); expect(writes).toEqual([]);
+    await panel.getByText('查看全部分类与统计', { exact: true }).click(); await panel.getByRole('button', { name: '续费待核对 1', exact: true }).click(); await expect(page).toHaveURL(/view=renewals/); await expect(page.getByText('扣款失败，待老板核对')).toBeVisible(); await overflow(page); expect(writes).toEqual([]);
     if (process.env.T24_FOLLOW_THROUGH_SCREENSHOTS) await page.screenshot({ path: `${process.env.T24_FOLLOW_THROUGH_SCREENSHOTS}/renewal-owner-${width}.png`, animations: 'disabled' });
   });
   test(`运营清单 ${width}：本人交付编辑、保存依据，不出现收款或财务`, async ({ page }) => {
@@ -70,7 +70,7 @@ test('读取失败不显示正常空态，可重试；空记录明确覆盖未�
 test('续费通知依据只读，保留回到来源地址，数据未覆盖不宣称全部正常', async ({ page }) => {
   const { writes } = await fixture(page); await page.goto(`${baseUrl}/operations-workbench?view=renewals&returnTo=%2F`); await expect(page.getByText('仅覆盖已关联成交后的通知，未收到通知不等于扣款正常。')).toBeVisible(); await page.getByText('查看通知依据 · 1 条').click(); await expect(page.getByText('账单 in_synthetic_81')).toBeVisible(); await expect(page.getByText('USD 198.00 · 通知金额，待老板核对')).toBeVisible(); await page.getByRole('button', { name: '返回来源页面', exact: true }).click(); await expect(page).toHaveURL(baseUrl + '/'); expect(writes).toEqual([]);
 });
-test('老板总览拒绝外部跳转地址', async ({ page }) => { await fixture(page, { maliciousHref: true }); await page.goto(baseUrl); await expect(page.getByRole('region', { name: '老板异常总览' }).getByRole('button', { name: /先处理 核对客户收款/ })).toBeDisabled(); });
+test('老板总览拒绝外部跳转地址', async ({ page }) => { await fixture(page, { maliciousHref: true }); await page.goto(baseUrl); await expect(page.getByRole('region', { name: '老板异常总览' }).getByRole('button', { name: /开工验收餐厅.*核对客户收款/ })).toBeDisabled(); });
 
 test('提醒随重新聚焦读取最新数据；开工编辑不被后台刷新覆盖', async ({ page }) => {
   const { reads } = await fixture(page); await page.goto(baseUrl); await expect(page.getByRole('region', { name: '老板异常总览' })).toBeVisible(); const before = reads.filter(path => path.endsWith('/owner-overview')).length; await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await expect.poll(() => reads.filter(path => path.endsWith('/owner-overview')).length).toBeGreaterThan(before);

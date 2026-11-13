@@ -19,6 +19,7 @@ findDefaults(dictAst);
 const source = readFileSync(new URL('../src/pages/Customers.tsx', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('Customers.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const initializers = new Map();
+const projectInputDate = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'projectInputDate').getText(ast);
 let managerSaved, stageDisabled, stageChange, badgeLabel;
 function scan(node) {
   if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) initializers.set(node.name.text, node.initializer.getText(ast));
@@ -164,25 +165,43 @@ test('customer form removes WeChat editing and all create/update paths omit it w
   assert.equal(editableInput, false); assert.equal(contactsDescription, '客户编号与邮箱');
   const permissionContext = { exports: {} };
   vm.runInNewContext(compile(readFileSync(new URL('../src/lib/customer-permissions.ts', import.meta.url), 'utf8')), permissionContext);
-  for (const mode of ['owner-create', 'ordinary-create', 'project-update', 'ordinary-update']) {
+  for (const mode of ['owner-create', 'ordinary-create', 'project-update', 'ordinary-update', 'owner-basic-update']) {
     const editing = mode.endsWith('update'), writes = [], errors = [];
     const historical = { id: 99, business_name: '原客户', contact_name: '负责人', phone: '+1 415 555 0100', country: 'US', wechat: 'historical-contact-keep', status: 'closed' };
-    let stored = { ...historical };
+    const originalProject = {
+      engagement_id: 77, package_name: '旧套餐', business_line_code: 'beauty_os', status:'active_paid', product_name:'美业 OS',
+      paid_started_at:'2026-11-01', original_paid_started_at:'2026-11-01T09:57:42Z', stopped_at:'', original_stopped_at:null,
+      sales_employee_id:7, owner_employee_id:'8',
+    };
+    let stored = { ...historical }, submittedProjects;
     const apply = (method, data) => { writes.push({ method, data: plain(data) }); stored = { ...stored, ...data }; return { data: stored }; };
     const form = { ...historical, customer_code: 'TEST-99', business_name: 'Edited synthetic customer', wechat: 'stale-draft-should-not-write', selected_platforms: [], interested_packages: [], interested_packages_snapshot: {}, sales_employee_id: '', monthly_orders: 0 };
     const sandbox = {
-      exports: {}, Date, URLSearchParams, form, customers: editing ? [historical] : [], editingCustomer: historical, editingId: editing ? 99 : null, saving: false, customerProjectsLoading: false, customerProjectForms: [],
-      canEditBasic: () => true, canAssignCustomer: () => false, canEditProjects: mode === 'project-update', isOwner: mode === 'owner-create' || mode === 'project-update', employee: { name: 'Synthetic operator' }, selectedCustomer: editing ? historical : null,
+      exports: {}, Date, URLSearchParams, form, originalCustomerForm: {current: editing ? {...form, business_name: historical.business_name} : null}, customers: editing ? [historical] : [], editingCustomer: historical, editingId: editing ? 99 : null, saving: false, customerProjectsLoading: false, originalProjectForms: {current:new Map([[77, originalProject]])},
+      customerProjectForms: mode === 'project-update' ? [{...originalProject, package_name:'已修改套餐'}] : mode === 'owner-basic-update' ? [originalProject] : [],
+      canEditBasic: () => true, canAssignCustomer: () => false, canEditProjects: ['owner-basic-update','project-update'].includes(mode), isOwner: ['owner-create', 'owner-basic-update', 'project-update'].includes(mode), employee: { name: 'Synthetic operator' }, selectedCustomer: editing ? historical : null,
       parsePhoneNumber: () => ({ isValid: true }), activeCustomerProjectStatuses: new Set(), getPackageLabelForSnapshot: () => '', serializePackageSnapshot: () => '{}', editableCustomerPayload: permissionContext.exports.editableCustomerPayload,
-      invokeWithAuth: async request => apply(request.method, request.data.customer), client: { entities: { customers: { create: async request => apply('POST', request.data), update: async request => apply('PUT', request.data) } } },
+      invokeWithAuth: async request => { submittedProjects = request.data.projects; return apply(request.method, request.data.customer); }, client: { entities: { customers: { create: async request => apply('POST', request.data), update: async request => apply('PUT', request.data) } } },
       toast: { error: value => errors.push(value), success() {} }, getErrorDetail: error => error.message, getNextAutoCode: () => 'TEST-99', commissionPartnerId: 'auto', commissionEffectiveFrom: '2026-11-13', customerCreationFeedback: () => ({ canOpen: true, message: 'created' }),
       setSaving() {}, setCustomers() {}, setShowForm() {}, customerDraft: { markSaved() {} }, loadCustomers: async () => {}, loadCustomerDetail: async () => {}, logOperation() {},
     };
-    vm.runInNewContext(compile(`exports.save = ${initializers.get('handleSave')};`), sandbox);
+    vm.runInNewContext(compile(`
+${projectInputDate}
+exports.save = ${initializers.get('handleSave')};`), sandbox);
     await sandbox.exports.save();
     assert.deepEqual(errors, [], mode); assert.equal(writes.length, 1, mode);
     assert.ok(!Object.hasOwn(writes[0].data, 'wechat'), mode);
-    if (editing) assert.equal(stored.wechat, 'historical-contact-keep', mode);
+    if (editing) {
+      assert.equal(stored.wechat, 'historical-contact-keep', mode);
+      assert.deepEqual(Object.keys(writes[0].data).sort(), ['business_name','updated_at'], mode);
+    }
+    if (mode === 'project-update') {
+      assert.equal(submittedProjects.length, 1);
+      assert.equal(submittedProjects[0].sales_employee_id, 7);
+      assert.equal(submittedProjects[0].paid_started_at, '2026-11-01T09:57:42Z');
+      assert.equal(submittedProjects[0].package_name, '已修改套餐');
+    }
+    if (mode === 'owner-basic-update') assert.equal(submittedProjects, undefined);
     assert.equal(form.wechat, 'stale-draft-should-not-write', mode);
   }
 });

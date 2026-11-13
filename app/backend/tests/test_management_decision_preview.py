@@ -305,3 +305,24 @@ def test_incomplete_mixed_and_unknown_payments_fail_closed():
     assert unknown["lifecycle_eligible"] is False
     assert unknown["components"][0]["classification"] == "needs_review"
     assert {item["code"] for item in unknown["warnings"]} == {"unrecognized_income", "missing_currency"}
+
+
+@pytest.mark.parametrize("line,income,classification", [
+    ("beauty_os", "other_income", "os_subscription"),
+    ("restaurant_os", "ordering_fee", "os_subscription"),
+    ("managed_service", "management_fee", "service_revenue"),
+    ("one_time_project", "other_income", "one_time_project"),
+])
+def test_explicit_project_classifies_generic_payment_without_inferring_from_store_or_plan_name(line, income, classification):
+    source = Payments(id=1, customer_id=10, engagement_id=22, amount_paid=198,
+                      income_type=income, currency="USD", product_name="标准套餐")
+    linked = classify_payment(source, (line, "catalog-family"))
+    assert linked["warnings"] == []
+    assert linked["verified_project_id"] == 22
+    assert [(c["classification"], c["business_line"], c["product_code"]) for c in linked["components"]] == [
+        (classification, line, "catalog-family")
+    ]
+    source.income_type = "ads_fee"
+    mismatched = classify_payment(source, ("beauty_os", "catalog-family"))
+    assert mismatched["components"][0]["classification"] == "pass_through_principal"
+    assert any(w["code"] == "project_income_conflict" for w in mismatched["warnings"])

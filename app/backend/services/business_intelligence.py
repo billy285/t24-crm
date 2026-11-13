@@ -5,11 +5,13 @@ import calendar
 from datetime import date, datetime, timedelta, timezone
 import json
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.ad_fund_settlements import AdFundSettlement
+from models.automation import DataQualityIssue
 from models.commissions import CommissionEntry
 from models.customer_callbacks import Customer_callbacks
 from models.company_expenses import Company_expenses
@@ -19,12 +21,20 @@ from models.expenses import Expenses
 from models.finance_refunds import FinanceRefund
 from models.finance_exchange_rates import MonthlyExchangeRate
 from models.finance_profit_closes import MonthlyProfitClose
-from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
+from models.management_decisions import BusinessLine, CustomerEngagement, EngagementSourceLink, ProductCatalog
+from models.opportunities import Opportunities
 from models.payments import Payments
 from models.service_progresses import Service_progresses
 from models.service_tasks import Service_tasks
 from models.subscriptions import Subscriptions
 from models.tasks import Tasks
+
+
+BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+def _observation_day(now: Optional[datetime] = None) -> date:
+    return (now or datetime.now(timezone.utc)).astimezone(BEIJING).date()
 
 
 ACTIVE_PROJECT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
@@ -138,7 +148,18 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
     expenses = (await db.execute(select(Expenses))).scalars().all()
     commissions = (await db.execute(select(CommissionEntry).where(CommissionEntry.status.in_(FINAL_COMMISSION_STATUSES)))).scalars().all()
     subscriptions = (await db.execute(select(Subscriptions))).scalars().all()
-    tasks = (await db.execute(select(Tasks))).scalars().all()
+    task_rows = (await db.execute(
+        select(Tasks, DataQualityIssue.customer_id, DataQualityIssue.project_id, DataQualityIssue.code,
+               Opportunities.customer_id, Opportunities.converted_engagement_id)
+        .outerjoin(DataQualityIssue, Tasks.automation_issue_id == DataQualityIssue.id)
+        .outerjoin(Opportunities, Tasks.opportunity_id == Opportunities.id)
+    )).all()
+    # A classification review can confirm a source link without changing the legacy receipt.
+    confirmed_sources = (await db.execute(
+        select(EngagementSourceLink.source_type, EngagementSourceLink.source_id, EngagementSourceLink.engagement_id)
+        .where(EngagementSourceLink.confidence == "confirmed",
+               EngagementSourceLink.source_type.in_(("payment", "subscription")))
+    )).all()
     service_tasks = (await db.execute(select(Service_tasks))).scalars().all()
     progresses = (await db.execute(select(Service_progresses))).scalars().all()
     callbacks = (await db.execute(select(Customer_callbacks))).scalars().all()
@@ -154,7 +175,11 @@ async def _base_rows(db: AsyncSession) -> dict[str, Any]:
         "employee_by_id": {int(row.id): row for row in employees},
         "employee_by_name": {str(row.name).strip(): row for row in employees if row.name},
         "payments": payments, "refunds": refunds, "settlements": settlements, "expenses": expenses,
-        "commissions": commissions, "subscriptions": subscriptions, "tasks": tasks,
+        "commissions": commissions, "subscriptions": subscriptions, "tasks": [row[0] for row in task_rows],
+        "health_task_sources": {task.id: (issue_customer, issue_project, code, opp_customer, opp_project)
+                                for task, issue_customer, issue_project, code, opp_customer, opp_project in task_rows
+                                if task.automation_issue_id or task.opportunity_id},
+        "health_confirmed_sources": confirmed_sources,
         "service_tasks": service_tasks, "progresses": progresses, "callbacks": callbacks,
         "company_expenses": company_expenses, "exchange_rates": exchange_rates,
         "profit_closes": profit_closes,
@@ -346,86 +371,195 @@ async def build_unit_economics(
     }
 
 
+def _health_source_project(row, candidates, linked_ids=()):
+    """Only an unambiguous project owned by this customer can receive a deduction."""
+    references = set(linked_ids)
+    if getattr(row, "engagement_id", None) is not None:
+        references.add(row.engagement_id)
+    if len(references) > 1:
+        return None
+    matches = [
+        project.id for project in candidates
+        if (not references or project.id in references)
+        and (not getattr(row, "business_line_id", None) or row.business_line_id == project.business_line_id)
+        and (not getattr(row, "product_id", None) or row.product_id == project.product_id)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _health_record_groups(base, projects_by_customer):
+    # An empty project key is a customer-level signal, including conflicting source links.
+    groups = defaultdict(lambda: defaultdict(list))
+    confirmed = defaultdict(set)
+    for kind, source_id, project_id in base.get("health_confirmed_sources", ()):
+        confirmed[kind, source_id].add(project_id)
+    payment_scope = {}
+    for kind, collection in (("payment", "payments"), ("subscription", "subscriptions")):
+        for row in base[collection]:
+            project_id = _health_source_project(row, projects_by_customer.get(row.customer_id, ()),
+                                                confirmed[kind, row.id])
+            groups[row.customer_id, project_id][collection].append(row)
+            if kind == "payment":
+                payment_scope[row.customer_id, row.id] = project_id
+    for refund in base["refunds"]:
+        project_id = payment_scope.get((refund.customer_id, refund.payment_id))
+        groups[refund.customer_id, project_id]["refunds"].append(refund)
+
+    task_sources = base.get("health_task_sources", {})
+    for collection in ("tasks", "service_tasks", "progresses", "callbacks"):
+        for row in base[collection]:
+            if row.customer_id is None:
+                continue
+            candidates = projects_by_customer.get(row.customer_id, ())
+            project_id = candidates[0].id if len(candidates) == 1 else None
+            if collection == "tasks" and (row.automation_issue_id or row.opportunity_id):
+                issue_customer, issue_project, code, opp_customer, opp_project = task_sources.get(row.id, (None,) * 5)
+                if code == "customer_health_risk":
+                    # The reminder about a score cannot become new evidence for that score.
+                    continue
+                references = []
+                if row.automation_issue_id:
+                    references.append((issue_customer, issue_project))
+                if row.opportunity_id:
+                    references.append((opp_customer, opp_project))
+                ids = {ref_project for ref_customer, ref_project in references if ref_customer == row.customer_id}
+                project_id = None
+                if len(ids) == 1 and all(ref_customer == row.customer_id for ref_customer, _ in references):
+                    source_project = ids.pop()
+                    if source_project is None and len(candidates) == 1:
+                        project_id = candidates[0].id
+                    elif any(project.id == source_project for project in candidates):
+                        project_id = source_project
+            groups[row.customer_id, project_id][collection].append(row)
+    return groups
+
+
+def _health_reasons(records, today: date, project_status=None):
+    reasons = []
+
+    def deduct(points, code, message):
+        reasons.append({"code": code, "points": points, "message": message})
+
+    if project_status in {"at_risk", "pending_stop"}:
+        deduct(35, "project_status_risk", "项目已被标记为有风险或待停止")
+    elif project_status in {"paused", "pending_setup"}:
+        deduct(15, "project_status_watch", "项目暂停或尚未完成开通")
+    outstanding = Counter()
+    for row in records.get("payments", ()):
+        amount = _money(row.outstanding_amount)
+        if amount > 0:
+            outstanding[str(row.currency or "币种待核实").upper()] += amount
+    if any(amount > 0.01 for amount in outstanding.values()):
+        balances = " / ".join(f"{currency} {amount:,.2f}" for currency, amount in sorted(outstanding.items()))
+        deduct(25, "outstanding_receivable", f"仍有应收款未收齐（{balances}）")
+
+    ends = [_day(row.end_date) for row in records.get("subscriptions", ()) if row.status not in {"stopped", "cancelled"}]
+    expired = sum(1 for end in ends if end and end < today)
+    soon = sum(1 for end in ends if end and 0 <= (end - today).days <= 14)
+    if expired:
+        deduct(30, "subscription_expired", f"有 {expired} 个套餐已到期但未闭环")
+    elif soon:
+        deduct(10, "subscription_due_soon", f"有 {soon} 个套餐将在 14 天内到期")
+    recent = sum(1 for row in records.get("refunds", ())
+                 if (day := _day(row.refund_date)) and 0 <= (today - day).days <= 90)
+    if recent:
+        deduct(15, "recent_refund", f"近 90 天发生 {recent} 笔退款")
+    overdue_tasks = sum(1 for row in records.get("tasks", ())
+                        if row.status in OPEN_TASK_STATUSES and (day := _day(row.due_date)) and day < today)
+    if overdue_tasks:
+        deduct(min(20, 5 + overdue_tasks * 3), "overdue_tasks", f"有 {overdue_tasks} 个协作任务逾期")
+    overdue_delivery = sum(1 for row in records.get("service_tasks", ())
+                           if row.status not in {"completed", "cancelled"} and (day := _day(row.due_date)) and day < today)
+    if overdue_delivery:
+        deduct(min(20, 5 + overdue_delivery * 3), "overdue_delivery", f"有 {overdue_delivery} 个交付任务逾期")
+    unresolved = sum(1 for row in records.get("progresses", ()) if row.issue_status and not row.issue_resolved)
+    if unresolved:
+        deduct(15, "unresolved_service_issue", f"有 {unresolved} 个服务问题未解决")
+    overdue_callbacks = sum(1 for row in records.get("callbacks", ())
+                            if row.status == "pending" and (day := _day(row.callback_date)) and day < today)
+    if overdue_callbacks:
+        deduct(10, "overdue_callback", f"有 {overdue_callbacks} 个客户回访逾期")
+    return sorted(reasons, key=lambda reason: reason["points"], reverse=True)
+
+
+def _health_score(reasons):
+    score = max(0, 100 - sum(reason["points"] for reason in reasons))
+    level = "critical" if score < 40 else "risk" if score < 60 else "watch" if score < 80 else "healthy"
+    return {"score": score, "level": level, "reasons": reasons}
+
+
+def _has_observed_service(project, records, today):
+    def has_started(value):
+        day = _day(value)
+        return day is not None and day <= today
+
+    if has_started(project.paid_started_at):
+        return True
+    if any(_service_amount(row) > 0 and has_started(row.payment_date) for row in records.get("payments", ())):
+        return True
+    if any(has_started(row.last_payment_date) for row in records.get("subscriptions", ())):
+        return True
+    if any(row.progress_percent and row.progress_percent > 0 for row in records.get("progresses", ())):
+        return True
+    return any(row.status == "completed" and has_started(row.completed_at or row.completed_date)
+               for row in records.get("service_tasks", ()))
+
+
 async def build_customer_health(
     db: AsyncSession,
     *,
     today: Optional[date] = None,
     base: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    today = today or datetime.now(timezone.utc).date()
+    today = today or _observation_day()
     base = base or await _base_rows(db)
-    projects: list[CustomerEngagement] = base["projects"]
-    subscriptions = base["subscriptions"]
-    payments = base["payments"]
-    refunds = base["refunds"]
-    tasks = base["tasks"]
-    service_tasks = base["service_tasks"]
-    progresses = base["progresses"]
-    callbacks = base["callbacks"]
-
-    by_customer = lambda rows: defaultdict(list, {
-        key: [row for row in rows if int(getattr(row, "customer_id", 0) or 0) == key]
-        for key in {int(getattr(row, "customer_id", 0) or 0) for row in rows}
-    })
-    sub_by_customer, pay_by_customer, refund_by_customer = map(by_customer, (subscriptions, payments, refunds))
-    task_by_customer, service_by_customer, progress_by_customer, callback_by_customer = map(by_customer, (tasks, service_tasks, progresses, callbacks))
+    projects = base["projects"]
+    _, projects_by_customer = _project_assignment(projects)
+    groups = _health_record_groups(base, projects_by_customer)
     items = []
+    observing = []
     for project in projects:
+        if project.status not in ACTIVE_PROJECT_STATUSES:
+            continue
         customer_id = int(project.customer_id)
-        score, reasons = 100, []
-        def deduct(points: int, code: str, message: str) -> None:
-            nonlocal score
-            score -= points
-            reasons.append({"code": code, "points": points, "message": message})
-
-        if project.status in {"at_risk", "pending_stop"}:
-            deduct(35, "project_status_risk", "项目已被标记为有风险或待停止")
-        elif project.status in {"paused", "pending_setup"}:
-            deduct(15, "project_status_watch", "项目暂停或尚未完成开通")
-        outstanding = sum(max(_money(row.outstanding_amount), 0) for row in pay_by_customer[customer_id])
-        if outstanding > 0.01:
-            deduct(25, "outstanding_receivable", f"仍有应收款未收齐（{outstanding:,.2f}，币种需在财务明细核对）")
-        related_subscriptions = [row for row in sub_by_customer[customer_id] if not row.engagement_id or int(row.engagement_id) == int(project.id)]
-        expired = [row for row in related_subscriptions if row.status not in {"stopped", "cancelled"} and _day(row.end_date) and _day(row.end_date) < today]
-        soon = [row for row in related_subscriptions if row.status not in {"stopped", "cancelled"} and _day(row.end_date) and 0 <= (_day(row.end_date) - today).days <= 14]
-        if expired:
-            deduct(30, "subscription_expired", f"有 {len(expired)} 个套餐已到期但未闭环")
-        elif soon:
-            deduct(10, "subscription_due_soon", f"有 {len(soon)} 个套餐将在 14 天内到期")
-        recent_refunds = [row for row in refund_by_customer[customer_id] if _day(row.refund_date) and 0 <= (today - _day(row.refund_date)).days <= 90]
-        if recent_refunds:
-            deduct(15, "recent_refund", f"近 90 天发生 {len(recent_refunds)} 笔退款")
-        overdue_tasks = [row for row in task_by_customer[customer_id] if row.status in OPEN_TASK_STATUSES and _day(row.due_date) and _day(row.due_date) < today]
-        if overdue_tasks:
-            deduct(min(20, 5 + len(overdue_tasks) * 3), "overdue_tasks", f"有 {len(overdue_tasks)} 个协作任务逾期")
-        overdue_delivery = [row for row in service_by_customer[customer_id] if row.status not in {"completed", "cancelled"} and _day(row.due_date) and _day(row.due_date) < today]
-        if overdue_delivery:
-            deduct(min(20, 5 + len(overdue_delivery) * 3), "overdue_delivery", f"有 {len(overdue_delivery)} 个交付任务逾期")
-        unresolved = [row for row in progress_by_customer[customer_id] if row.issue_status and not row.issue_resolved]
-        if unresolved:
-            deduct(15, "unresolved_service_issue", f"有 {len(unresolved)} 个服务问题未解决")
-        overdue_callbacks = [row for row in callback_by_customer[customer_id] if row.status == "pending" and _day(row.callback_date) and _day(row.callback_date) < today]
-        if overdue_callbacks:
-            deduct(10, "overdue_callback", f"有 {len(overdue_callbacks)} 个客户回访逾期")
-        score = max(0, score)
-        level = "critical" if score < 40 else "risk" if score < 60 else "watch" if score < 80 else "healthy"
+        records = groups.get((customer_id, project.id), {})
         customer = base["customer_by_id"].get(customer_id)
+        customer_name = customer.business_name if customer else f"客户 #{customer_id}"
+        reasons = _health_reasons(records, today, project.status)
+        setup_only = project.status == "pending_setup" and all(reason["code"] == "project_status_watch" for reason in reasons)
+        if (not reasons or setup_only) and not _has_observed_service(project, records, today):
+            observing.append({"project_id": project.id, "customer_id": customer_id,
+                              "customer_name": customer_name, "product_name": project.package_name})
+            continue
+        health = _health_score(reasons)
         line = base["line_by_id"].get(int(project.business_line_id))
         employee = base["employee_by_id"].get(int(project.owner_employee_id)) if project.owner_employee_id else None
-        action = "继续正常服务并按节奏回访" if level == "healthy" else (
-            "48 小时内由负责人核对收款、续费和服务问题" if level in {"risk", "critical"} else "本周完成到期、任务和客户反馈复查"
+        action = "继续正常服务并按节奏回访" if health["level"] == "healthy" else (
+            "48 小时内由负责人核对收款、续费和服务问题" if health["level"] in {"risk", "critical"} else "本周完成到期、任务和客户反馈复查"
         )
         items.append({
-            "project_id": int(project.id), "customer_id": customer_id,
-            "customer_name": customer.business_name if customer else f"客户 #{customer_id}",
+            "project_id": int(project.id), "customer_id": customer_id, "customer_name": customer_name,
             "business_line": line.name if line else "未分类", "product_name": project.package_name,
             "project_status": project.status, "owner_employee_id": project.owner_employee_id,
-            "owner_name": employee.name if employee else None, "score": score, "level": level,
-            "reasons": sorted(reasons, key=lambda row: row["points"], reverse=True), "recommended_action": action,
+            "owner_name": employee.name if employee else None, **health, "recommended_action": action,
         })
+    customer_signals = []
+    for (customer_id, project_id), records in groups.items():
+        if project_id is not None or customer_id not in projects_by_customer:
+            continue
+        customer = base["customer_by_id"].get(customer_id)
+        reasons = _health_reasons(records, today)
+        if reasons and customer:
+            customer_signals.append({
+                "customer_id": customer_id, "customer_name": customer.business_name,
+                "owner_employee_id": customer.sales_employee_id, "owner_name": customer.sales_person,
+                **_health_score(reasons),
+            })
+    customer_signals.sort(key=lambda row: (row["score"], row["customer_id"]))
     items.sort(key=lambda row: (row["score"], row["customer_name"]))
     counts = Counter(row["level"] for row in items)
-    return {"summary": dict(counts), "items": items, "auto_stop_enabled": False, "updated_through": today.isoformat()}
+    return {"summary": dict(counts), "items": items, "observing_projects": observing, "customer_signals": customer_signals,
+            "auto_stop_enabled": False, "updated_through": today.isoformat()}
 
 
 def _converted(usd_value: float, cny_value: float, rate: Optional[float]) -> Optional[float]:
@@ -799,6 +933,16 @@ async def health_risk_anomalies(db: AsyncSession, *, today: Optional[date] = Non
             "message": f"客户健康度 {row['score']} 分：{reason_text}",
             "suggested_action": row["recommended_action"],
         })
+    for row in health["customer_signals"]:
+        if row["level"] in {"risk", "critical"}:
+            anomalies.append({
+                "customer_id": row["customer_id"], "customer_name": row["customer_name"],
+                "project_id": None, "assignee_id": row["owner_employee_id"], "assignee_name": row["owner_name"],
+                "code": "customer_health_risk", "category": "risk",
+                "severity": "high" if row["level"] == "critical" else "warning",
+                "message": "客户有多项待跟进事项，尚未归属具体项目",
+                "suggested_action": "进入客户记录查看并跟进",
+            })
     return anomalies
 
 
@@ -808,13 +952,14 @@ async def build_team_capacity(
     project_capacity_target: int,
     capacity_warning_ratio: float,
     base: Optional[dict[str, Any]] = None,
+    today: Optional[date] = None,
 ) -> dict[str, Any]:
     base = base or await _base_rows(db)
     projects = [row for row in base["projects"] if row.status in ACTIVE_PROJECT_STATUSES]
     tasks = base["tasks"]
     service_tasks = base["service_tasks"]
     active_employees = [row for row in base["employee_by_id"].values() if row.status in {"active", "probation"}]
-    today = datetime.now(timezone.utc).date()
+    today = today or _observation_day()
     rows = []
     for employee in active_employees:
         owned = [row for row in projects if row.owner_employee_id == employee.id]
@@ -854,6 +999,7 @@ async def build_team_capacity(
     else:
         recommendations.append({"level": "observe", "title": "销售招聘需结合转化率", "message": f"线索池约可支持 {pool_days:.1f} 天；连续观察人均有效沟通、商机与成交后再决定扩编。"})
     return {
+        "observed_on": today.isoformat(),
         "settings": {"project_capacity_target": project_capacity_target, "capacity_warning_ratio": capacity_warning_ratio},
         "summary": {
             "active_projects": len(projects),
@@ -878,12 +1024,13 @@ async def build_growth_dashboard(
     project_capacity_target: int = 12,
     capacity_warning_ratio: float = 0.85,
 ) -> dict[str, Any]:
+    today = _observation_day()
     base = await _base_rows(db)
     return {
         "period": {"start_date": start_date, "end_date": end_date},
         "unit_economics": await build_unit_economics(db, start_date=start_date, end_date=end_date, base=base),
         "formal_monthly_profit": await build_formal_monthly_profit(db, start_date=start_date, end_date=end_date, base=base),
-        "customer_health": await build_customer_health(db, today=end_date, base=base),
+        "customer_health": await build_customer_health(db, today=today, base=base),
         "os_paid_customer_evidence": build_os_paid_customer_evidence(base),
-        "team_capacity": await build_team_capacity(db, project_capacity_target=project_capacity_target, capacity_warning_ratio=capacity_warning_ratio, base=base),
+        "team_capacity": await build_team_capacity(db, project_capacity_target=project_capacity_target, capacity_warning_ratio=capacity_warning_ratio, base=base, today=today),
     }

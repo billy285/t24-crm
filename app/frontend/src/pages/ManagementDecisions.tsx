@@ -142,6 +142,7 @@ type AutomationData = {
     task?: { id: number; status: string; assignee_name?: string; due_date?: string; completion_result?: string };
   }>;
   last_run?: {
+    scan_date?: string;
     id: number;
     trigger: string;
     status: string;
@@ -206,6 +207,10 @@ type GrowthData = {
     }>;
   };
   customer_health: {
+    observing_projects?: Array<{ project_id: number; customer_id: number; customer_name: string; product_name?: string }>;
+    customer_signals?: Array<{
+      customer_id: number; customer_name: string; reasons: Array<{ code: string; message: string }>;
+    }>;
     summary: Record<string, number>;
     auto_stop_enabled: boolean;
     updated_through: string;
@@ -216,6 +221,7 @@ type GrowthData = {
     }>;
   };
   team_capacity: {
+    observed_on?: string;
     settings: { project_capacity_target: number; capacity_warning_ratio: number };
     summary: { active_projects: number; unassigned_projects: number; overdue_rate: number; near_or_over_capacity: number };
     employees: Array<{
@@ -267,7 +273,7 @@ const projectStatusClasses: Record<string, string> = {
 };
 
 const reviewLabels: Record<string, string> = {
-  pending: '待审核', confirmed: '已确认', needs_follow_up: '稍后核对',
+  pending: '待审核', confirmed: '已确认', auto_classified: '已按项目自动归类', needs_follow_up: '稍后核对',
 };
 
 const collectionLabels: Record<string, string> = {
@@ -1002,21 +1008,25 @@ export default function ManagementDecisions() {
       />}
 
       {section === 'insights' && <div className="space-y-5">
-        {growthError && <div className="mgt-read-notice" role="alert"><div><strong>经营分析暂未读取成功</strong><p>{growthError}{growth ? '，当前结果仍为上次读取的期间。' : '，尚无可展示结果。'}</p></div><Button variant="outline" disabled={growthLoading} onClick={() => void loadGrowth()}>重新读取分析</Button></div>}
+        {growthError && <div className="mgt-read-notice" role="alert"><div><strong>经营分析暂未读取成功</strong><p>{growthError}{growth ? '，正在显示上次读取的结果。' : '，尚无可展示结果。'}</p></div><Button variant="outline" disabled={growthLoading} onClick={() => void loadGrowth()}>重新读取分析</Button></div>}
         {!growth && growthLoading && <p className="mgt-empty" role="status">正在读取经营分析…</p>}
-        {!growth && !loading && !growthLoading && !growthError && !readError && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">{isAdmin ? '当前尚无已读取的经营分析，请选择期间后重新读取。' : '当前账号没有老板经营分析权限。'}</CardContent></Card>}
+        {!growth && !loading && !growthLoading && !growthError && !readError && <Card className="border-amber-200 bg-amber-50"><CardContent className="p-6 text-sm text-amber-800">{isAdmin ? '经营分析尚未读取，请刷新后查看。' : '当前账号没有老板经营分析权限。'}</CardContent></Card>}
         {growth && <>
           <div className="mgt-analysis-toolbar">
             <div className="mgt-inbox-tabs" aria-label="经营分析内容">{[['economics', '项目效益'], ['health', '客户健康'], ['capacity', '团队产能']].map(([value, label]) => <button type="button" key={value} aria-pressed={analysisView === value} onClick={() => changeAnalysisView(value)}>{label}</button>)}</div>
-            <span className="mgt-source-note">读取 {managementSourceTime(growthLoadedAt)}</span>
+            <span className="mgt-source-note">
+              {analysisView === 'economics'
+                ? `读取 ${managementSourceTime(growthLoadedAt)}`
+                : `观察日期（北京） ${(analysisView === 'health' ? growth.customer_health.updated_through : growth.team_capacity.observed_on) || '待获取'}`}
+            </span>
           </div>
+          {analysisView === 'economics' && <>
           <div className="mgt-analysis-period">
             <NativeSelect aria-label="经营分析期间" value={profitPreset} onChange={changeProfitPreset} options={[{ value: 'month', label: '本月' }, { value: 'last_month', label: '上月' }, { value: 'quarter', label: '本季度' }, { value: 'last_quarter', label: '上季度' }, { value: 'year', label: '本年度' }, { value: 'all', label: '全部历史' }, { value: 'custom', label: '自定义时间' }]} />
             <Input aria-label="分析开始日期" type="date" value={profitStartDate} onChange={event => { setProfitPreset('custom'); setProfitStartDate(event.target.value); }} />
             <span>至</span><Input aria-label="分析结束日期" type="date" value={profitEndDate} max={today} onChange={event => { setProfitPreset('custom'); setProfitEndDate(event.target.value); }} />
             <Button variant="outline" disabled={growthLoading} onClick={() => void loadGrowth()}>{growthLoading ? '读取中…' : '应用期间'}</Button>
           </div>
-          {analysisView === 'economics' && <>
           <section className="mgt-board mgt-ranking"><div className="mgt-board-head"><h2>业务贡献排行</h2><span>{growth.period.start_date} 至 {growth.period.end_date}</span></div>
             {Array.from(new Set(contributionRanking.map(row => row.currency))).map(currency => <div key={currency}><div className="mgt-ranking-currency">{currency} · 可核算贡献利润</div><div className="mgt-ranking-header"><span>业务</span><span>项目</span><span>贡献利润</span><span>利润率</span></div>{contributionRanking.filter(row => row.currency === currency).slice().sort((a, b) => Number(b.hasEvidence) - Number(a.hasEvidence) || (a.hasEvidence && b.hasEvidence ? b.contribution_profit - a.contribution_profit : 0)).map((row, index) => <div key={row.business_line_code} className="mgt-ranking-row"><span><i>{row.hasEvidence ? String(index + 1).padStart(2, '0') : '—'}</i>{row.business_line}<small>{row.coverageLabel}</small></span><span>{row.project_count}</span><strong>{row.hasEvidence ? money(row.contribution_profit, currency) : '待核实'}</strong><span>{!row.hasEvidence || row.contribution_margin == null ? '—' : `${(row.contribution_margin * 100).toFixed(1)}%`}</span></div>)}</div>)}
             {growth.unit_economics.business_lines.length === 0 && <p className="mgt-empty">当前期间暂无业务贡献数据</p>}
@@ -1047,10 +1057,43 @@ export default function ManagementDecisions() {
           </>}
           {analysisView === 'health' && <>
           <Card id="decision-health" className="calm-analysis-section border-slate-200">
-            <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-5 w-5 text-orange-600" />客户健康度与流失预警</CardTitle><p className="mt-1 text-xs text-slate-500">收款、续费、退款、任务、交付和回访共同评分；每日自动更新，只提醒不自动停止。</p></div><Badge variant="outline">更新至 {growth.customer_health.updated_through}</Badge></CardHeader>
+            <CardHeader className="gap-2 lg:flex-row lg:items-start lg:justify-between"><div><CardTitle className="flex items-center gap-2 text-base"><Activity className="h-5 w-5 text-orange-600" />客户健康度与流失预警</CardTitle><p className="mt-1 text-xs text-slate-500">评分依据当前的收款、续费、退款和服务跟进记录。</p></div></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-4">{[['healthy', '健康'], ['watch', '需关注'], ['risk', '有风险'], ['critical', '高风险']].map(([level, label]) => <div key={level} className="rounded-xl border border-slate-200 p-4"><Badge className={healthClasses[level]}>{label}</Badge><p className="mt-3 text-2xl font-bold">{growth.customer_health.summary[level] || 0}</p><p className="mt-1 text-xs text-slate-400">个项目</p></div>)}</div>
-              <div className="grid gap-3 lg:grid-cols-2">{riskyHealth.slice(0, healthVisibleCount).map(row => <div key={row.project_id} className={`rounded-xl border p-4 ${row.level === 'critical' ? 'border-red-200 bg-red-50' : row.level === 'risk' ? 'border-orange-200 bg-orange-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><Link className="font-semibold text-slate-900 hover:text-blue-700" to={buildReturnLink(`/customers?detail=${row.customer_id}`, currentDecisionPath(), 'management-decisions')}>{row.customer_name}</Link><p className="mt-1 text-xs text-slate-500">{row.business_line} · {row.product_name || '项目'} · {row.owner_name || '负责人待分配'}</p></div><div className="text-right"><Badge className={healthClasses[row.level]}>{healthLabels[row.level]}</Badge><p className="mt-1 text-xl font-bold">{row.score}</p></div></div><div className="mt-3 space-y-1 text-xs text-slate-700">{row.reasons.slice(0, 3).map(reason => <p key={reason.code}>- {reason.message}</p>)}</div><p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">下一步：{row.recommended_action}</p></div>)}{riskyHealth.length === 0 && <div className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有需要关注的客户项目</div>}</div>
+              <div className="grid gap-3 lg:grid-cols-2">{riskyHealth.slice(0, healthVisibleCount).map(row => <div key={row.project_id} className={`rounded-xl border p-4 ${row.level === 'critical' ? 'border-red-200 bg-red-50' : row.level === 'risk' ? 'border-orange-200 bg-orange-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-start justify-between gap-3"><div><Link className="font-semibold text-slate-900 hover:text-blue-700" to={buildReturnLink(`/customers?detail=${row.customer_id}`, currentDecisionPath(), 'management-decisions')}>{row.customer_name}</Link><p className="mt-1 text-xs text-slate-500">{row.business_line} · {row.product_name || '项目'} · {row.owner_name || '负责人待分配'}</p></div><div className="text-right"><Badge className={healthClasses[row.level]}>{healthLabels[row.level]}</Badge><p className="mt-1 text-xl font-bold">{row.score}</p></div></div><div className="mt-3 space-y-1 text-xs text-slate-700">{row.reasons.slice(0, 3).map(reason => <p key={reason.code}>- {reason.message}</p>)}</div><p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-xs text-slate-600">下一步：{row.recommended_action}</p></div>)}{riskyHealth.length === 0 && <div className="col-span-full rounded-xl border border-dashed p-8 text-center text-sm text-emerald-600"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前暂无项目风险提醒</div>}</div>
+              {isAdmin && !!growth.customer_health.observing_projects?.length && (
+                <details className="rounded-xl border border-slate-200">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+                    待观察（{growth.customer_health.observing_projects.length} 个项目）
+                  </summary>
+                  <div className="space-y-2 border-t px-4 py-3 text-sm">
+                    <p className="text-xs text-slate-500">有实际收款、服务进展或风险记录后，系统会自动评分。</p>
+                    {growth.customer_health.observing_projects.map(project => (
+                      <p key={project.project_id}><Link className="font-medium underline" to={buildReturnLink(
+                        `/customers?detail=${project.customer_id}`, currentDecisionPath(), 'management-decisions',
+                      )}>{project.customer_name}</Link> · {project.product_name || '项目'}</p>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {isAdmin && !!growth.customer_health.customer_signals?.length && (
+                <details className="rounded-xl border border-slate-200">
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+                    客户层面提醒（{growth.customer_health.customer_signals.length} 位）
+                  </summary>
+                  <div className="space-y-3 border-t px-4 py-3">
+                    <p className="text-xs text-slate-500">这些事项按客户汇总，不计入具体项目评分。</p>
+                    {growth.customer_health.customer_signals.map(customer => (
+                      <div key={customer.customer_id} className="space-y-1 text-sm">
+                        <Link className="font-medium underline" to={buildReturnLink(
+                          `/customers?detail=${customer.customer_id}`, currentDecisionPath(), 'management-decisions',
+                        )}>{customer.customer_name}</Link>
+                        {customer.reasons.map(reason => <p key={reason.code}>{reason.message}</p>)}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {riskyHealth.length > healthVisibleCount && <Button variant="outline" className="mt-4 w-full" onClick={() => setHealthVisibleCount(value => value + 20)}>继续显示风险项目（剩余 {riskyHealth.length - healthVisibleCount}）</Button>}
             </CardContent>
           </Card>
@@ -1140,7 +1183,7 @@ export default function ManagementDecisions() {
         </Card>
       </div>}
 
-      {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={item.review_status === 'confirmed' ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p><Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button></div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
+      {section === 'history' && <Card className="border-slate-200"><CardHeader className="gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-base">历史客户一次性补录</CardTitle><p className="mt-1 text-xs text-slate-500">新客户已改为在客户管理首次录入；这里只处理历史资料。</p></div><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索客户名称或编号" className="w-64 pl-9" /></div><select value={reviewFilter} onChange={event => setReviewFilter(event.target.value)} className="h-10 rounded-md border px-3 text-sm"><option value="pending">待审核</option><option value="needs_follow_up">稍后核对</option><option value="confirmed">已确认</option><option value="auto_classified">已自动归类</option><option value="all">全部</option></select></div></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{visibleItems.map(item => <div key={item.customer_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{item.customer_name}</p><p className="mt-1 text-xs text-slate-400">{item.customer_code || `客户 #${item.customer_id}`} · {item.industry || '行业待补充'}</p></div><Badge className={['confirmed', 'auto_classified'].includes(item.review_status) ? 'bg-emerald-100 text-emerald-700' : item.review_status === 'needs_follow_up' ? 'bg-amber-100 text-amber-700' : 'bg-orange-100 text-orange-700'}>{reviewLabels[item.review_status]}</Badge></div><div className="mt-3 flex flex-wrap gap-1.5">{item.review_status !== 'auto_classified' && item.suggestions.map(suggestion => <Badge key={suggestion.business_line} variant="outline">建议：{lineLabels[suggestion.business_line]}</Badge>)}{item.projects.map(project => <Badge key={project.id} className="bg-blue-100 text-blue-700">已建：{project.business_line.name}</Badge>)}</div>{item.warnings.length > 0 && <div className="mt-3 rounded-xl bg-orange-50 p-3 text-xs text-orange-700"><p className="font-semibold">{item.warnings.length} 项需要确认</p><p className="mt-1 line-clamp-2">{item.warnings.slice(0, 2).map(row => row.message).join('；')}</p></div>}<div className="mt-4 flex items-center justify-between"><p className="text-xs text-slate-400">客户状态：{item.customer_lifecycle?.status === 'active' ? '合作中' : item.customer_lifecycle?.status || '待确认'}</p>{item.review_status !== 'auto_classified' && <Button size="sm" variant={item.review_status === 'confirmed' ? 'outline' : 'default'} onClick={() => openReview(item)} disabled={!isAdmin}>{item.review_status === 'confirmed' ? '重新核对' : '开始审核'}</Button>}</div></div>)}{!loading && visibleItems.length === 0 && <div className="col-span-full py-12 text-center text-sm text-slate-400">当前筛选下没有历史客户</div>}</CardContent></Card>}
 
       {!isMobile && <Dialog open={!!reviewing} onOpenChange={open => { if (!open && !saving && reviewDraft.confirmDiscard()) setReviewing(null); }}>
         <CrmFormDialogContent className="financial-workspace-form mgt-review-dialog sm:max-w-4xl"><CrmFormDialogHeader><DialogTitle>{reviewing?.customer_name} · 分类与项目确认</DialogTitle></CrmFormDialogHeader><CrmFormDialogBody><div className="space-y-4"><div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><strong>客户整体状态：</strong>当前为 {reviewing?.customer_lifecycle?.status === 'active' ? '合作中' : reviewing?.customer_lifecycle?.status || '待确认'}。项目与客户状态分别管理；停止或完成项须确认订阅影响。</div>{reviewing?.warnings.map((warning, index) => <div key={`${warning.code}-${warning.source_id || index}`} className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">{warning.message}{warning.source_id ? `（${warning.scope} #${warning.source_id}）` : ''}</div>)}<div className="space-y-3">{projectForms.map((project, index) => <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-2xl border border-slate-200 p-4"><div className="mb-3 flex items-center justify-between"><p className="font-semibold">项目 {index + 1}</p><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))} disabled={projectForms.length <= 1}>移除</Button></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div><Label>业务板块 *</Label><select value={project.business_line_code} onChange={event => updateProjectForm(index, { business_line_code: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(lineLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>项目状态 *</Label><select value={project.status} onChange={event => updateProjectForm(index, { status: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(projectStatusLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>开始日期 *</Label><Input type="date" value={project.paid_started_at} max={today} onChange={event => updateProjectForm(index, { paid_started_at: event.target.value })} className="mt-1" /></div><div><Label>结束日期</Label><Input type="date" value={project.stopped_at} max={today} onChange={event => updateProjectForm(index, { stopped_at: event.target.value })} className="mt-1" /></div><div><Label>收费周期</Label><select value={project.billing_cycle} onChange={event => updateProjectForm(index, { billing_cycle: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"><option value="">待确认</option><option value="monthly">月付</option><option value="quarterly">季付</option><option value="annual">年付</option><option value="one_time">一次性</option></select></div><div><Label>收款方式</Label><select value={project.collection_method} onChange={event => updateProjectForm(index, { collection_method: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">{Object.entries(collectionLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></div><div><Label>币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateProjectForm(index, { currency: event.target.value.toUpperCase() })} className="mt-1" /></div><div><Label>产品名称</Label><Input value={project.product_name} onChange={event => updateProjectForm(index, { product_name: event.target.value })} className="mt-1" /></div></div><p className="mt-3 text-xs text-slate-400">本次提供来源：收款 {project.source_payment_ids.length} 笔 · 订阅 {project.source_subscription_ids.length} 条{project.engagement_id ? '；既有关联清单未在此接口列出' : ''}</p></div>)}</div><Button variant="outline" onClick={() => setProjectForms(rows => [...rows, suggestionToForm({ business_line: 'managed_service', product_code: 'managed_service_legacy', product_name: '代运营历史套餐', currency: 'USD', source_payment_ids: [], source_subscription_ids: [], basis: [] })])}><Layers3 className="mr-2 h-4 w-4" />增加一个项目</Button><div><Label>审核备注</Label><Textarea value={reviewNote} onChange={event => setReviewNote(event.target.value)} rows={3} className="mt-1" placeholder="记录为什么这样分类，方便以后复盘" /></div></div>{reviewPreview && <section className="mgt-save-preview" aria-label="保存前影响预览">

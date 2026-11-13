@@ -4,11 +4,18 @@ import {
   addBusinessDateDays,
   businessDateDifference,
   businessDateKey,
+  hasTodayManagementScan,
   businessWeekRange,
 } from '../src/lib/business-date';
 
 const baseUrl = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5173';
 const fixedInstant = new Date('2026-08-16T16:30:00.000Z');
+test('daily analysis requires a completed scan on the current Beijing date', () => {
+  expect(hasTodayManagementScan({ status: 'completed', scan_date: '2026-08-17' }, fixedInstant)).toBe(true);
+  expect(hasTodayManagementScan({ status: 'completed', scan_date: '2026-08-16' }, fixedInstant)).toBe(false);
+  expect(hasTodayManagementScan({ status: 'failed', scan_date: '2026-08-17' }, fixedInstant)).toBe(false);
+  expect(hasTodayManagementScan(undefined, fixedInstant)).toBe(false);
+});
 const employee = { id: 1, name: '北京时间测试管理员', role: 'super_admin', status: 'active' };
 const customer = {
   id: 1,

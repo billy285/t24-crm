@@ -3,7 +3,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 const baseUrl = process.env.T24_CUSTOMERS_DIALOG_BASE_URL || 'http://127.0.0.1:8917';
 const owner = { id: 101, name: '客户弹窗验收老板', role: 'super_admin', status: 'active' };
 
-async function openCustomerForm(page: Page) {
+type CreateBody = {customer: Record<string, unknown>; projects: Array<Record<string, unknown>>};
+async function openCustomerForm(page: Page, created?: CreateBody[]) {
   const writes: string[] = [];
   await page.addInitScript(employee => {
     localStorage.setItem('emp_auth_token', 'customer-dialog-fixture-token');
@@ -15,6 +16,11 @@ async function openCustomerForm(page: Page) {
     const path = new URL(request.url()).pathname;
     if (request.method() !== 'GET') {
       writes.push(`${request.method()} ${path}`);
+      if (created && request.method() === 'POST' && path.endsWith('/entities/customers/with-projects')) {
+        const body = request.postDataJSON() as CreateBody;
+        created.push(body);
+        return route.fulfill({ json: { id: 301, ...body.customer, effective_permissions: {access_level: 'read_write', can_manage_access: true} } });
+      }
       return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: '关闭表单验收不允许写入' }) });
     }
     const data = path.endsWith('/emp-auth/me') ? owner
@@ -65,6 +71,29 @@ for (const viewport of [{ width: 1093, height: 824 }, { width: 390, height: 844 
       await expect(dialog).toHaveCount(0);
       expect(prompts).toEqual([]);
       expect(writes).toEqual([]);
+    });
+
+    test('只录店名和电话或同时添加已确定的项目，都只提交一次客户建档', async ({ page }) => {
+      const created: CreateBody[] = [];
+      const { dialog } = await openCustomerForm(page, created);
+      const save = dialog.getByTestId('customer-form-actions').getByRole('button', { name: '保存', exact: true });
+      for (const withProject of [false, true]) {
+        if (withProject) await page.getByRole('button', { name: '新增客户', exact: true }).click();
+        await dialog.getByLabel('商家名称 *', { exact: true }).fill(withProject ? '合成美业项目' : '合成门店');
+        await dialog.getByLabel('电话 *', { exact: true }).fill(withProject ? '+1 415 555 0102' : '+1 415 555 0101');
+        if (withProject) {
+          await dialog.locator('#customer-form-projects > summary').click();
+          await dialog.getByRole('button', { name: '添加美业 OS', exact: true }).click();
+          await expect(dialog.getByRole('button', { name: '已添加美业 OS' })).toBeDisabled();
+        }
+        await save.click();
+        await expect(dialog).toHaveCount(0);
+      }
+      expect(created).toHaveLength(2);
+      expect(created[0].projects).toEqual([]);
+      expect(created[1].projects).toHaveLength(1);
+      expect(created[1].projects[0]).toMatchObject({ business_line_code: 'beauty_os', status: 'pending_setup', billing_cycle: null, collection_method: null, paid_started_at: null });
+      for (const body of created) expect(body.customer).toMatchObject({ customer_code: null, contact_name: '', country: null, source: null, monthly_orders: null, has_ordering_system: null });
     });
 
     for (const action of ['关闭按钮', '取消按钮']) {

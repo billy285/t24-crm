@@ -18,7 +18,6 @@ function fixture(file, exported, response, role = 'super_admin') {
     useCallback(callback, deps) { const i = cursor++, old = slots[i]; if (old && deps.every((v, n) => Object.is(v, old.deps[n]))) return old.callback; slots[i] = { callback, deps }; return callback; },
     useEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && deps.length === old.deps.length && deps.every((v, n) => Object.is(v, old.deps[n]))) return; slots[i] = { deps }; effects.push(() => { old?.cleanup?.(); slots[i].cleanup = callback(); }); },
   };
-  const count = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
   const require = name => {
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'fragment' };
@@ -30,7 +29,7 @@ function fixture(file, exported, response, role = 'super_admin') {
     if (name === './sales-handoff-navigation') return { ownerExceptionTaskHref: item => item.href };
     if (name === '@/lib/stripe-history-reconciliation') return { stripeReconciliationApi: async path => { requests.push(path); return response(); }, stripeReconciliationDenied: error => [401, 403].includes(error?.status), stripeReconciliationError: (_error, fallback) => fallback, reconciliationMoney: () => '$0', reconciliationTime: () => 'fixture time' };
     if (name === '@/lib/stripe-history-reminders') { const mod = { exports: {} }; vm.runInNewContext(`(function(require,module,exports){${compile(source('lib/stripe-history-reminders.ts'))}\n})`, { URLSearchParams })(require, mod, mod.exports); return mod.exports; }
-    if (name === '@/lib/stripe-auto-posting') return { autoPostingCount: count, safeAutoPostingTotals: value => Array.isArray(value) ? value : null, autoPostingTotalsCount: value => Array.isArray(value) ? value.reduce((sum, row) => sum + row.count, 0) : null };
+    if (name === '@/lib/stripe-auto-posting') { const mod = { exports: {} }; vm.runInNewContext(compile(source('lib/stripe-auto-posting.ts')), { exports: mod.exports }); return mod.exports; }
     if (name === '@/components/ui/button') return { Button: 'button' };
     return new Proxy({}, { get: (_target, key) => String(key) });
   };
@@ -46,6 +45,22 @@ test('real owner exception rows come before Stripe and count lanes without chang
   const list = all.findIndex(n => n.props?.className === 'sf-exception-list'), lane = all.findIndex(n => n.props?.className === 'sf-work-lanes'), stripe = all.findIndex(n => n.type === 'default');
   assert.ok(list >= 0 && lane > list); assert.ok(stripe > list); assert.match(text(all[list]), /FIRST REAL EXCEPTION/);
 });
+test('routine handoffs stay in team follow-up without displacing a blocked or overdue shop', async () => {
+  const items = ['pending_operations', 'kickoff_missing', 'pending_receipt', 'renewal_attention', 'kickoff_blocked', 'kickoff_overdue']
+    .map((kind, index) => ({ id: index + 1, kind, business_name: '店' + index, title: kind, href: '/tasks?task_id=' + (index + 1) }));
+  const app = fixture('components/ServiceFollowThrough.tsx', 'OwnerExceptions', () => ({ ...ownerData(), items }));
+  app.render(); await tick(); const view = app.render();
+  const lists = nodes(view).filter(node => node.props?.className === 'sf-exception-list');
+  assert.equal(lists.length, 2);
+  assert.match(text(lists[0]), /pending_receipt/);
+  assert.doesNotMatch(text(lists[0]), /pending_operations|kickoff_missing/);
+  const team = nodes(view).find(node => node.type === 'details' && text(node).includes('团队待跟进'));
+  assert.ok(team && !team.props.open);
+  assert.match(text(team), /kickoff_missing/);
+  const more = nodes(view).find(node => node.type === 'button' && text(node) === '查看其余 1 项');
+  more.props.onClick();
+  assert.match(text(nodes(app.render()).find(node => node.props?.className === 'sf-exception-list')), /kickoff_overdue/);
+});
 test('all eight exact zero states are in one closed disclosure and zero owner/team lanes are omitted', async () => {
   const app = await owner(); const all = nodes(app.tree()); assert.equal(all.some(n => n.props?.className === 'sf-work-lanes'), false);
   const quiet = all.find(n => n.type === 'details' && n.props.className === 'sf-owner-quiet-statuses'); assert.ok(quiet); assert.equal(quiet.props.open, undefined); assert.match(text(quiet), /8 项当前为 0/); assert.equal(nodes(quiet).filter(n => n.type === 'button').length, 8);
@@ -56,7 +71,7 @@ test('unknown owner counts stay visible as unknown rather than being folded as z
 test('owner read failures stay direct and denied data is withdrawn', async () => {
   for (const status of [500, 403]) { let failure = false; const app = fixture('components/ServiceFollowThrough.tsx', 'OwnerExceptions', () => failure ? Promise.reject({ status }) : ownerData()); app.render(); await tick(); app.render(); failure = true; nodes(app.tree()).find(n => n.props?.['aria-label'] === '刷新老板异常总览').props.onClick(); await tick(); const tree = app.render(); assert.ok(nodes(tree).some(n => n.props?.role === 'alert')); assert.equal(text(tree).includes('FIRST REAL EXCEPTION'), status !== 403); }
 });
-const stripeData = ({ pending = 0, exception = 0, retry = 0, automatic = 0, warning = false } = {}) => ({ manual_pending: pending, counts: { pending_review: pending, needs_refresh: 0, exception, total: pending + exception }, items: [], exception_items: [], daily_scan: { enabled: !warning, last_run_status: warning ? 'disabled' : 'completed', last_completed_at: 'fixture time', last_run_at: 'fixture time', active_bindings: 1, covered_bindings: 1, retry_bindings: retry, running_bindings: 0, catchup_bindings: 0, last_discovered_reviews: 0 }, auto_posting: { today_totals: [], counts: { manual_required: automatic }, enabled_count: 1 } });
+const stripeData = ({ pending = 0, exception = 0, retry = 0, automatic = 0, warning = false } = {}) => ({ manual_pending: pending, counts: { pending_review: pending, needs_refresh: 0, exception, total: pending + exception }, items: [], exception_items: [], daily_scan: { enabled: !warning, last_run_status: warning ? 'disabled' : 'completed', last_completed_at: 'fixture time', last_run_at: 'fixture time', active_bindings: 1, covered_bindings: 1, retry_bindings: retry, running_bindings: 0, catchup_bindings: 0, last_discovered_reviews: 0 }, auto_posting: { today_totals: [], counts: { manual_required: automatic }, enabled_count: 1, health: { global_enabled: true, current_process_only: true, worker_supported: true, worker_state: 'running', heartbeat_state: 'current', last_heartbeat_at: '2026-11-13T10:00:00Z' } } });
 async function stripe(value, fail = false) { const app = fixture('components/StripeHistoryReminders.tsx', 'default', () => fail ? Promise.reject({ status: 500 }) : value); app.render(); await tick(); app.render(); return app; }
 test('quiet compact Stripe controls and metadata remain available in a closed summary', async () => {
   const app = await stripe(stripeData()); const disclosure = nodes(app.tree()).find(n => n.type === 'details' && n.props.className === 'shr-routine-disclosure'); assert.ok(disclosure); assert.equal(disclosure.props.open, undefined); assert.match(text(disclosure), /待核 0 · 异常 0 · 自动待处理 0/); assert.ok(nodes(disclosure).some(n => n.props?.['aria-label'] === 'Stripe 自动入账摘要'));

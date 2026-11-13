@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Search } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CrmFormDialogBody, CrmFormDialogContent, CrmFormDialogFooter, CrmFormDialogHeader, Dialog, DialogTitle } from '@/components/ui/dialog';
+import { hasTodayManagementScan } from '@/lib/business-date';
 import { buildReturnLink } from '@/lib/navigation-state';
 
 type Issue = {
@@ -23,13 +24,15 @@ type InboxTab = 'tasks' | 'history' | 'issues' | 'signals';
 
 export function managementSourceTime(value?: string) {
   if (!value) return '更新时间待确认';
-  const date = new Date(value);
+  // SQLite stores scan timestamps as UTC without a zone suffix.
+  const timestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value) ? value + 'Z' : value;
+  const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return '更新时间待确认';
-  return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 export default function ManagementActionDesk<T extends Review>({ automation, items, anomalies, riskCount, warningCount, loadedAt, loading, isAdmin, isMobile, returnPath, onReview, onCreateTask, onHistory, onQuality }: {
-  automation: { items: Issue[]; last_run?: { completed_at?: string; status: string } } | null;
+  automation: { items: Issue[]; last_run?: { completed_at?: string; scan_date?: string; status: string } } | null;
   items: T[]; anomalies: Signal[]; riskCount: number; warningCount: number;
   loadedAt: string; loading: boolean; isAdmin: boolean; isMobile: boolean; returnPath: string;
   onReview: (item: T) => void; onCreateTask: (id: number) => Promise<void>; onHistory: () => void; onQuality: () => void;
@@ -49,8 +52,10 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
   activeIssues.forEach(item => { if (item.task) taskGroups.set(item.task.id, [...(taskGroups.get(item.task.id) || []), item]); });
   const untaskedIssues = activeIssues.filter(item => !item.task);
   const scanAt = automation?.last_run?.completed_at;
-  const scanDate = scanAt ? new Date(scanAt).getTime() : NaN;
-  const scanStale = !Number.isFinite(scanDate) || Date.now() - scanDate > 48 * 60 * 60 * 1000 || automation?.last_run?.status !== 'completed';
+  const scanStale = !hasTodayManagementScan(automation?.last_run);
+  const fromScan = tab === 'tasks' || tab === 'issues';
+  const showingLastScan = fromScan && scanStale;
+  const EmptyIcon = showingLastScan || !loadedAt ? Clock : CheckCircle2;
   const rowSets: Record<InboxTab, Row<T>[]> = {
     tasks: Array.from(taskGroups.values()).map(group => {
       const issue = group[0];
@@ -87,12 +92,12 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
           {([
             ['tasks', '已有任务', taskGroups.size], ['history', '历史补录', pendingHistory.length],
             ...(untaskedIssues.length ? [['issues', '待分配问题', untaskedIssues.length]] : []), ['signals', '其他信号', null],
-          ] as Array<[InboxTab, string, number | null]>).map(([value, label, count]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)}>{label}{count !== null && <span>{!loadedAt ? '—' : count}</span>}</button>)}
+          ] as Array<[InboxTab, string, number | null]>).map(([value, label, count]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)}>{label}{count !== null && <span>{!loadedAt || (scanStale && (value === 'tasks' || value === 'issues')) ? '—' : count}</span>}</button>)}
         </div>
         <div className="mgt-search"><Search size={15} /><Input aria-label="搜索待处理客户或问题" placeholder="搜索客户或问题" value={query} onChange={event => setQuery(event.target.value)} /></div>
       </div>
       <div className="mgt-source-note">
-        {['tasks', 'issues'].includes(tab) ? <><span>任务扫描：{managementSourceTime(scanAt)}</span>{scanStale && <span className="mgt-warning">状态需复核</span>}</> : <span>分类与风险读取：{managementSourceTime(loadedAt)}</span>}
+        {['tasks', 'issues'].includes(tab) ? <><span>最近扫描 · {managementSourceTime(scanAt)}</span>{scanStale && <span className="mgt-warning" role="status">今天的待办尚未核实{scanAt && '，以下为上次扫描记录'}</span>}</> : <span>分类与风险读取：{managementSourceTime(loadedAt)}</span>}
         {tab === 'signals' && <span>风险 {loadedAt ? riskCount : '—'} 条 · 分类提示 {loadedAt ? warningCount : '—'} 条；同一客户可能有多条提示</span>}
         {tab === 'history' && <span>按客户计数 · 新客户从客户管理录入</span>}
       </div>
@@ -101,8 +106,8 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
         <span className="mgt-row-owner">{row.owner}</span><span className="mgt-row-status">{row.status}</span>
         <Button size="sm" variant="outline" onClick={() => setSelectedKey(row.key)}>{row.review ? '核对' : '跟进'}<ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
       </article>)}
-      {!loading && rows.length === 0 && <div className="mgt-empty"><CheckCircle2 size={19} />{!loadedAt ? '资料尚未读取成功，请刷新后重试' : query ? '没有匹配的客户或问题' : tab === 'tasks' ? '当前没有关联任务的待处理问题' : '当前来源没有待处理事项'}</div>}
-      <div className="mgt-board-footer"><span>{loadedAt ? rows.length : '—'} {tab === 'tasks' ? '个任务' : tab === 'history' ? '位客户' : '组事项'}</span>{!isMobile && <Button size="sm" variant="ghost" onClick={tab === 'history' ? onHistory : onQuality}>{tab === 'history' ? '查看全部历史记录' : '查看扫描与处理记录'}</Button>}</div>
+      {!loading && rows.length === 0 && <div className="mgt-empty"><EmptyIcon size={19} />{!loadedAt ? '资料尚未读取成功，请刷新后重试' : showingLastScan ? '今日待办数量未知' : query ? '没有匹配的客户或问题' : tab === 'tasks' ? '当前没有关联任务的待处理问题' : '当前来源没有待处理事项'}</div>}
+      <div className="mgt-board-footer"><span>{showingLastScan && loadedAt ? '上次记录 · ' : ''}{loadedAt ? rows.length : '—'} {tab === 'tasks' ? '个任务' : tab === 'history' ? '位客户' : '组事项'}</span>{!isMobile && <Button size="sm" variant="ghost" onClick={tab === 'history' ? onHistory : onQuality}>{tab === 'history' ? '查看全部历史记录' : '查看扫描与处理记录'}</Button>}</div>
     </div>
     <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) setSelectedKey(null); }}>
       <CrmFormDialogContent className="mgt-action-detail sm:max-w-xl"><CrmFormDialogHeader><p className="mgt-detail-kicker">{selected?.source}</p><DialogTitle>{selected?.name}</DialogTitle></CrmFormDialogHeader>{selected && <><CrmFormDialogBody>

@@ -26,6 +26,7 @@ import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { useAutoRefresh } from '../lib/use-auto-refresh';
 import PageLoadState from '@/components/PageLoadState';
 import { getLoadErrorMessage } from '../lib/load-utils';
+import { hasTodayManagementScan } from '@/lib/business-date';
 import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
 import { OwnerExceptions } from '@/components/ServiceFollowThrough';
 import './crm-owner-home.css';
@@ -99,7 +100,7 @@ type OwnerCockpit = {
   delivery: { active_service_records: number; overdue_service_tasks: number; unresolved_service_issues: number; overdue_callbacks: number };
   quality: { open: number; in_progress: number; resolved: number; open_task_count: number; category_counts: Record<string, number>; severity_counts: Record<string, number> };
   automation: {
-    last_run: null | { status: string; detected_count: number; completed_at?: string };
+    last_run: null | { status: string; scan_date?: string; detected_count: number; completed_at?: string };
     schedule: { enabled: boolean; timezone: string; hour: number; next_run_at: string; auto_stop_enabled: boolean };
   };
   decisions: { key: string; level: 'critical' | 'high' | 'medium'; title: string; count: number; description: string; link: string }[];
@@ -648,6 +649,10 @@ export default function Dashboard() {
       return <Card className="border-amber-200 bg-amber-50"><CardContent className="flex items-center justify-between gap-4 p-4"><div><p className="font-semibold text-amber-900">老板经营摘要暂时无法读取</p><p className="mt-1 text-xs text-amber-700">客户与任务基础数据仍可继续使用，请稍后刷新。</p></div><Button variant="outline" size="sm" onClick={() => void loadOwnerCockpit()}>重新读取</Button></CardContent></Card>;
     }
 
+    const scanCurrent = hasTodayManagementScan(ownerCockpit.automation.last_run);
+    const healthy = ownerCockpit.decision_state === 'healthy' && scanCurrent;
+    const EmptyDecisionIcon = scanCurrent ? CheckCircle2 : ShieldAlert;
+    const emptyDecisionLabel = scanCurrent ? '已检查的经营事项暂无异常' : '今天的经营扫描尚未完成';
     const usd = ownerCockpit.finance.USD;
     const lastRunAt = ownerCockpit.automation.last_run?.completed_at
       ? new Date(ownerCockpit.automation.last_run.completed_at).toLocaleString('zh-CN', { hour12: false })
@@ -676,7 +681,7 @@ export default function Dashboard() {
 
     return (
       <section className="t24-owner-layout space-y-4">
-        <MobileOwnerDashboard cockpit={ownerCockpit} />
+        <MobileOwnerDashboard cockpit={ownerCockpit} scanCurrent={scanCurrent} />
         <Card className="owner-desktop-hero t24-command-hero overflow-hidden border border-slate-800 bg-[#0f1b34] text-white shadow-[0_16px_42px_-30px_rgba(15,23,42,0.9)]">
           <CardContent className="crm-owner-hero-content p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -686,9 +691,9 @@ export default function Dashboard() {
                 <p className="crm-owner-accounting-plain mt-2 max-w-3xl text-sm leading-6 text-slate-300">{ownerCockpit.finance.currency_policy}</p>
                 <details className="crm-owner-accounting-note mt-2 text-sm leading-6 text-slate-300"><summary>统计口径</summary><p className="mt-2 max-w-3xl">{ownerCockpit.finance.currency_policy}</p></details>
               </div>
-              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${ownerCockpit.decision_state === 'healthy' ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
-                {ownerCockpit.decision_state === 'healthy' ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
-                <div><p className="text-sm font-semibold">{ownerCockpit.decision_state === 'healthy' ? '当前经营闭环正常' : `${ownerCockpit.decisions.length} 类事项需要关注`}</p><p className="mt-0.5 text-[11px] text-slate-300">数据截至 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p></div>
+              <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${healthy ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-300/30 bg-amber-300/10'}`}>
+                {healthy ? <CheckCircle2 className="h-5 w-5 text-emerald-300" /> : <ShieldAlert className="h-5 w-5 text-amber-300" />}
+                <div><p className="text-sm font-semibold">{ownerCockpit.decisions.length ? `${ownerCockpit.decisions.length} 类经营提醒` : emptyDecisionLabel}</p><p className="mt-0.5 text-[11px] text-slate-300">{!scanCurrent && ownerCockpit.decisions.length > 0 && '今日扫描尚未完成 · '}读取于 {new Date(ownerCockpit.as_of).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）'}</p></div>
               </div>
             </div>
             <div className="calm-owner-metrics mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
@@ -717,7 +722,7 @@ export default function Dashboard() {
             <CardContent>
               <div className="crm-owner-decisions grid gap-2 md:grid-cols-2">
                 {ownerCockpit.decisions.map(item => <button key={item.key} type="button" onClick={() => navigate(item.link)} className={`rounded-xl border p-3 text-left transition hover:shadow-sm ${decisionTone[item.level]}`}><div className="flex items-start justify-between gap-3"><div><span className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{decisionLabel[item.level]}</span><p className="mt-1 text-sm font-semibold">{item.title}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-sm font-bold shadow-sm">{item.count}</span></div><p className="mt-2 text-xs leading-5 opacity-80">{item.description}</p></button>)}
-                {ownerCockpit.decisions.length === 0 && <div className="col-span-2 rounded-xl bg-emerald-50 p-8 text-center text-sm text-emerald-700"><CheckCircle2 className="mx-auto mb-2 h-7 w-7" />当前没有需要老板推动的异常事项</div>}
+                {ownerCockpit.decisions.length === 0 && <div className={`col-span-2 rounded-xl p-8 text-center text-sm ${scanCurrent ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}><EmptyDecisionIcon className="mx-auto mb-2 h-7 w-7" />{emptyDecisionLabel}</div>}
               </div>
             </CardContent>
           </Card>
@@ -725,7 +730,7 @@ export default function Dashboard() {
           <Card className="border-slate-200">
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Database className="h-4 w-4 text-blue-600" />自动化与数据可信度</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              {ownerCockpit.quality.open + ownerCockpit.quality.in_progress + ownerCockpit.quality.open_task_count + ownerCockpit.delivery.overdue_service_tasks + ownerCockpit.delivery.overdue_callbacks === 0 ? <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">当前没有开放问题、关联任务或逾期事项。<Button variant="link" size="sm" onClick={() => navigate('/management-decisions?section=quality')}>查看全部闭环</Button></p> : <div className="grid grid-cols-2 gap-2">
+              {ownerCockpit.quality.open + ownerCockpit.quality.in_progress + ownerCockpit.quality.open_task_count + ownerCockpit.delivery.overdue_service_tasks + ownerCockpit.delivery.overdue_callbacks === 0 ? <p className={`rounded-lg p-3 text-sm ${scanCurrent ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>{scanCurrent ? '当前没有开放问题、关联任务或逾期事项。' : '今天的经营扫描尚未完成。'}<Button variant="link" size="sm" onClick={() => navigate('/management-decisions?section=quality')}>查看全部闭环</Button></p> : <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => navigate('/management-decisions?section=quality')} className="rounded-lg bg-rose-50 p-3 text-left"><p className="text-xs text-rose-600">开放问题</p><p className="mt-1 text-xl font-bold text-rose-800">{ownerCockpit.quality.open + ownerCockpit.quality.in_progress}</p></button>
                 <button type="button" onClick={() => navigate('/tasks?source=system')} className="rounded-lg bg-blue-50 p-3 text-left"><p className="text-xs text-blue-600">关联任务</p><p className="mt-1 text-xl font-bold text-blue-800">{ownerCockpit.quality.open_task_count}</p></button>
                 <button type="button" onClick={() => navigate('/service-board')} className="rounded-lg bg-amber-50 p-3 text-left"><p className="text-xs text-amber-600">交付逾期</p><p className="mt-1 text-xl font-bold text-amber-800">{ownerCockpit.delivery.overdue_service_tasks}</p></button>

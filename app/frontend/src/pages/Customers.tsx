@@ -36,7 +36,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal, Activity, Building2, CalendarClock, ShieldCheck, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react';
+import { Plus, Search, ArrowLeft, Phone, Mail, MapPin, Globe, Edit, Trash2, SlidersHorizontal, X, MessageSquarePlus, Columns3, AlertCircle, UserPlus, Users, ArrowRightLeft, RefreshCw, MoreHorizontal, Activity, Building2, CalendarClock, ShieldCheck, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown } from 'lucide-react';
 import { NativeSelect } from '@/components/ui/native-select';
 import ExportButton from '@/components/ExportButton';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -59,7 +59,6 @@ import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
 import CustomerWorkQueue from '@/components/CustomerWorkQueue';
 import CustomerFollowUpStatusManager from '@/components/CustomerFollowUpStatusManager';
 import { getCustomerFollowUpStatusOptions, getCustomerFollowUpStatusLabel, getDefaultCustomerFollowUpStatus } from '@/lib/customer-followup-statuses';
-import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
   buildOptionKey,
@@ -214,9 +213,9 @@ const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
   address: '', city: '', state: '', country: '', industry: '', website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
-  has_ordering_system: false, current_platform: '无', selected_platforms: [] as string[], interested_packages: [] as string[], monthly_orders: 0,
+  has_ordering_system: null as boolean | null, current_platform: '', selected_platforms: [] as string[], interested_packages: [] as string[], monthly_orders: null as number | null,
   interested_packages_snapshot: {} as Record<string, string>,
-  source: 'phone', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
+  source: '', sales_person: '', sales_employee_id: '' as string | number, level: 'normal', status: 'new', notes: '',
 };
 
 type CustomerProjectDraft = {
@@ -234,7 +233,15 @@ type CustomerProjectDraft = {
   stopped_at: string;
   stop_reason_code: string;
   stop_note: string;
+  sales_employee_id?: number | null;
+  original_paid_started_at?: string | null;
+  original_stopped_at?: string | null;
 };
+
+function projectInputDate(day: string, original: string | null | undefined) {
+  if (!day) return null;
+  return original?.slice(0, 10) === day ? original : `${day}T00:00:00Z`;
+}
 
 const customerProjectLines: Record<string, { label: string; productCode: string; productName: string }> = {
   managed_service: { label: '代运营', productCode: 'managed_service_legacy', productName: '代运营服务' },
@@ -264,16 +271,16 @@ const customerProjectCollectionMethods: Record<string, string> = {
   stripe_auto: 'Stripe 自动扣款', bank_transfer: '银行转账', check: '支票', zelle: 'Zelle', other: '其他',
 };
 
-function newCustomerProject(lineCode = 'managed_service'): CustomerProjectDraft {
-  const line = customerProjectLines[lineCode] || customerProjectLines.managed_service;
+function newCustomerProject(lineCode: string): CustomerProjectDraft {
+  const line = customerProjectLines[lineCode];
   return {
     business_line_code: lineCode,
     product_code: line.productCode,
     product_name: line.productName,
     package_name: line.productName,
     status: 'pending_setup',
-    billing_cycle: lineCode === 'one_time_project' ? 'one_time' : 'monthly',
-    collection_method: 'other',
+    billing_cycle: lineCode === 'one_time_project' ? 'one_time' : '',
+    collection_method: '',
     currency: 'USD',
     owner_employee_id: '',
     paid_started_at: '',
@@ -773,6 +780,7 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const originalCustomerForm = useRef<typeof emptyForm | null>(null);
   const customerFormRef = useRef<HTMLDivElement | null>(null);
   const scrollCustomerFormSection = (id: string) => {
     const body = customerFormRef.current?.querySelector<HTMLElement>('.t24-crm-form-dialog-body');
@@ -784,6 +792,8 @@ export default function Customers() {
   };
   const [customerProjectForms, setCustomerProjectForms] = useState<CustomerProjectDraft[]>([]);
   const [customerProjectsLoading, setCustomerProjectsLoading] = useState(false);
+  const customerProjectRead = useRef(0);
+  const originalProjectForms = useRef(new Map<number, CustomerProjectDraft>());
   const [commissionPartners, setCommissionPartners] = useState<Array<{ id: number; partner_code: string; name: string; partner_type: string }>>([]);
   const [commissionPartnerId, setCommissionPartnerId] = useState('auto');
   const [commissionEffectiveFrom, setCommissionEffectiveFrom] = useState(businessToday);
@@ -851,7 +861,6 @@ export default function Customers() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
-  const [codeSettings, setCodeSettings] = useState<CustomerCodeSettings>(loadSettings());
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [visibleCols, setVisibleCols] = useState<string[]>(loadCols());
   const [previewCustomerId, setPreviewCustomerId] = useState<number | null>(null);
@@ -1624,8 +1633,6 @@ export default function Customers() {
     } catch { toast.error('删除失败'); } finally { setDeletingContact(false); }
   };
 
-  useEffect(() => { if (showForm) setCodeSettings(loadSettings()); }, [showForm]);
-
   useEffect(() => {
     if (!isOwner || !showForm || editingId) return;
     invokeWithAuth({ url: '/api/v1/commissions/assignment-options', method: 'GET' })
@@ -1672,7 +1679,8 @@ export default function Customers() {
     setSelectedCustomer(null); setSelectedCustomerTab('overview');
     setCustomers([]); setEmployeesList([]); setLoadError(null); setCustomersLoadedAt(null);
     setSelectedCustomerIds([]); setPreviewCustomerId(null); setDeleteTarget(null);
-    setShowForm(false); setEditingId(null); setForm(emptyForm); setCustomerProjectForms([]);
+    customerProjectRead.current += 1;
+    setShowForm(false); setEditingId(null); setForm(emptyForm); setCustomerProjectForms([]); setCustomerProjectsLoading(false);
     setFollowForm(emptyFollowForm); setContactForm(emptyContactForm);
     setShowAssignDialog(false); setAssignTarget(null); setAssignEmployeeId('');
     setShowAccessDialog(false); setAccessTarget(null); setFinanceAccessTarget(null); setBulkAccessMode(false);
@@ -1800,7 +1808,20 @@ export default function Customers() {
     renewalPageSize,
   ]);
 
-  const openCreate = () => { setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} }); setCustomerProjectForms([]); setCommissionPartnerId('auto'); setCommissionEffectiveFrom(businessToday); setManualCityInput(false); setEditingId(null); setDuplicateWarning(null); setShowForm(true); };
+  const openCreate = () => {
+    customerProjectRead.current += 1;
+    originalCustomerForm.current = null;
+    originalProjectForms.current.clear();
+    setCustomerProjectsLoading(false);
+    setForm({ ...emptyForm, selected_platforms: [], interested_packages: [], interested_packages_snapshot: {} });
+    setCustomerProjectForms([]);
+    setCommissionPartnerId('auto');
+    setCommissionEffectiveFrom(businessToday);
+    setManualCityInput(false);
+    setEditingId(null);
+    setDuplicateWarning(null);
+    setShowForm(true);
+  };
   const openEdit = async (c: any) => {
     if (!canEditBasic(c)) return;
     const interestedPackages = parseMultiValue(c.interested_packages);
@@ -1808,14 +1829,21 @@ export default function Customers() {
     interestedPackages.forEach(key => {
       if (!snapshot[key]) snapshot[key] = customerPackageLabels[key] || key;
     });
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || '', country: c.country || '', industry: c.industry || '', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    const loadedForm = { customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || '', country: c.country || '', industry: c.industry || '', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system ?? null, current_platform: c.current_platform || '', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders ?? null, source: c.source || '', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' };
+    originalCustomerForm.current = loadedForm;
+    setForm(loadedForm);
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
     if (!isOwner) { setCustomerProjectForms([]); setCustomerProjectsLoading(false); return; }
+    originalProjectForms.current.clear();
+    const projectRead = ++customerProjectRead.current;
+    const current = () => customerProjectRead.current === projectRead && customerMountedRef.current && customerActorRef.current === customerActor;
+    setCustomerProjectForms([]);
     setCustomerProjectsLoading(true);
     try {
       const response = await invokeWithAuth({ url: `/api/v1/entities/customers/${c.id}/projects`, method: 'GET' });
-      setCustomerProjectForms((response?.data?.items || []).map((row: any) => ({
+      if (!current()) return;
+      const loaded: CustomerProjectDraft[] = (response?.data?.items || []).map((row: any) => ({
         engagement_id: row.id,
         business_line_code: row.business_line_code,
         product_code: row.product_code,
@@ -1823,26 +1851,31 @@ export default function Customers() {
         package_name: row.package_name || row.product_name,
         status: row.status || 'pending_setup',
         billing_cycle: row.billing_cycle || '',
-        collection_method: row.collection_method || 'other',
+        collection_method: row.collection_method || '',
         currency: row.currency || 'USD',
         owner_employee_id: row.owner_employee_id ? String(row.owner_employee_id) : '',
         paid_started_at: row.paid_started_at ? row.paid_started_at.slice(0, 10) : '',
         stopped_at: row.stopped_at ? row.stopped_at.slice(0, 10) : '',
         stop_reason_code: row.stop_reason_code || '',
         stop_note: row.stop_note || '',
-      })));
+        sales_employee_id: row.sales_employee_id ?? null,
+        original_paid_started_at: row.paid_started_at,
+        original_stopped_at: row.stopped_at,
+      }));
+      originalProjectForms.current = new Map(loaded.map(row => [row.engagement_id!, row]));
+      setCustomerProjectForms(loaded);
     } catch (error: any) {
+      if (!current()) return;
       toast.error(getErrorDetail(error, '合作项目加载失败'));
       setCustomerProjectForms([]);
     } finally {
-      setCustomerProjectsLoading(false);
+      if (current()) setCustomerProjectsLoading(false);
     }
   };
 
-  const addCustomerProject = () => {
-    const nextLine = Object.keys(customerProjectLines).find(code => !customerProjectForms.some(row => row.business_line_code === code));
-    if (!nextLine) { toast.error('四类业务项目都已经添加'); return; }
-    setCustomerProjectForms(rows => [...rows, newCustomerProject(nextLine)]);
+  const addCustomerProject = (lineCode: string) => {
+    setCustomerProjectForms(rows => rows.some(row => row.business_line_code === lineCode)
+      ? rows : [...rows, newCustomerProject(lineCode)]);
   };
 
   const updateCustomerProject = (index: number, patch: Partial<CustomerProjectDraft>) => {
@@ -1855,29 +1888,26 @@ export default function Customers() {
         next.product_name = line.productName;
         if (!next.package_name || next.package_name === row.product_name) next.package_name = line.productName;
         if (patch.business_line_code === 'one_time_project') next.billing_cycle = 'one_time';
+        else if (row.business_line_code === 'one_time_project' && row.billing_cycle === 'one_time') next.billing_cycle = '';
       }
       return next;
     }));
   };
 
-  const getNextAutoCode = (industry?: string) => {
-    const ind = industry || form.industry || '';
-    return generateNextCode(codeSettings, ind, customers.map(c => c.customer_code).filter(Boolean));
-  };
-
   const handleSave = async () => {
     if (saving || customerProjectsLoading || (editingId && !canEditBasic(editingCustomer))) return;
-    if (!form.business_name || !form.contact_name || !form.phone) { toast.error('请填写必填字段'); return; }
+    if (!form.business_name.trim() || !form.phone.trim()) { toast.error('请填写商家名称和电话'); return; }
     const originalCustomer = customers.find(customer => customer.id === editingId);
     if (!editingId || form.phone !== originalCustomer?.phone || (form.country || null) !== (originalCustomer?.country || null)) {
       const phone = parsePhoneNumber(form.phone, form.country);
       if (!phone.isValid) { toast.error(phone.reason); return; }
     }
-    if (new Set(customerProjectForms.map(row => row.business_line_code)).size !== customerProjectForms.length) { toast.error('同一业务项目只能添加一次'); return; }
-    if (customerProjectForms.some(row => !row.package_name.trim())) { toast.error('请填写每个合作项目的套餐或项目名称'); return; }
-    if (customerProjectForms.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
-    if (customerProjectForms.some(row => ['stopped', 'completed'].includes(row.status) && !row.stopped_at)) { toast.error('已停止或已完成项目必须填写结束日期'); return; }
-    if (form.status === 'lost' && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status))) { toast.error('客户标记流失前，请先停止所有合作项目；成交和收款历史无需删除'); return; }
+    const changedProjects = customerProjectForms.filter(row => !row.engagement_id || JSON.stringify(row) !== JSON.stringify(originalProjectForms.current.get(row.engagement_id)));
+    if (changedProjects.length && new Set(customerProjectForms.map(row => row.business_line_code)).size !== customerProjectForms.length) { toast.error('同一业务项目只能添加一次'); return; }
+    if (changedProjects.some(row => !row.package_name.trim())) { toast.error('请填写每个合作项目的套餐或项目名称'); return; }
+    if (changedProjects.some(row => ['active_paid', 'reactivated'].includes(row.status) && !row.paid_started_at)) { toast.error('付费合作中的项目必须填写第一笔有效收款日期'); return; }
+    if (changedProjects.some(row => ['stopped', 'completed'].includes(row.status) && !row.stopped_at)) { toast.error('已停止或已完成项目必须填写结束日期'); return; }
+    if (form.status === 'lost' && (!editingId || originalCustomer?.status !== 'lost' || changedProjects.length > 0) && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status))) { toast.error('客户标记流失前，请先停止所有合作项目；成交和收款历史无需删除'); return; }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -1888,6 +1918,9 @@ export default function Customers() {
       }, {});
       const payload = {
         ...form,
+        business_name: form.business_name.trim(),
+        contact_name: form.contact_name.trim(),
+        source: form.source || (editingId ? '' : null),
         country: form.country || null,
         status: originalCustomer?.__original_status === '已合作' && form.status === 'closed' ? '已合作' : form.status,
         selected_platforms: form.selected_platforms.join(','),
@@ -1898,20 +1931,28 @@ export default function Customers() {
       };
       // This form no longer edits WeChat/WhatsApp; omission preserves stored history.
       delete payload.wechat;
-      const projects = customerProjectForms.map(row => ({
+      const projects = changedProjects.map(({ original_paid_started_at, original_stopped_at, ...row }) => ({
         ...row,
+        collection_method: row.collection_method || null,
+        billing_cycle: row.billing_cycle || null,
         owner_employee_id: row.owner_employee_id ? Number(row.owner_employee_id) : null,
-        sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
-        paid_started_at: row.paid_started_at ? `${row.paid_started_at}T00:00:00Z` : null,
-        stopped_at: row.stopped_at ? `${row.stopped_at}T00:00:00Z` : null,
+        sales_employee_id: row.engagement_id ? row.sales_employee_id : payload.sales_employee_id,
+        paid_started_at: projectInputDate(row.paid_started_at, original_paid_started_at),
+        stopped_at: projectInputDate(row.stopped_at, original_stopped_at),
         stop_reason_code: row.stop_reason_code || null,
         stop_note: row.stop_note || null,
         source_payment_ids: [],
         source_subscription_ids: [],
       }));
       if (editingId) {
-        const safePayload = editableCustomerPayload({...payload, updated_at: now}, canAssignCustomer(editingCustomer), isOwner);
-        const updatedRes = canEditProjects
+        const original = originalCustomerForm.current;
+        if (!original) throw new Error('请重新打开客户资料后保存');
+        const changes: Record<string, unknown> = {};
+        for (const key of Object.keys(form) as Array<keyof typeof form>) {
+          if (key !== 'wechat' && JSON.stringify(form[key]) !== JSON.stringify(original[key])) changes[key] = payload[key];
+        }
+        const safePayload = editableCustomerPayload({...changes, updated_at: now}, canAssignCustomer(editingCustomer), isOwner);
+        const updatedRes = canEditProjects && projects.length > 0
           ? await invokeWithAuth({ url: `/api/v1/entities/customers/${editingId}/with-projects`, method: 'PUT', data: { customer: safePayload, projects } })
           : await client.entities.customers.update({id:String(editingId),data:safePayload});
         const updatedCustomer = updatedRes?.data || { ...payload, id: editingId, updated_at: now };
@@ -1919,8 +1960,7 @@ export default function Customers() {
         toast.success('客户信息已更新');
         logOperation({ customerId: editingId, actionType: 'edit_customer', actionDetail: `编辑客户: ${form.business_name}`, operatorName: op });
       } else {
-        const code = form.customer_code.trim() || getNextAutoCode(form.industry);
-        if (customers.some(c => c.customer_code === code)) { toast.error(`编号「${code}」已存在`); setSaving(false); return; }
+        const code = form.customer_code.trim() || null;
         const res = isOwner ? await invokeWithAuth({ url: '/api/v1/entities/customers/with-projects', method: 'POST', data: {
           customer: { ...payload, customer_code: code, created_at: now, updated_at: now },
           projects,
@@ -1935,7 +1975,8 @@ export default function Customers() {
           ['detail','tab','reminder','from','financeTab','returnTo'].forEach(key => nextParams.delete(key));
           setSearchParams(nextParams);
         }
-        toast.success(created.message);
+        const savedProjects = Boolean(res?.data?.id) && isOwner && created.canOpen && projects.length > 0;
+        toast.success(savedProjects ? `客户已创建，${projects.length} 个合作项目已登记` : created.message);
         logOperation({ customerId: res?.data?.id, actionType: 'create_customer', actionDetail: `新增客户: ${form.business_name}`, operatorName: op });
       }
       customerDraft.markSaved();
@@ -2221,22 +2262,22 @@ export default function Customers() {
       <Dialog open={showForm} onOpenChange={open => { if (open || (!saving && customerDraft.confirmDiscard())) setShowForm(open); }}>
         <CrmFormDialogContent ref={customerFormRef} className="crm-customer-progressive-form crm-progressive-form max-w-4xl">
           <CrmFormDialogHeader><DialogTitle>{editingId ? '编辑客户' : '新增客户'}</DialogTitle>
-            <nav className="crm-form-section-nav" aria-label="客户表单分区定位">
+            {editingId && <nav className="crm-form-section-nav" aria-label="客户表单分区定位">
               <button type="button" aria-controls="customer-form-basic" onClick={() => scrollCustomerFormSection('customer-form-basic')}>基本信息</button>
-              <button type="button" aria-controls="customer-form-classification" onClick={() => scrollCustomerFormSection('customer-form-classification')}>地区归类</button>
               {canEditProjects && <button type="button" aria-controls="customer-form-projects" onClick={() => scrollCustomerFormSection('customer-form-projects')}>合作项目</button>}
+              <button type="button" aria-controls="customer-form-classification" onClick={() => scrollCustomerFormSection('customer-form-classification')}>地区归类</button>
               <button type="button" aria-controls="customer-form-extra" onClick={() => scrollCustomerFormSection('customer-form-extra')}>补充资料</button>
-            </nav>
+            </nav>}
           </CrmFormDialogHeader>
           <CrmFormDialogBody className="space-y-4">
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
           <div data-testid="customer-form-grid" className="space-y-4">
 <section id="customer-form-basic" className="crm-form-section">
-  <div className="crm-form-section-heading"><h3>先建立客户档案</h3><p>先填 3 项必填资料。地区未核实可暂留空；电话请含国家码，或核实国家后填写本地号码。</p></div>
+  <div className="crm-form-section-heading"><h3>商家资料</h3><p>商家名称和电话为必填项。填写本地号码时请选择国家。</p></div>
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-<div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
-<div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
-<div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
+<div><Label htmlFor="customer-form-business-name">商家名称 *</Label><Input id="customer-form-business-name" value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
+<div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" type="tel" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
+<div><Label htmlFor="customer-form-contact-name">联系人（选填）</Label><Input id="customer-form-contact-name" value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
 <div><Label>国家（待核实可留空）</Label><NativeSelect value={form.country} onChange={v => { const keepState = getStatesForCountry(v).some(state => state.code === form.state); setManualCityInput(false); setForm({ ...form, country: v, state: keepState ? form.state : '', city: keepState ? form.city : '' }); }} options={customerFormOptions(form.country, countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` })), '待核实国家/地区')} /></div>
 </div>
   <CustomerFormSection id="customer-form-contacts" title="更多联系资料" description="客户编号与邮箱" filled={Boolean(form.customer_code || form.email)} defaultOpen={Boolean(editingId && Boolean(form.customer_code || form.email))}>
@@ -2245,14 +2286,65 @@ export default function Customers() {
               <Label>客户编号</Label>
               <div className="flex gap-2 items-center">
                 <Input value={form.customer_code} onChange={e => setForm({ ...form, customer_code: e.target.value })} placeholder={editingId ? '修改编号' : `留空自动生成`} className="font-mono" />
-                {!editingId && <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => setForm({ ...form, customer_code: getNextAutoCode(form.industry) })}>自动生成</Button>}
               </div>
             </div>
 <div className="sm:col-span-2"><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
 </div>
 </CustomerFormSection>
 </section>
-<CustomerFormSection id="customer-form-classification" title="接单前核对地区与归类" description="行业、地区、来源与负责销售；已有资料沿用，未知值保留待核实" filled={Boolean(form.industry || form.state || form.city || form.address)}>
+{canEditProjects && (
+<CustomerFormSection id="customer-form-projects" title="已确定的合作项目" description="选择业务类型，随客户一起保存并计入项目统计。" filled={customerProjectForms.length > 0} defaultOpen={Boolean(editingId && customerProjectForms.length)} forceOpen={customerProjectsLoading || customerProjectForms.length > 0} statusLabel={customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '可稍后登记'}>
+<div>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="选择已确定的业务类型">
+                {Object.entries(customerProjectLines).map(([code, line]) => {
+                  const added = customerProjectForms.some(row => row.business_line_code === code);
+                  return <Button key={code} type="button" size="sm" variant="outline" className="min-h-11" disabled={customerProjectsLoading || added} onClick={() => addCustomerProject(code)} aria-label={`${added ? '已添加' : '添加'}${line.label}`}>
+                    {!added && <Plus aria-hidden="true" className="mr-1 h-3.5 w-3.5" />}{line.label}
+                  </Button>;
+                })}
+              </div>
+              {customerProjectsLoading ? (
+                <div className="py-6 text-center text-sm text-slate-400">正在加载客户合作项目…</div>
+              ) : customerProjectForms.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {form.status === 'lost' && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status)) && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      客户已选择“流失”，但仍有合作项目未停止。请把相关项目改为“项目已停止”并填写结束信息；历史成交和收款不会被删除。
+                    </div>
+                  )}
+                  {customerProjectForms.map((project, index) => (
+                    <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-800">项目 {index + 1}</p>
+                        {!project.engagement_id && <Button type="button" size="sm" variant="ghost" className="text-red-600" onClick={() => setCustomerProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))}>移除</Button>}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div><Label className="text-xs">业务项目 *</Label><NativeSelect value={project.business_line_code} onChange={value => updateCustomerProject(index, { business_line_code: value })} options={Object.entries(customerProjectLines).map(([value, item]) => ({ value, label: item.label }))} /></div>
+                        <div><Label className="text-xs">套餐/项目名称 *</Label><Input value={project.package_name} onChange={event => updateCustomerProject(index, { package_name: event.target.value })} placeholder="如：基础代运营、餐饮 OS 专业版" /></div>
+                        <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, {
+                          status: value,
+                          stopped_at: ['stopped', 'completed'].includes(value) ? (project.stopped_at || businessToday) : '',
+                          stop_reason_code: value === 'stopped' ? project.stop_reason_code : '',
+                          stop_note: ['stopped', 'completed'].includes(value) ? project.stop_note : '',
+                        })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
+                        <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={businessToday} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
+                        <div><Label className="text-xs">收费周期</Label><NativeSelect value={project.billing_cycle} onChange={value => updateCustomerProject(index, { billing_cycle: value })} options={[{ value: '', label: '待确认' }, ...Object.entries(customerProjectBillingCycles).map(([value, label]) => ({ value, label }))]} /></div>
+                        <div><Label className="text-xs">收款方式</Label><NativeSelect value={project.collection_method} onChange={value => updateCustomerProject(index, { collection_method: value })} options={customerFormOptions(project.collection_method, Object.entries(customerProjectCollectionMethods).map(([value, label]) => ({ value, label })), '暂未提供')} /></div>
+                        <div><Label className="text-xs">币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateCustomerProject(index, { currency: event.target.value.toUpperCase() })} /></div>
+                        <div><Label className="text-xs">项目负责人</Label><NativeSelect value={project.owner_employee_id} onChange={value => updateCustomerProject(index, { owner_employee_id: value })} options={[{ value: '', label: '待分配' }, ...employeesList.map(employeeRow => ({ value: String(employeeRow.id), label: employeeRow.name }))]} /></div>
+                        {['stopped', 'completed'].includes(project.status) && <div><Label className="text-xs">结束日期 *</Label><Input type="date" value={project.stopped_at} max={businessToday} onChange={event => updateCustomerProject(index, { stopped_at: event.target.value })} /></div>}
+                        {project.status === 'stopped' && <div><Label className="text-xs">停止原因</Label><NativeSelect value={project.stop_reason_code} onChange={value => updateCustomerProject(index, { stop_reason_code: value })} options={[{ value: '', label: '待补充' }, ...Object.entries(customerProjectStopReasons).map(([value, label]) => ({ value, label }))]} /></div>}
+                        {['stopped', 'completed'].includes(project.status) && <div className="sm:col-span-2"><Label className="text-xs">结束备注</Label><Input value={project.stop_note} onChange={event => updateCustomerProject(index, { stop_note: event.target.value })} placeholder="记录停止或完成背景，方便以后复盘" /></div>}
+                      </div>
+                      <p className="mt-3 text-xs text-slate-400">“付费合作中”必须填写第一笔有效收款日期；停止项目会同步关闭该项目关联的续费计划，但成交和收款历史永久保留。</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+</CustomerFormSection>
+)}
+<CustomerFormSection id="customer-form-classification" title="地区与归类" description="行业、地址、来源与负责销售" filled={Boolean(form.industry || form.state || form.city || form.address)}>
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 <div>
               <Label>行业</Label>
@@ -2271,7 +2363,7 @@ export default function Customers() {
                 </div>
               )}
             </div>
-<div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+<div><Label>来源</Label><NativeSelect value={form.source} onChange={v => setForm({ ...form, source: v })} options={customerFormOptions(form.source, Object.entries(sourceLabels).map(([value, label]) => ({ value, label })), '暂未提供')} /></div>
 <div>
               <Label>等级</Label>
               <div className="flex gap-1.5">
@@ -2331,7 +2423,8 @@ export default function Customers() {
               )}
             </div>
 <div><Label>状态</Label><NativeSelect value={form.status} onChange={v => setForm({ ...form, status: v })} options={Object.entries(statusLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-<div><Label>负责销售</Label><NativeSelect disabled={Boolean(editingId && !canAssignCustomer(editingCustomer))} value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '请选择负责人' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
+{(editingId || isOwner) ? <div><Label>负责销售</Label><NativeSelect disabled={Boolean(editingId && !canAssignCustomer(editingCustomer))} value={form.sales_employee_id ? String(form.sales_employee_id) : ''} onChange={v => { const emp = employeesList.find(e => e.id === Number(v)); setForm({ ...form, sales_person: emp?.name || '', sales_employee_id: v ? Number(v) : '' }); }} options={[{ value: '', label: '待分配' }, ...employeesList.map(e => ({ value: String(e.id), label: `${e.name}${e.department ? ' - ' + e.department : ''}` }))]} /></div>
+  : employee?.name && !['admin', 'super_admin'].includes(String(employee.role)) && <div><Label>负责销售</Label><p className="mt-2 text-sm">{employee.name}（自动归属）</p></div>}
 </div>
   <CustomerFormSection id="customer-form-address" title="详细地址" description="州 / 省、城市与地址" filled={Boolean(form.city || form.address)} defaultOpen={Boolean(editingId && Boolean(form.city || form.address))}>
 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2379,63 +2472,9 @@ export default function Customers() {
               </div>
             </div>}</div>
 </CustomerFormSection>
-{canEditProjects && (
-<CustomerFormSection id="customer-form-projects" title="合作确认后登记项目" description="新需求先在客户商机确认；这里沿用已有项目，历史未关联资料先核对来源。" filled={customerProjectForms.length > 0} defaultOpen={Boolean(editingId && customerProjectForms.length)} forceOpen={customerProjectsLoading || customerProjectForms.length > 0} statusLabel={customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '可稍后登记'}>
-<div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <Label className="text-sm font-semibold text-slate-800">合作项目（可多选）</Label>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">在客户首次录入时建立代运营、餐饮 OS、美业 OS 或一次性项目。尚未合作可以暂不添加；以后在这里继续增加项目。</p>
-                </div>
-                <Button type="button" size="sm" variant="outline" onClick={addCustomerProject} disabled={customerProjectForms.length >= 4 || customerProjectsLoading}>
-                  <Plus className="mr-1 h-3.5 w-3.5" />增加合作项目
-                </Button>
-              </div>
-              {customerProjectsLoading ? (
-                <div className="py-6 text-center text-sm text-slate-400">正在加载客户合作项目…</div>
-              ) : customerProjectForms.length === 0 ? (
-                <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white/70 px-4 py-5 text-center text-sm text-slate-500">当前未建立合作项目；客户资料仍可正常保存。</div>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {form.status === 'lost' && customerProjectForms.some(row => activeCustomerProjectStatuses.has(row.status)) && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      客户已选择“流失”，但仍有合作项目未停止。请把相关项目改为“项目已停止”并填写结束信息；历史成交和收款不会被删除。
-                    </div>
-                  )}
-                  {customerProjectForms.map((project, index) => (
-                    <div key={`${project.engagement_id || 'new'}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-800">项目 {index + 1}</p>
-                        {!project.engagement_id && <Button type="button" size="sm" variant="ghost" className="text-red-600" onClick={() => setCustomerProjectForms(rows => rows.filter((_row, rowIndex) => rowIndex !== index))}>移除</Button>}
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <div><Label className="text-xs">业务项目 *</Label><NativeSelect value={project.business_line_code} onChange={value => updateCustomerProject(index, { business_line_code: value })} options={Object.entries(customerProjectLines).map(([value, item]) => ({ value, label: item.label }))} /></div>
-                        <div><Label className="text-xs">套餐/项目名称 *</Label><Input value={project.package_name} onChange={event => updateCustomerProject(index, { package_name: event.target.value })} placeholder="如：基础代运营、餐饮 OS 专业版" /></div>
-                        <div><Label className="text-xs">项目状态 *</Label><NativeSelect value={project.status} onChange={value => updateCustomerProject(index, {
-                          status: value,
-                          stopped_at: ['stopped', 'completed'].includes(value) ? (project.stopped_at || businessToday) : '',
-                          stop_reason_code: value === 'stopped' ? project.stop_reason_code : '',
-                          stop_note: ['stopped', 'completed'].includes(value) ? project.stop_note : '',
-                        })} options={Object.entries(customerProjectStatuses).map(([value, label]) => ({ value, label }))} /></div>
-                        <div><Label className="text-xs">第一笔有效收款日期</Label><Input type="date" value={project.paid_started_at} max={businessToday} onChange={event => updateCustomerProject(index, { paid_started_at: event.target.value })} /></div>
-                        <div><Label className="text-xs">收费周期</Label><NativeSelect value={project.billing_cycle} onChange={value => updateCustomerProject(index, { billing_cycle: value })} options={[{ value: '', label: '待确认' }, ...Object.entries(customerProjectBillingCycles).map(([value, label]) => ({ value, label }))]} /></div>
-                        <div><Label className="text-xs">收款方式</Label><NativeSelect value={project.collection_method} onChange={value => updateCustomerProject(index, { collection_method: value })} options={Object.entries(customerProjectCollectionMethods).map(([value, label]) => ({ value, label }))} /></div>
-                        <div><Label className="text-xs">币种</Label><Input value={project.currency} maxLength={3} onChange={event => updateCustomerProject(index, { currency: event.target.value.toUpperCase() })} /></div>
-                        <div><Label className="text-xs">项目负责人</Label><NativeSelect value={project.owner_employee_id} onChange={value => updateCustomerProject(index, { owner_employee_id: value })} options={[{ value: '', label: '待分配' }, ...employeesList.map(employeeRow => ({ value: String(employeeRow.id), label: employeeRow.name }))]} /></div>
-                        {['stopped', 'completed'].includes(project.status) && <div><Label className="text-xs">结束日期 *</Label><Input type="date" value={project.stopped_at} max={businessToday} onChange={event => updateCustomerProject(index, { stopped_at: event.target.value })} /></div>}
-                        {project.status === 'stopped' && <div><Label className="text-xs">停止原因</Label><NativeSelect value={project.stop_reason_code} onChange={value => updateCustomerProject(index, { stop_reason_code: value })} options={[{ value: '', label: '待补充' }, ...Object.entries(customerProjectStopReasons).map(([value, label]) => ({ value, label }))]} /></div>}
-                        {['stopped', 'completed'].includes(project.status) && <div className="sm:col-span-2"><Label className="text-xs">结束备注</Label><Input value={project.stop_note} onChange={event => updateCustomerProject(index, { stop_note: event.target.value })} placeholder="记录停止或完成背景，方便以后复盘" /></div>}
-                      </div>
-                      <p className="mt-3 text-xs text-slate-400">“付费合作中”必须填写第一笔有效收款日期；停止项目会同步关闭该项目关联的续费计划，但成交和收款历史永久保留。</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-</CustomerFormSection>
-)}
-<section id="customer-form-extra" className="crm-form-section">
-  <div className="crm-form-section-heading"><h3>补充资料</h3><p>可按实际情况补充，编辑已有内容会默认展开。</p></div>
+<details id="customer-form-extra" className="crm-form-optional" open={editingId ? true : undefined}>
+  <summary><span className="crm-form-optional-heading"><strong>补充资料</strong><span>平台、备注与链接</span></span><ChevronDown aria-hidden="true" className="crm-form-optional-chevron" /></summary>
+  <div className="crm-form-optional-content">
   <CustomerFormSection id="customer-form-platforms" title="平台与备注" description="客户现有平台、平台现状与当前授权范围内的备注" filled={Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes))} defaultOpen={Boolean(editingId && Boolean(form.selected_platforms.length || (form.current_platform && form.current_platform !== '无') || (isOwner && form.notes)))}>
 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
@@ -2578,7 +2617,8 @@ export default function Customers() {
             </div>
 </div>
 </CustomerFormSection>
-</section>
+  </div>
+</details>
 </div>
           </CrmFormDialogBody>
           <CrmFormDialogFooter data-testid="customer-form-actions">
@@ -3035,8 +3075,8 @@ export default function Customers() {
                 <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">平台现状:</span><span>{c.current_platform || '-'}</span></div>
                 <div className="flex gap-2 md:col-span-2"><span className="text-slate-500 w-24 shrink-0">客户已有平台:</span><span>{formatSelectedPlatforms(c.selected_platforms)}</span></div>
                 <div className="flex gap-2 md:col-span-2"><span className="text-slate-500 w-24 shrink-0">套餐归类:</span><span>{parseMultiValue(c.interested_packages).length > 0 ? parseMultiValue(c.interested_packages).map(item => getCustomerPackageLabel(c, item)).join('、') : '-'}{parseMultiValue(c.interested_packages).some(item => getHistoricalPackageLabel(c, item)) && <span className="ml-2 text-xs text-slate-400">（历史：{parseMultiValue(c.interested_packages).map(item => getHistoricalPackageLabel(c, item)).filter(Boolean).join('、')}）</span>}</span></div>
-                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders || 0}</span></div>
-                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system ? '是' : '否'}</span></div>
+                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">月订单量:</span><span>{c.monthly_orders ?? '待补充'}</span></div>
+                <div className="flex gap-2"><span className="text-slate-500 w-24 shrink-0">已有点餐:</span><span>{c.has_ordering_system == null ? '待补充' : c.has_ordering_system ? '是' : '否'}</span></div>
               </div>
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <h4 className="text-sm font-medium text-slate-600 mb-2">社交媒体链接</h4>

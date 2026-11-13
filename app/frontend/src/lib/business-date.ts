@@ -61,6 +61,14 @@ export function businessDateKey(reference: Date | number = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+/** A successful daily scan covers its recorded Beijing business date. */
+export function hasTodayManagementScan(
+  run?: { status: string; scan_date?: string } | null,
+  reference: Date | number = new Date(),
+) {
+  return run?.status === 'completed' && run.scan_date === businessDateKey(reference);
+}
+
 /** Adds calendar days to a YYYY-MM-DD business date without using the device timezone. */
 export function addBusinessDateDays(dateKey: string, days: number) {
   const parts = parseBusinessDate(dateKey);

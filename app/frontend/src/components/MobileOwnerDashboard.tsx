@@ -5,6 +5,7 @@ import { getSafeInternalPath } from '@/lib/navigation-state';
 import './mobile-owner-dashboard.css';
 
 interface MobileOwnerDashboardProps {
+  scanCurrent: boolean;
   cockpit: {
     as_of: string;
     period: { month: string };
@@ -25,7 +26,7 @@ const money = (amount: number) => new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2,
 }).format(amount);
 
-export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardProps) {
+export default function MobileOwnerDashboard({ cockpit, scanCurrent }: MobileOwnerDashboardProps) {
   const navigate = useNavigate();
   const { canAccess } = useRole();
   const canOpen = (path: string) => {
@@ -48,6 +49,7 @@ export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardPr
     { label: '销售中心', path: '/sales-workbench', icon: Headphones },
   ].filter(item => canOpen(item.path));
   const usd = cockpit.finance.USD;
+  const SummaryIcon = scanCurrent ? CheckCircle2 : Info;
   const hasAttention = cockpit.decisions.length > 0;
 
   return (
@@ -57,9 +59,10 @@ export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardPr
         {monthParts && <span>{monthParts[1]} 年</span>}
       </div>
 
-      <details className="owner-mobile-attention-disclosure"><summary><span className="crm-owner-decision-summary-copy"><span>补充经营关注 · {cockpit.decisions.length} 类</span>{cockpit.decisions[0] && <small>{cockpit.decisions[0].title} · {cockpit.decisions[0].count}</small>}</span><ChevronDown aria-hidden="true" /></summary>
-      <section className={`owner-mobile-attention${hasAttention ? '' : ' owner-mobile-healthy'}`} aria-labelledby="owner-attention-heading">
+      <details className="owner-mobile-attention-disclosure"><summary><span className="crm-owner-decision-summary-copy"><span>{hasAttention ? `经营关注 · ${cockpit.decisions.length} 类` : scanCurrent ? '已检查的经营事项暂无异常' : '今天的经营扫描尚未完成'}</span>{cockpit.decisions[0] && <small>{cockpit.decisions[0].title} · {cockpit.decisions[0].count}</small>}</span><ChevronDown aria-hidden="true" /></summary>
+      <section className={`owner-mobile-attention${hasAttention || !scanCurrent ? '' : ' owner-mobile-healthy'}`} aria-labelledby="owner-attention-heading">
         <div className="owner-mobile-heading"><h2 id="owner-attention-heading">今天先关注</h2><span>{cockpit.decisions.length} 类事项</span></div>
+        {hasAttention && !scanCurrent && <p className="sf-note">今日经营扫描尚未完成，以下含已有记录。</p>}
         {hasAttention ? <>
           <div className="owner-mobile-attention-metrics">
             <div><span>全部任务逾期</span><strong>{cockpit.execution.overdue_tasks} <small>项</small></strong></div>
@@ -76,7 +79,7 @@ export default function MobileOwnerDashboard({ cockpit }: MobileOwnerDashboardPr
               })}
             </div>
           </details>
-        </> : <p className="owner-mobile-no-attention"><CheckCircle2 aria-hidden="true" />当前没有需要推动的异常事项</p>}
+        </> : <p className="owner-mobile-no-attention"><SummaryIcon aria-hidden="true" />{scanCurrent ? '已检查的经营事项暂无异常' : '今天的经营扫描尚未完成'}</p>}
       </section>
       </details>
 

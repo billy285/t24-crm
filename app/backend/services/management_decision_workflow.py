@@ -226,13 +226,20 @@ async def build_classification_review_queue(db: AsyncSession, start_date: date) 
         decision = decision_by_customer.get(customer_id)
         warnings = _warning_rows(item)
         warning_counts.update(row["code"] for row in warnings)
+        sources = [*item["payments"], *item["subscriptions"]]
+        if decision:
+            review_status = decision.decision
+        elif sources and not warnings and all(source.get("verified_project_id") for source in sources):
+            review_status = "auto_classified"
+        else:
+            review_status = "pending"
         queue.append({
             "review_key": review_key(customer_id),
             "customer_id": customer_id,
             "customer_code": item.get("customer_code"),
             "customer_name": item.get("customer_name"),
             "industry": item.get("industry"),
-            "review_status": decision.decision if decision else "pending",
+            "review_status": review_status,
             "review_note": decision.note if decision else None,
             "reviewed_by_name": decision.reviewed_by_name if decision else None,
             "reviewed_at": decision.reviewed_at if decision else None,

@@ -57,10 +57,33 @@ test('new customer location and industry stay unverified rather than silently be
 test('editing preserves missing and unknown location/industry values and existing snapshots', async () => {
   for (const customer of [{ id: 1, business_name: '门店', contact_name: '负责人', phone: '+14155550100' }, { id: 1, business_name: '门店', contact_name: '负责人', phone: '+14155550100', country: 'old-country', state: 'old-state', industry: 'old-industry' }]) {
     let form;
-    const context = { exports: {}, canEditBasic: () => true, parseMultiValue: () => [], parsePackageSnapshot: () => ({ original: '原套餐快照' }), customerPackageLabels: {}, isOwner: false, setForm: value => { form = value; }, setManualCityInput() {}, setEditingId() {}, setDuplicateWarning() {}, setShowForm() {}, setCustomerProjectForms() {}, setCustomerProjectsLoading() {} };
+    const context = { exports: {}, canEditBasic: () => true, originalCustomerForm: {current:null}, parseMultiValue: () => [], parsePackageSnapshot: () => ({ original: '原套餐快照' }), customerPackageLabels: {}, isOwner: false, setForm: value => { form = value; }, setManualCityInput() {}, setEditingId() {}, setDuplicateWarning() {}, setShowForm() {}, setCustomerProjectForms() {}, setCustomerProjectsLoading() {} };
     vm.runInNewContext(compile(`exports.open = ${variables.get('openEdit')};`), context); await context.exports.open(customer);
     assert.equal(form.country, customer.country || ''); assert.equal(form.state, customer.state || ''); assert.equal(form.industry, customer.industry || ''); assert.equal(form.interested_packages_snapshot.original, '原套餐快照');
   }
+});
+
+test('a late project response from an edited customer cannot populate a fresh new merchant', async () => {
+  let respond;
+  const edited = { id: 1, business_name: '原门店' };
+  let projectRows = [], loading = false;
+  const context = {
+    exports: {}, canEditBasic: () => true, originalCustomerForm: {current:null}, parseMultiValue: () => [], parsePackageSnapshot: () => ({}),
+    customerPackageLabels: {}, isOwner: true, customerMountedRef: {current:true},
+    originalProjectForms: {current:new Map()}, customerActor: 'owner', customerActorRef: {current:'owner'}, customerProjectRead: {current:0},
+    setForm() {}, setManualCityInput() {}, setEditingId() {}, setDuplicateWarning() {}, setShowForm() {},
+    setCustomerProjectForms(rows) { projectRows = rows; }, setCustomerProjectsLoading(value) { loading = value; },
+    invokeWithAuth: () => new Promise(resolve => { respond = resolve; }), emptyForm: {}, setCommissionPartnerId() {},
+    setCommissionEffectiveFrom() {}, businessToday: '2026-11-14',
+  };
+  vm.runInNewContext(compile(`exports.edit = ${variables.get('openEdit')}; exports.create = ${variables.get('openCreate')};`), context);
+  const pending = context.exports.edit(edited);
+  assert.equal(loading, true);
+  context.exports.create();
+  assert.equal(loading, false);
+  respond({data:{items:[{id:98, business_line_code:'beauty_os'}]}});
+  await pending;
+  assert.deepEqual(plain(projectRows), []);
 });
 
 test('unverified options retain their exact raw values and country changes never select the first state', () => {
@@ -75,11 +98,6 @@ test('unverified options retain their exact raw values and country changes never
   }
 });
 
-test('unknown industry uses the existing generic code prefix rather than a restaurant identity', () => {
-  let received;
-  const context = { exports: {}, form: { industry: '' }, codeSettings: {}, customers: [], generateNextCode: (_, industry) => { received = industry; return 'C-001'; } };
-  vm.runInNewContext(compile(`exports.next = ${variables.get('getNextAutoCode')};`), context); assert.equal(context.exports.next(), 'C-001'); assert.equal(received, '');
-});
 
 test('service links carry exact task/progress IDs and a safe customer return path', () => {
   const context = { exports: {}, URLSearchParams }; vm.runInNewContext(compile(declarations.get('customerServiceTarget') + '\nexports.target = customerServiceTarget;'), context);

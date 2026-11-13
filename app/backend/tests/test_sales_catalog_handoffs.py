@@ -18,7 +18,7 @@ from models.customers import Customers
 from models.deals import Deals
 from models.employees import Employees
 from models.finance_profit_closes import MonthlyProfitClose
-from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog, ProductPlan
+from models.management_decisions import BusinessLine, ClassificationReviewDecision, CustomerEngagement, ProductCatalog, ProductPlan
 from models.payments import Payments
 from models.sales_call_activities import SalesCallActivities
 from models.sales_deal_handoffs import SalesDealHandoff, SalesDealPlanPolicy
@@ -140,6 +140,39 @@ async def test_sales_registers_without_quote_or_payment_and_preserves_all_handof
     async with sessions() as db:
         assert not (await db.get(Deals, row["deal_id"])).is_paid
         assert await db.scalar(select(func.count()).select_from(Payments)) == 0
+
+
+@pytest.mark.asyncio
+async def test_handoff_counts_once_and_verified_first_receipt_skips_history_review(sale_api):
+    client, sessions = sale_api
+    url = "/api/v1/management-decisions/classification-review"
+
+    async def report():
+        response = await client.get(url, headers=headers(1))
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert (await report())["summary"]["project_count"] == 0
+    row = await registered(client)
+    registered_report = await report()
+    assert registered_report["summary"]["project_count"] == 1
+    assert registered_report["items"] == []
+
+    receipt = await client.post(f"{PREFIX}/{row['id']}/finance-confirmation", headers=headers(1), json=payment())
+    assert receipt.status_code == 200, receipt.text
+    for _ in range(2):
+        verified_report = await report()
+        assert verified_report["summary"]["project_count"] == 1
+        assert verified_report["summary"]["review_counts"] == {"auto_classified": 1}
+        assert verified_report["items"][0]["reviewed_at"] is None
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(ClassificationReviewDecision)) == 0
+        subscription = await db.get(Subscriptions, row["subscription_id"])
+        subscription.product_id = None
+        await db.commit()
+    unresolved = (await report())["items"][0]
+    assert unresolved["review_status"] == "pending"
+    assert any(w["code"] == "project_link_incomplete" for w in unresolved["warnings"])
 
 
 @pytest.mark.asyncio

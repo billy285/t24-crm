@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customers import Customers
 from models.customer_access_grants import CustomerAccessGrant
+from services.customer_codes import allocate_customer_code
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,10 @@ class CustomersService:
     async def create(self, data: Dict[str, Any], *, commit: bool = True) -> Optional[Customers]:
         """Create a new customers"""
         try:
-            obj = Customers(**data)
+            code = await allocate_customer_code(
+                self.db, industry=data.get("industry"), requested_code=data.get("customer_code"),
+            )
+            obj = Customers(**{**data, "customer_code": code})
             self.db.add(obj)
             if commit:
                 await self.db.commit()
@@ -182,6 +186,14 @@ class CustomersService:
             if not obj:
                 logger.warning(f"Customers {obj_id} not found for update")
                 return None
+            if "customer_code" in update_data:
+                update_data = dict(update_data)
+                requested_code = (update_data.pop("customer_code") or "").strip()
+                if requested_code != (obj.customer_code or "").strip():
+                    obj.customer_code = await allocate_customer_code(
+                        self.db, industry=update_data.get("industry", obj.industry), requested_code=requested_code,
+                        customer_id=obj.id,
+                    )
             for key, value in update_data.items():
                 if hasattr(obj, key):
                     setattr(obj, key, value)

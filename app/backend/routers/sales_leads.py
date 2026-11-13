@@ -40,6 +40,7 @@ from services.sales_queue_policy import queue_context, contact_queue_context, qu
 from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
 from services.sales_workflow_locks import lock_sales_workflow
+from services.customer_codes import allocate_customer_code
 from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_contact_protection import (
     contact_protection_summaries, ensure_lead_contact_allowed, ensure_phone_contact_allowed,
@@ -1544,9 +1545,7 @@ async def convert_sales_lead_to_customer(
     if duplicates:
         raise HTTPException(status_code=409, detail={"message": "发现可能重复的正式客户，请确认后不要重复转入", "duplicates": duplicates})
 
-    day_code = datetime.now(BUSINESS_TIMEZONE).strftime("%Y%m%d")
-    count = (await db.execute(select(func.count(Customers.id)).where(Customers.customer_code.like(f"C{day_code}-%")))).scalar_one()
-    customer_code = f"C{day_code}-{int(count) + 1:04d}"
+    customer_code = await allocate_customer_code(db, industry=lead.industry)
     customer = Customers(
         customer_code=customer_code,
         sales_lead_id=lead.id,

@@ -309,17 +309,14 @@ export default function ImportCustomers({ existingCustomers, onImportComplete }:
 
     const result: ImportResult = { success: 0, failed: 0, skipped: duplicateRows.length + errorRows.length, errors: [] };
     const total = validRows.length;
-    const baseCode = existingCustomers.length;
 
     for (let i = 0; i < validRows.length; i++) {
       const row = validRows[i];
       try {
         const now = new Date().toISOString();
-        const code = `C${new Date().getFullYear()}${String(baseCode + i + 1).padStart(4, '0')}`;
         await client.entities.customers.create({
           data: {
             ...row.data,
-            customer_code: code,
             created_at: now,
             updated_at: now,
           },

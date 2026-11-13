@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.customer_lifecycles import CustomerLifecycleCycle
 from models.customers import Customers
+from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
 from models.payments import Payments
 from models.subscriptions import Subscriptions
+from services.deal_payment_sync import CATALOG_SERVICE_INCOME_TYPES
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -20,6 +22,7 @@ SUPPORTED_BILLING_CYCLES = {
     "month": "monthly",
     "monthly_payment": "monthly",
     "月付": "monthly",
+    "semi_annual": "semi_annual",
     "quarterly": "quarterly",
     "quarter": "quarterly",
     "quarterly_payment": "quarterly",
@@ -149,7 +152,15 @@ def _component(
     }
 
 
-def classify_payment(payment: Payments) -> dict[str, object]:
+PROJECT_CLASSIFICATIONS = {
+    "managed_service": "service_revenue",
+    "restaurant_os": "os_subscription",
+    "beauty_os": "os_subscription",
+    "one_time_project": "one_time_project",
+}
+
+
+def classify_payment(payment: Payments, linked_product: Optional[tuple[str, str]] = None) -> dict[str, object]:
     amount_paid = _money(payment.amount_paid)
     management_amount = max(_money(payment.management_amount), Decimal("0.00"))
     ads_amount = max(_money(payment.ads_recharge_amount), Decimal("0.00"))
@@ -200,10 +211,17 @@ def classify_payment(payment: Payments) -> dict[str, object]:
             ))
         elif explicit_total < amount_paid:
             residual = amount_paid - explicit_total
-            classification, line, product_code, basis, fallback_warnings = _fallback_classification(
-                payment.income_type, payment.product_name
-            )
-            warnings.extend(fallback_warnings)
+            if linked_product and (
+                income == CATALOG_SERVICE_INCOME_TYPES[linked_product[0]]
+                or (income == "renewal_fee" and linked_product[0] != "one_time_project")
+            ):
+                line, product_code = linked_product
+                classification, basis = PROJECT_CLASSIFICATIONS[line], "recorded_project"
+            else:
+                classification, line, product_code, basis, fallback_warnings = _fallback_classification(
+                    payment.income_type, payment.product_name
+                )
+                warnings.extend(fallback_warnings)
             if income == "management_ads_mixed":
                 classification, line, product_code, basis = "needs_review", None, None, "unclassified_residual"
                 warnings.append(_warning(
@@ -213,6 +231,19 @@ def classify_payment(payment: Payments) -> dict[str, object]:
                 ))
             components.append(_component(classification, line, product_code, residual, basis))
 
+    if payment.engagement_id and not linked_product:
+        warnings.append(_warning("project_link_incomplete", "收款的客户、项目、业务板块或产品关联不完整。"))
+    if linked_product:
+        line = linked_product[0]
+        allowed_types = {CATALOG_SERVICE_INCOME_TYPES[line]}
+        if line != "one_time_project":
+            allowed_types.add("renewal_fee")
+        if line == "managed_service":
+            allowed_types.update(("ads_fee", "management_ads_mixed"))
+        if line == "one_time_project":
+            allowed_types.add("website_fee")
+        if income not in allowed_types or any(component["business_line"] != line for component in components):
+            warnings.append(_warning("project_income_conflict", "收款业务类型与所关联项目不一致。"))
     normalized_cycle = SUPPORTED_BILLING_CYCLES.get(_text(payment.billing_cycle)) if payment.billing_cycle else None
     if payment.billing_cycle and not normalized_cycle:
         warnings.append(_warning(
@@ -227,6 +258,7 @@ def classify_payment(payment: Payments) -> dict[str, object]:
 
     return {
         "payment_id": payment.id,
+        "verified_project_id": payment.engagement_id if linked_product else None,
         "customer_id": payment.customer_id,
         "payment_date": payment.payment_date,
         "product_name": payment.product_name,
@@ -243,12 +275,15 @@ def classify_payment(payment: Payments) -> dict[str, object]:
     }
 
 
-def classify_subscription(subscription: Subscriptions) -> dict[str, object]:
+def classify_subscription(subscription: Subscriptions, linked_product: Optional[tuple[str, str]] = None) -> dict[str, object]:
     warnings: list[dict[str, object]] = []
     hint = _product_hint(subscription.package_name)
     normalized_cycle = SUPPORTED_BILLING_CYCLES.get(_text(subscription.billing_cycle)) if subscription.billing_cycle else None
 
-    if hint and hint[0] == "os_subscription":
+    if linked_product and (not hint or hint[0] != "pass_through_principal"):
+        line, product_code = linked_product
+        classification, basis = PROJECT_CLASSIFICATIONS[line], "recorded_project"
+    elif hint and hint[0] == "os_subscription":
         classification, line, product_code = hint
         basis = "explicit_package_marker"
     elif hint and hint[0] == "one_time_project":
@@ -270,6 +305,8 @@ def classify_subscription(subscription: Subscriptions) -> dict[str, object]:
                 "历史订阅未明确业务板块，暂按代运营建议分类，需人工确认。",
             ))
 
+    if subscription.engagement_id and not linked_product:
+        warnings.append(_warning("project_link_incomplete", "订阅的客户、项目、业务板块或产品关联不完整。"))
     if subscription.billing_cycle and not normalized_cycle:
         warnings.append(_warning(
             "unsupported_billing_cycle",
@@ -281,6 +318,7 @@ def classify_subscription(subscription: Subscriptions) -> dict[str, object]:
 
     return {
         "subscription_id": subscription.id,
+        "verified_project_id": subscription.engagement_id if linked_product else None,
         "customer_id": subscription.customer_id,
         "package_name": subscription.package_name,
         "package_price": _money_number(_money(subscription.package_price)),
@@ -457,13 +495,31 @@ async def build_classification_preview(
     for row in subscriptions:
         subscriptions_by_customer[row.customer_id].append(row)
 
+    # Match every stored key. A package label or a single project for a customer
+    # is insufficient evidence to remove a source from manual review.
+    catalog_rows = (await db.execute(
+        select(CustomerEngagement.id, CustomerEngagement.customer_id, BusinessLine.id,
+               ProductCatalog.id, BusinessLine.code, ProductCatalog.code)
+        .join_from(CustomerEngagement, BusinessLine, BusinessLine.id == CustomerEngagement.business_line_id)
+        .join(ProductCatalog, ProductCatalog.id == CustomerEngagement.product_id)
+        .where(CustomerEngagement.customer_id.in_(page_customer_ids), ProductCatalog.business_line_id == BusinessLine.id)
+    )).all()
+    project_products = {
+        (engagement_id, customer_id, line_id, product_id): (line_code, product_code)
+        for engagement_id, customer_id, line_id, product_id, line_code, product_code in catalog_rows
+        if line_code in PROJECT_CLASSIFICATIONS
+    }
+
+    def linked_product(source: Payments | Subscriptions) -> Optional[tuple[str, str]]:
+        return project_products.get((source.engagement_id, source.customer_id, source.business_line_id, source.product_id))
+
     component_counts: Counter[str] = Counter()
     warning_counts: Counter[str] = Counter()
     items: list[dict[str, object]] = []
     for selected_customer_id in page_customer_ids:
         customer = customer_by_id.get(selected_customer_id)
-        classified_payments = [classify_payment(row) for row in payments_by_customer[selected_customer_id]]
-        classified_subscriptions = [classify_subscription(row) for row in subscriptions_by_customer[selected_customer_id]]
+        classified_payments = [classify_payment(row, linked_product(row)) for row in payments_by_customer[selected_customer_id]]
+        classified_subscriptions = [classify_subscription(row, linked_product(row)) for row in subscriptions_by_customer[selected_customer_id]]
         candidates = {
             line: candidate
             for line in ("managed_service", "restaurant_os", "beauty_os", "one_time_project")

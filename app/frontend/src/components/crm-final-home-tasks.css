@@ -18,3 +18,14 @@
   .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first :is(.sf-owner-counts button, .shr-reminders button, summary) { min-height: 44px; }
   .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/"] .sf-owner.sf-priority-first .sf-footer > button { min-height: 44px; }
 }
+
+.sf-owner .sf-owner-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--order-muted);
+  cursor: pointer;
+}
+.sf-owner .sf-owner-details[open] > summary > svg { transform: rotate(90deg); }
+.sf-owner .sf-exception-copy { flex: 1; min-width: 0; }
