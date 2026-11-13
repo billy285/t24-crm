@@ -1,4 +1,20 @@
 /* Customer operations presentation only; no global component or theme rules. */
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page [role="tabpanel"] > .grid:has(.customer-operations) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page [role="tabpanel"] > .grid:has(.customer-operations),
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page [role="tabpanel"] > .grid:has(.customer-operations) > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 1280px) {
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page [role="tabpanel"] > .grid:has(.customer-operations) {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+}
+
 .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations {
   min-width: 0;
   color: var(--crm-ink, #172638);
