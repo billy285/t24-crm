@@ -2,7 +2,7 @@
   "backend_focused_tests_passed": true,
   "baseline_git_commit": "d1dfab62d20a971cf48a43c382f0bd69a1a824db",
   "baseline_source_sha": "4f1770c9b830fcadd896fc06a90de817cae9b14c",
-  "build_receipt_sha256": "01392a0284dd0b2a50510df58eb0532a444a5c08050c8fe7e604424cc57d5b03",
+  "build_receipt_sha256": "d3df5fec5a37d02fed70aefa886d5c8c9c81c937ee13474430ca0eebd6ccd0af",
   "changed_source_files": {
     "app/backend/routers/app_config.py": "0f5a399a8b713d507d9aa4f5a222c10e7c98d9873b9ece54cdc794696d3111d0",
     "app/backend/tests/test_customer_followup_status_config.py": "d6cb6deba08331707051e21d054ffff326fb00249ec28624419406ec5ebb1657",
@@ -17,11 +17,11 @@
     "app/frontend/tests/customer-followup-integration.test.mjs": "a757f851f1b899f4807c919d1491718622cc9b7a575081ff9233040e3f5d1064",
     "app/frontend/tests/customer-followup-statuses.test.mjs": "03723c723bc5bda7d647b20f85f45f646a7ee4127688f967ced542fb8181dcee"
   },
-  "dist_inventory_sha256": "8be0d0ee5ad5c2bed7d225fdadae400616d75a35de71cddfb69f0d2f98955087",
+  "dist_inventory_sha256": "71c561d29a880caa2c74fb3ed8dd7b0adbe6ffde492512298198a2607a5bf4fe",
   "fresh_build_passed": true,
   "frontend_version": "e38d2dcbcd38",
   "no_migration": true,
   "source_commit_bytes_verified": true,
-  "source_sha": "87e8562807bcc5d7dbc7ffa65f1e579f5d412bcf",
+  "source_sha": "6d65c9be1bb48bb5ba73a48de2a0e6efc7eea6c5",
   "stage": "CRM_CUSTOMER_FOLLOWUP_REFRESH_SOURCE_FREEZE"
 }

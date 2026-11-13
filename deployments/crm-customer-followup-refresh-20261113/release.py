@@ -219,15 +219,31 @@ class Release:
 
     def build_image(self, router):
         rt, source = self.rt, self.manifest['source_sha']
+        base_tag = 't24-crm:customer-followup-base-' + source[:12]
+
+        def exact_base(reference):
+            rows = self.pf.strict_json(rt.run(['docker', 'image', 'inspect', reference], 'LOCAL_BASE_IMAGE_INSPECT_FAILED'))
+            need(len(rows) == 1 and rows[0]['Id'] == rt.BASE_IMAGE, 'EXACT_LOCAL_BASE_ALIAS_REQUIRED')
+
+        exact_base(rt.BASE_IMAGE)
+        alias = __import__('subprocess').run(['docker', 'image', 'inspect', base_tag], capture_output=True, timeout=30)
+        if alias.returncode == 0:
+            rows = self.pf.strict_json(alias.stdout)
+            need(len(rows) == 1 and rows[0]['Id'] == rt.BASE_IMAGE, 'LOCAL_BASE_ALIAS_COLLISION')
+        else:
+            need(b'No such' in alias.stderr or b'not found' in alias.stderr, 'LOCAL_BASE_ALIAS_LOOKUP_FAILED')
+            rt.run(['docker', 'image', 'tag', rt.BASE_IMAGE, base_tag], 'LOCAL_BASE_ALIAS_CREATE_FAILED')
+        exact_base(base_tag)
         context = self.root / 'image-context'
         context.mkdir(mode=0o700)
         write_private(context / 'app_config.py', router)
-        dockerfile = ('FROM ' + rt.BASE_IMAGE + '\nCOPY app_config.py /app/backend/routers/app_config.py\n').encode()
+        dockerfile = ('FROM ' + base_tag + '\nCOPY app_config.py /app/backend/routers/app_config.py\n').encode()
         write_private(context / 'Dockerfile', dockerfile)
         tag = 't24-crm:customer-followup-' + source[:12]
         result = __import__('subprocess').run(['docker', 'image', 'inspect', tag], capture_output=True, timeout=30)
         need(result.returncode != 0 and (b'No such' in result.stderr or b'not found' in result.stderr), 'FRESH_CANDIDATE_IMAGE_TAG_REQUIRED')
         rt.run(['docker', 'build', '--network=none', '--pull=false', '-f', str(context / 'Dockerfile'), '-t', tag, str(context)], 'UNIQUE_ROUTER_IMAGE_BUILD_FAILED', timeout=300)
+        exact_base(base_tag)
         images = self.pf.strict_json(rt.run(['docker', 'image', 'inspect', tag], 'CANDIDATE_IMAGE_INSPECT_FAILED'))
         need(len(images) == 1 and re.fullmatch(r'sha256:[a-f0-9]{64}', images[0]['Id']) and images[0]['Id'] != rt.BASE_IMAGE, 'EXACT_NEW_CANDIDATE_IMAGE_REQUIRED')
         return images[0]['Id']
