@@ -1,0 +1,15 @@
+{
+  "baseline_git_commit": "534bea5e7ecc05c293e4592162f5e43119c2b3cb",
+  "baseline_source_sha": "f58a4abcfeaad77d08d8d16ce48f4fcaee4e6605",
+  "build_receipt_sha256": "338af7b384a0056fbefb6e89d757a46f1713587cdd33b1b85db9aed6b1a819cd",
+  "changed_source_files": {
+    "app/frontend/src/pages/finance-progressive.css": "e91feaad4467dcee0ed3391e27fa215c8977d06ccef34469b249ff686622111a"
+  },
+  "dist_inventory_sha256": "ce2be400e79e57bafdff03cae4cc8b7e61be14f24adbe47e92dcd541cbbbe2a4",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "6fc5389391df",
+  "source_commit_bytes_verified": true,
+  "source_sha": "1ca9767b2ed8037bf5aaf22946fb3231b391ff9b",
+  "stage": "CRM_FINANCE_SPACING_SOURCE_FREEZE"
+}
