@@ -34,7 +34,8 @@ from services.schema_readiness import require_tables, tables_available
 
 TABLES = {"media_operation_tasks", "media_operation_events", "media_operation_publication_specs"}
 PLATFORMS = (("google_business", "Google Business"), ("facebook", "Facebook"), ("instagram", "Instagram"),
-             ("tiktok", "TikTok"), ("xiaohongshu", "小红书"), ("other", "其他"))
+             ("tiktok", "TikTok"), ("xiaohongshu", "小红书"), ("yelp", "Yelp"), ("x", "X"),
+             ("brand_website", "品牌官网"), ("ads_campaign", "广告投放"), ("other", "其他"))
 STATUSES = ("draft", "in_review", "ready", "completed", "blocked")
 DOMAIN_LOCK = int.from_bytes(b"T24MEDI", "big")
 

@@ -195,8 +195,22 @@ const isWaitingForClientMaterial = (sp: ServiceProgress) => (
 );
 
 const displayCountry = (code: string) => countryDisplayLabels[code] || code;
-const normalizeText = (value?: string | null) => (value || '').toLowerCase().replace(/\s+/g, '');
-const parseMultiValue = (value?: string | null) => (value || '').split(',').map(item => item.trim()).filter(Boolean);
+type ProjectWeek = {
+  published: Record<string, number>;
+  scheduled: Record<string, number>;
+  closed: Record<string, number>;
+  internal_report: boolean;
+  report_scheduled: boolean;
+};
+type DeliveryWeek = { week_start: string; scope: 'owner' | 'assigned'; unassigned: number; unresolved_projects: number[]; projects: Record<number, ProjectWeek> };
+const parseMultiValue = (value?: string | null): string[] => {
+  if (!value) return [];
+  let items: unknown = value.split(',');
+  if (value.trim().startsWith('[')) {
+    try { items = JSON.parse(value); } catch { return []; }
+  }
+  return Array.isArray(items) ? Array.from(new Set(items.filter((v): v is string => typeof v === 'string').map(v => v.trim()).filter(Boolean))) : [];
+};
 const getPackagePlatformContext = () => {
   const dicts = buildBusinessDicts();
   return {
@@ -210,21 +224,6 @@ const getWeekStartStr = () => {
 const getWeekEndStr = () => {
   return businessWeekRange().end;
 };
-const getTaskDoneDate = (task: Pick<ServiceTask, 'completed_at' | 'completed_date'>) => (
-  (task.completed_at || task.completed_date || '').slice(0, 10)
-);
-const isTaskCompletedThisWeek = (task: ServiceTask, weekStart = getWeekStartStr()) => (
-  task.status === 'completed' && Boolean(getTaskDoneDate(task)) && getTaskDoneDate(task) >= weekStart
-);
-const isWeeklyReportTask = (task: ServiceTask) => {
-  const text = normalizeText(`${task.task_type || ''}${task.task_name || ''}${task.notes || ''}${task.completion_note || ''}`);
-  return task.task_type === 'submit_report' || text.includes('周报') || text.includes('总结') || text.includes('汇报') || text.includes('report');
-};
-const isOpenTaskThisWeek = (task: ServiceTask, weekStart = getWeekStartStr(), weekEnd = getWeekEndStr()) => {
-  if (task.status === 'completed' || task.status === 'cancelled') return false;
-  const dueDate = (task.due_date || '').slice(0, 10);
-  return Boolean(dueDate) && dueDate >= weekStart && dueDate <= weekEnd;
-};
 const inferPlatformsFromProgress = (sp?: Pick<ServiceProgress, 'package_name' | 'package_platforms'> | null) => {
   const savedPlatforms = parseMultiValue(sp?.package_platforms);
   if (savedPlatforms.length > 0) return savedPlatforms;
@@ -232,57 +231,38 @@ const inferPlatformsFromProgress = (sp?: Pick<ServiceProgress, 'package_name' | 
   return inferPackagePlatforms(sp?.package_name, context.labels, context.platforms);
 };
 
-const getWeeklyTaskPlan = (sp: ServiceProgress, tasks: ServiceTask[]) => {
-  const platforms = inferPlatformsFromProgress(sp);
-  const weekStart = getWeekStartStr();
-  const weekEnd = getWeekEndStr();
-  const completedThisWeek = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
-  const openThisWeek = tasks.filter(task => task.service_progress_id === sp.id && isOpenTaskThisWeek(task, weekStart, weekEnd));
+const getWeeklyTaskPlan = (sp: ServiceProgress, week: DeliveryWeek | null) => {
+  const appliesThisWeek = !['ended', 'paused'].includes(sp.service_stage) &&
+    (!sp.service_start_date || sp.service_start_date.slice(0, 10) <= getWeekEndStr()) &&
+    (!sp.service_end_date || sp.service_end_date.slice(0, 10) >= getWeekStartStr());
+  const platforms = appliesThisWeek ? inferPlatformsFromProgress(sp) : [];
+  const data = week?.projects[sp.id];
+  const counts = data?.published || {};
   const platformPlans = platforms.map(platform => {
-    const completed = completedThisWeek.filter(task => task.platform === platform).length;
-    const scheduled = openThisWeek.filter(task => task.platform === platform && !isWeeklyReportTask(task)).length;
+    const completed = counts[platform] || 0;
+    const scheduled = data?.scheduled[platform] || 0;
+    const closed = data?.closed[platform] || 0;
     return {
-      platform,
-      completed,
-      scheduled,
-      target: WEEKLY_PLATFORM_UPDATE_TARGET,
+      platform, completed, scheduled,
       remainingToDo: Math.max(0, WEEKLY_PLATFORM_UPDATE_TARGET - completed),
-      remainingToCreate: Math.max(0, WEEKLY_PLATFORM_UPDATE_TARGET - completed - scheduled),
+      remainingToCreate: Math.max(0, WEEKLY_PLATFORM_UPDATE_TARGET - Math.max(completed, closed) - scheduled),
     };
   });
-  const reportCompleted = completedThisWeek.some(isWeeklyReportTask);
-  const reportScheduled = openThisWeek.some(isWeeklyReportTask);
+  const reportTarget = platforms.length ? WEEKLY_REPORT_TARGET : 0;
+  const reportDone = reportTarget > 0 && data?.internal_report ? 1 : 0;
+  const reportScheduled = Boolean(data?.report_scheduled);
+  const reportRemainingToDo = reportTarget - reportDone;
+  const reportRemainingToCreate = reportScheduled ? 0 : reportRemainingToDo;
   return {
-    platforms,
-    platformPlans,
-    reportCompleted,
-    reportScheduled,
-    reportRemainingToDo: reportCompleted ? 0 : 1,
-    reportRemainingToCreate: reportCompleted || reportScheduled ? 0 : 1,
-    totalRemainingToDo: platformPlans.reduce((sum, item) => sum + item.remainingToDo, 0) + (reportCompleted ? 0 : 1),
-    totalRemainingToCreate: platformPlans.reduce((sum, item) => sum + item.remainingToCreate, 0) + (reportCompleted || reportScheduled ? 0 : 1),
-  };
-};
-const getWeeklyPlatformProgress = (sp: ServiceProgress, tasks: ServiceTask[]) => {
-  const platforms = inferPlatformsFromProgress(sp);
-  const weekStart = getWeekStartStr();
-  const relevantTasks = tasks.filter(task => task.service_progress_id === sp.id && isTaskCompletedThisWeek(task, weekStart));
-  const counts = platforms.reduce<Record<string, number>>((acc, platform) => {
-    acc[platform] = relevantTasks.filter(task => task.platform === platform).length;
-    return acc;
-  }, {});
-  const platformTarget = platforms.length * WEEKLY_PLATFORM_UPDATE_TARGET;
-  const platformDone = platforms.reduce((sum, platform) => sum + Math.min(counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET), 0);
-  const missingPlatforms = platforms.filter(platform => (counts[platform] || 0) < WEEKLY_PLATFORM_UPDATE_TARGET);
-  const weeklyReportDone = relevantTasks.some(isWeeklyReportTask) ? 1 : 0;
-  return {
-    platforms,
-    counts,
-    platformTarget,
-    platformDone,
-    missingPlatforms,
-    weeklyReportDone,
-    weeklyReportTarget: platforms.length > 0 ? WEEKLY_REPORT_TARGET : 0,
+    completeCoverage: week?.scope === 'owner' && !week.unresolved_projects.includes(sp.id),
+    platforms, counts, platformPlans, reportScheduled, reportRemainingToDo, reportRemainingToCreate,
+    platformTarget: platforms.length * WEEKLY_PLATFORM_UPDATE_TARGET,
+    metPlatformTarget: platformPlans.every(item => item.remainingToDo === 0),
+    platformDone: platformPlans.reduce((sum, item) => sum + item.completed, 0),
+    missingPlatforms: platformPlans.filter(item => item.remainingToDo > 0),
+    weeklyReportDone: reportDone, weeklyReportTarget: reportTarget,
+    totalRemainingToDo: platformPlans.reduce((sum, item) => sum + item.remainingToDo, reportRemainingToDo),
+    totalRemainingToCreate: platformPlans.reduce((sum, item) => sum + item.remainingToCreate, reportRemainingToCreate),
   };
 };
 
@@ -516,6 +496,9 @@ export default function ServiceBoard() {
 
   // Core data
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
+  const [weekResult, setWeekResult] = useState<DeliveryWeek | null>(null);
+  const week = weekResult?.week_start === getWeekStartStr() ? weekResult : null;
+  const canAssessWeeklyTargets = week?.scope === 'owner';
   const [allTasks, setAllTasks] = useState<ServiceTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -617,12 +600,14 @@ export default function ServiceBoard() {
         authedListEntity<CustomerRecord>('customers', { limit: 1000, sort: '-created_at' }),
         authedListEmployeeDirectory<EmployeeRecord>({ limit: 200, sort: 'name' }),
         authedListEntity<SubscriptionRecord>('subscriptions', { limit: 1000, sort: '-created_at' }),
+        invokeWithAuth({ url: '/api/v1/entities/service_progresses/weekly-evidence', method: 'GET' }).then(res => res.data as DeliveryWeek),
       ] as const);
 
       if (requestSeq !== loadRequestSeqRef.current) return;
 
-      const [progressResult, taskResult, customerResult, employeeResult, subscriptionResult] = results;
-      const sectionNames = ['服务进度', '交付任务', '客户状态', '员工目录', '服务套餐'];
+      const [progressResult, taskResult, customerResult, employeeResult, subscriptionResult, evidenceResult] = results;
+      setWeekResult(evidenceResult.status === 'fulfilled' ? evidenceResult.value : null);
+      const sectionNames = ['服务进度', '交付任务', '客户状态', '员工目录', '服务套餐', '本周交付凭证'];
       const failedSections = results.flatMap((result, index) => result.status === 'rejected' ? [sectionNames[index]] : []);
       setProgressLoadFailed(progressResult.status === 'rejected');
       setLoadError(failedSections.length ? `${failedSections.join('、')}暂时无法读取。已读取的资料会保留，请重试后再判断。` : null);
@@ -808,10 +793,10 @@ export default function ServiceBoard() {
     const expiring = progresses.filter(p => isExpiringSoon(p)).length;
     const visibleProgressIds = new Set(progresses.map(p => p.id));
     const scopedTasks = allTasks.filter(t => !t.service_progress_id || visibleProgressIds.has(t.service_progress_id));
-    const weeklyPlatformRows = progresses.map(p => getWeeklyPlatformProgress(p, scopedTasks));
+    const weeklyPlatformRows = week ? progresses.map(p => getWeeklyTaskPlan(p, week)) : [];
     const weeklyPlatformTarget = weeklyPlatformRows.reduce((sum, item) => sum + item.platformTarget, 0);
     const weeklyPlatformDone = weeklyPlatformRows.reduce((sum, item) => sum + item.platformDone, 0);
-    const weeklyMissingPlatforms = weeklyPlatformRows.reduce((sum, item) => sum + item.missingPlatforms.length, 0);
+    const weeklyMissingPlatforms = canAssessWeeklyTargets ? weeklyPlatformRows.reduce((sum, item) => sum + (item.completeCoverage ? item.missingPlatforms.length : 0), 0) : 0;
     const weeklyReportTarget = weeklyPlatformRows.reduce((sum, item) => sum + item.weeklyReportTarget, 0);
     const weeklyReportDone = weeklyPlatformRows.reduce((sum, item) => sum + item.weeklyReportDone, 0);
     const weeklyMissingReports = Math.max(0, weeklyReportTarget - weeklyReportDone);
@@ -852,15 +837,15 @@ export default function ServiceBoard() {
       taskTotal, taskCompleted, taskPending, taskOverdue, lowQualityCompleted, completionRate, healthScore, opsMap,
       weeklyPlatformTarget, weeklyPlatformDone, weeklyMissingPlatforms, weeklyReportTarget, weeklyReportDone, weeklyMissingReports,
     };
-  }, [progresses, allTasks, businessToday]);
+  }, [progresses, allTasks, businessToday, week, canAssessWeeklyTargets]);
 
   const weeklyActionItems = useMemo(() => (
     progresses
       .filter(sp => !['ended', 'paused'].includes(sp.service_stage))
-      .map(sp => ({ sp, plan: getWeeklyTaskPlan(sp, allTasks) }))
+      .map(sp => ({ sp, plan: getWeeklyTaskPlan(sp, week) }))
       .filter(item => item.plan.platforms.length > 0 && item.plan.totalRemainingToDo > 0)
       .sort((a, b) => b.plan.totalRemainingToDo - a.plan.totalRemainingToDo)
-  ), [progresses, allTasks]);
+  ), [progresses, week]);
 
   const filteredWeeklyActionItems = useMemo(() => {
     const visibleIds = new Set(filtered.map(sp => sp.id));
@@ -1457,7 +1442,7 @@ export default function ServiceBoard() {
     let createdCount = 0;
 
     for (const sp of targets) {
-      const plan = getWeeklyTaskPlan(sp, allTasks);
+      const plan = getWeeklyTaskPlan(sp, week);
       if (plan.platforms.length === 0) continue;
 
       for (const platformPlan of plan.platformPlans) {
@@ -1493,7 +1478,7 @@ export default function ServiceBoard() {
           priority: 'medium',
           status: 'pending',
           due_date: weekEnd,
-          notes: '系统自动生成：每个合作客户每周总结汇报 1 次。',
+          notes: '系统自动生成：每个合作项目每周内部总结 1 次。',
           created_at: now,
         });
         createdCount += 1;
@@ -1504,8 +1489,9 @@ export default function ServiceBoard() {
   };
 
   const handleGenerateWeeklyTasks = async (targets?: ServiceProgress[]) => {
+    if (!canAssessWeeklyTargets) { toast.error('完整项目凭证待核对，请核对后再批量排程'); return; }
     const safeTargets = (targets || filteredWeeklyActionItems.map(item => item.sp))
-      .filter(sp => getWeeklyTaskPlan(sp, allTasks).totalRemainingToCreate > 0);
+      .filter(sp => { const plan = getWeeklyTaskPlan(sp, week); return plan.completeCoverage && plan.totalRemainingToCreate > 0; });
 
     if (safeTargets.length === 0) {
       toast.info('本周任务已经排好了，无需重复生成');
@@ -1665,7 +1651,7 @@ export default function ServiceBoard() {
     const issue = hasIssue(sp);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
     const remainDays = getServiceRemainingDays(sp);
-    const weekly = getWeeklyPlatformProgress(sp, allTasks);
+    const weekly = getWeeklyTaskPlan(sp, week);
     const onboarding = getOnboardingProgress(sp, allTasks);
 
     if (isMobile) {
@@ -1727,29 +1713,29 @@ export default function ServiceBoard() {
           <span>销售: <span className="text-slate-700">{sp.sales_person || '-'}</span></span>
         </div>
 
-        {weekly.platforms.length > 0 && (
+        {week && weekly.platforms.length > 0 && (
           <div className="mb-2 flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs sm:hidden">
-            <span className="text-slate-500">本周更新 / 周报</span>
-            <span className="font-medium text-slate-700">{weekly.platformDone}/{weekly.platformTarget} · {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}</span>
+            <span className="text-slate-500">已核实发布 / 内部周报</span>
+            <span className="font-medium text-slate-700">{weekly.completeCoverage ? `${weekly.platformDone}/${weekly.platformTarget}` : `可见 ${weekly.platformDone} 次`} · {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}</span>
           </div>
         )}
 
-        {weekly.platforms.length > 0 && (
+        {week && weekly.platforms.length > 0 && (
           <div className="mb-2 hidden rounded-md border border-slate-100 bg-slate-50 p-2 sm:block">
             <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-slate-500">本周平台更新</span>
-              <span className={weekly.platformDone >= weekly.platformTarget ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
-                {weekly.platformDone}/{weekly.platformTarget}
+              <span className="text-slate-500">本周已核实发布</span>
+              <span className={!weekly.completeCoverage ? 'text-slate-600' : weekly.metPlatformTarget ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
+                {weekly.completeCoverage ? `${weekly.platformDone}/${weekly.platformTarget}` : `可见 ${weekly.platformDone} 次`}
               </span>
             </div>
             <div className="flex flex-wrap gap-1 mt-1">
               {weekly.platforms.map(platform => (
-                <Badge key={platform} className={`text-[10px] ${(weekly.counts[platform] || 0) >= WEEKLY_PLATFORM_UPDATE_TARGET ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                  {platformLabels[platform] || platform} {Math.min(weekly.counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET)}/{WEEKLY_PLATFORM_UPDATE_TARGET}
+                <Badge key={platform} className={`text-[10px] ${!weekly.completeCoverage ? 'bg-slate-100 text-slate-700' : (weekly.counts[platform] || 0) >= WEEKLY_PLATFORM_UPDATE_TARGET ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {platformLabels[platform] || platform} {weekly.completeCoverage ? `${weekly.counts[platform] || 0}/${WEEKLY_PLATFORM_UPDATE_TARGET}` : `可见 ${weekly.counts[platform] || 0} 次`}
                 </Badge>
               ))}
               <Badge className={`text-[10px] ${weekly.weeklyReportDone >= weekly.weeklyReportTarget ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}`}>
-                周报 {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}
+                内部周报 {weekly.weeklyReportDone}/{weekly.weeklyReportTarget}
               </Badge>
             </div>
           </div>
@@ -2144,7 +2130,7 @@ export default function ServiceBoard() {
                     })),
                   ]}
                 />
-                <p className="text-xs text-slate-400 mt-1">平台更新任务需要选择对应平台；周总结汇报可以选择“不限定平台”。</p>
+                <p className="text-xs text-slate-400 mt-1">发布数据取自代运营中心的平台回执、发布链接或发布截图。内部周报可选择“不限定平台”。</p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -2230,7 +2216,7 @@ export default function ServiceBoard() {
               {completeTaskTarget?.task_type === 'publish_content' && !completionForm.platform && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 flex gap-2">
                   <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>当前没有选择平台，这次完成不会计入平台每周 3 次更新；如果这是周总结汇报，可以保持不限定平台。</span>
+                  <span>请在代运营中心选择客户和服务项目，登记对应平台的发布凭证。</span>
                 </div>
               )}
             </div>
@@ -2349,8 +2335,8 @@ export default function ServiceBoard() {
     const sp = selectedProgress;
     const ts = getTaskStats(sp.id);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
-    const weekly = getWeeklyPlatformProgress(sp, allTasks);
-    const weeklyTaskPlan = getWeeklyTaskPlan(sp, allTasks);
+    const weekly = getWeeklyTaskPlan(sp, week);
+    const weeklyTaskPlan = weekly;
     const onboarding = getOnboardingProgress(sp, detailTasks);
     const activeDetailTasks = detailTasks.filter(task => task.status !== 'completed');
     const completedDetailTasks = detailTasks.filter(task => task.status === 'completed');
@@ -2415,7 +2401,7 @@ export default function ServiceBoard() {
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 资料已收到并继续
               </Button>
             )}
-            {weeklyTaskPlan.totalRemainingToCreate > 0 && (
+            {canAssessWeeklyTargets && weeklyTaskPlan.completeCoverage && weeklyTaskPlan.totalRemainingToCreate > 0 && (
               <Button size="sm" variant="outline" className="text-blue-700 hover:text-blue-800 hover:bg-blue-50" onClick={() => handleGenerateWeeklyTasks([sp])} disabled={generatingWeeklyTasks}>
                 <ClipboardCheck className="w-3.5 h-3.5 mr-1" /> 生成本周任务 ({weeklyTaskPlan.totalRemainingToCreate})
               </Button>
@@ -2483,30 +2469,31 @@ export default function ServiceBoard() {
                 </div>
               </CardContent></Card>
 
-              {weekly.platforms.length > 0 && (
+              {week && weekly.platforms.length > 0 && (
                 <Card className="border-slate-200"><CardContent className="p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 mb-3">合作平台本周达标</h3>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">本周交付凭证</h3>
                   <div className="space-y-2">
                     {weekly.platforms.map(platform => {
-                      const done = Math.min(weekly.counts[platform] || 0, WEEKLY_PLATFORM_UPDATE_TARGET);
+                      const done = weekly.counts[platform] || 0;
                       const ok = done >= WEEKLY_PLATFORM_UPDATE_TARGET;
                       return (
                         <div key={platform} className="flex items-center justify-between text-sm">
                           <span className="text-slate-600">{platformLabels[platform] || platform}</span>
-                          <Badge className={ok ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}>
-                            {done}/{WEEKLY_PLATFORM_UPDATE_TARGET} 次
+                          <Badge className={!weekly.completeCoverage ? 'bg-slate-100 text-slate-700' : ok ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}>
+                            {weekly.completeCoverage ? `${done}/${WEEKLY_PLATFORM_UPDATE_TARGET} 次` : `可见 ${done} 次`}
                           </Badge>
                         </div>
                       );
                     })}
                     <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
-                      <span className="text-slate-600">周总结汇报</span>
+                      <span className="text-slate-600">内部周报完成</span>
                       <Badge className={weekly.weeklyReportDone >= weekly.weeklyReportTarget ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}>
                         {weekly.weeklyReportDone}/{weekly.weeklyReportTarget} 次
                       </Badge>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-3">规则：合作平台每个平台每周更新 3 次，客户每周总结汇报 1 次。</p>
+                  <p className="text-xs text-slate-500 mt-3">发布回执、公开链接或发布截图按项目和平台去重。周报记录内部完成情况，客户收件需另行确认。</p>
+                  {canAccess('/media-ops') && <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('/media-ops')}>查看代运营凭证</Button>}
                 </CardContent></Card>
               )}
 
@@ -2916,8 +2903,8 @@ export default function ServiceBoard() {
                 <div>
                   <p className="text-xs text-slate-500">运营健康分</p>
                   <div className="flex items-end gap-1">
-                    <span className={`text-3xl font-bold ${stats.taskTotal === 0 ? 'text-slate-500' : stats.healthScore >= 85 ? 'text-green-700' : stats.healthScore >= 70 ? 'text-amber-700' : 'text-red-700'}`}>{stats.taskTotal === 0 ? '--' : stats.healthScore}</span>
-                    {stats.taskTotal > 0 && <span className="text-xs text-slate-400 mb-1">/100</span>}
+                    <span className={`text-3xl font-bold ${stats.taskTotal === 0 ? 'text-slate-500' : stats.healthScore >= 85 ? 'text-green-700' : stats.healthScore >= 70 ? 'text-amber-700' : 'text-red-700'}`}>{!canAssessWeeklyTargets || stats.taskTotal === 0 ? '--' : stats.healthScore}</span>
+                    {canAssessWeeklyTargets && stats.taskTotal > 0 && <span className="text-xs text-slate-400 mb-1">/100</span>}
                   </div>
                 </div>
               </div>
@@ -2928,14 +2915,14 @@ export default function ServiceBoard() {
                   <p className="text-[11px] text-slate-400">{stats.taskTotal === 0 ? '尚未建立交付任务' : `${stats.taskCompleted}/${stats.taskTotal} 已完成`}</p>
                 </div>
                 <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
-                  <p className="text-xs text-slate-500">本周平台更新</p>
-                  <p className="text-lg font-semibold text-emerald-700">{stats.weeklyPlatformDone}/{stats.weeklyPlatformTarget}</p>
-                  <p className="text-[11px] text-slate-400">每平台每周 3 次</p>
+                  <p className="text-xs text-slate-500">本周已核实发布</p>
+                  <p className="text-lg font-semibold text-emerald-700">{!week ? '待核对' : canAssessWeeklyTargets && !week.unresolved_projects.length ? `${stats.weeklyPlatformDone}/${stats.weeklyPlatformTarget}` : `可见 ${stats.weeklyPlatformDone} 次`}</p>
+                  <p className="text-[11px] text-slate-400">回执、发布链接或截图 · 每平台目标 3 次</p>
                 </div>
                 <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
-                  <p className="text-xs text-slate-500">周总结汇报</p>
-                  <p className="text-lg font-semibold text-indigo-700">{stats.weeklyReportDone}/{stats.weeklyReportTarget}</p>
-                  <p className="text-[11px] text-slate-400">每客户每周 1 次</p>
+                  <p className="text-xs text-slate-500">内部周报完成</p>
+                  <p className="text-lg font-semibold text-indigo-700">{week ? `${stats.weeklyReportDone}/${stats.weeklyReportTarget}` : '待核对'}</p>
+                  <p className="text-[11px] text-slate-400">每项目每周 1 份 · 内部任务</p>
                 </div>
                 <div className="bg-white/80 border border-slate-100 rounded-xl p-3">
                   <p className="text-xs text-slate-500">当前待办</p>
@@ -2962,7 +2949,7 @@ export default function ServiceBoard() {
                   {stats.taskOverdue > 0 ? ` ${stats.taskOverdue} 个逾期任务` : ''}
                   {stats.lowQualityCompleted > 0 ? ` ${stats.lowQualityCompleted} 个低质量完成` : ''}
                   {stats.weeklyMissingPlatforms > 0 ? ` ${stats.weeklyMissingPlatforms} 个平台本周更新未达标` : ''}
-                  {stats.weeklyMissingReports > 0 ? ` ${stats.weeklyMissingReports} 个客户本周总结未完成` : ''}
+                  {stats.weeklyMissingReports > 0 ? ` ${stats.weeklyMissingReports} 个项目内部周报待完成` : ''}
                   {stats.longNoUpd > 0 ? ` ${stats.longNoUpd} 个长期未更新客户` : ''}
                   。运营完成任务时选择对应文案或素材，系统会自动降低风险。
                 </span>
@@ -3017,13 +3004,14 @@ export default function ServiceBoard() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-slate-700">本周待完成清单</h3>
-                <p className="text-xs text-slate-400 mt-0.5">按套餐自动计算：合作平台每周更新 3 次，客户每周总结汇报 1 次。</p>
+                <p className="text-xs text-slate-400 mt-0.5">每个平台每周发布 3 次，每项目完成 1 份内部周报。</p>
+                {Boolean(week?.unassigned) && <p className="mt-1 text-xs text-amber-700">{week?.unassigned} 条发布凭证尚未匹配到唯一服务项目。</p>}
               </div>
               {canCreate && (
                 <Button
                   size="sm"
                   onClick={() => handleGenerateWeeklyTasks()}
-                  disabled={generatingWeeklyTasks || filteredWeeklyActionItems.every(item => item.plan.totalRemainingToCreate === 0)}
+                  disabled={!canAssessWeeklyTargets || generatingWeeklyTasks || filteredWeeklyActionItems.every(item => !item.plan.completeCoverage || item.plan.totalRemainingToCreate === 0)}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
@@ -3032,15 +3020,15 @@ export default function ServiceBoard() {
               )}
             </div>
 
-            {filteredWeeklyActionItems.length === 0 ? (
+            {!week ? <p className="text-sm text-slate-500">本周交付凭证暂不可用，待核对后更新。</p> : !canAssessWeeklyTargets ? <p className="text-sm text-slate-500">{week.scope === 'assigned' ? '本页仅统计本人可见凭证，项目达标情况由主管核对。' : '请先核对未匹配的发布凭证，再判断各项目缺口。'}</p> : filteredWeeklyActionItems.length === 0 ? (
               <div className="rounded-lg bg-green-50 border border-green-100 p-3 text-sm text-green-700 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
-                当前筛选范围内，本周运营目标都已达标或没有平台套餐客户。
+                {filtered.some(sp => getWeeklyTaskPlan(sp, week).platforms.length) ? '当前筛选范围内，本周发布目标与内部周报任务均已完成。' : '当前筛选范围内没有进行中的平台套餐项目。'}
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredWeeklyActionItems.slice(0, 8).map(({ sp, plan }) => {
-                  const createCount = plan.totalRemainingToCreate;
+                  const createCount = plan.completeCoverage ? plan.totalRemainingToCreate : 0;
                   return (
                     <div key={sp.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
@@ -3053,14 +3041,15 @@ export default function ServiceBoard() {
                             <Badge className="text-[10px] bg-slate-100 text-slate-700">{sp.package_name || '未填写套餐'}</Badge>
                           </div>
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {plan.platformPlans.filter(item => item.remainingToDo > 0).map(item => (
+                            {!plan.completeCoverage && <Badge variant="secondary">发布归属待核对</Badge>}
+                            {plan.completeCoverage && plan.platformPlans.filter(item => item.remainingToDo > 0).map(item => (
                               <Badge key={item.platform} className={`text-[10px] ${item.remainingToCreate > 0 ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
                                 {platformLabels[item.platform] || item.platform} 还差 {item.remainingToDo} 次{item.scheduled > 0 ? `，已排 ${item.scheduled}` : ''}
                               </Badge>
                             ))}
                             {plan.reportRemainingToDo > 0 && (
                               <Badge className={`text-[10px] ${plan.reportRemainingToCreate > 0 ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                周总结未完成{plan.reportScheduled ? '，已排' : ''}
+                                内部周报待完成{plan.reportScheduled ? '，已排' : ''}
                               </Badge>
                             )}
                           </div>
@@ -3073,7 +3062,7 @@ export default function ServiceBoard() {
                             onClick={() => handleGenerateWeeklyTasks([sp])}
                             className={createCount > 0 ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
                           >
-                            {createCount > 0 ? `生成 ${createCount} 个任务` : '已排任务'}
+                            {!plan.completeCoverage ? '待核对' : createCount > 0 ? `生成 ${createCount} 个任务` : '已排任务'}
                           </Button>
                         )}
                       </div>
@@ -3300,7 +3289,7 @@ export default function ServiceBoard() {
                     })),
                   ]}
                 />
-                <p className="text-xs text-slate-400 mt-1">平台更新任务需要选择对应平台；周总结汇报可以选择“不限定平台”。</p>
+                <p className="text-xs text-slate-400 mt-1">发布数据取自代运营中心的平台回执、发布链接或发布截图。内部周报可选择“不限定平台”。</p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -3386,7 +3375,7 @@ export default function ServiceBoard() {
               {completeTaskTarget?.task_type === 'publish_content' && !completionForm.platform && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 flex gap-2">
                   <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>当前没有选择平台，这次完成不会计入平台每周 3 次更新；如果这是周总结汇报，可以保持不限定平台。</span>
+                  <span>请在代运营中心选择客户和服务项目，登记对应平台的发布凭证。</span>
                 </div>
               )}
             </div>

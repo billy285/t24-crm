@@ -40,7 +40,6 @@ def _observation_day(now: Optional[datetime] = None) -> date:
 ACTIVE_PROJECT_STATUSES = {"pending_setup", "trial", "active_paid", "at_risk", "paused", "pending_stop", "reactivated"}
 OPEN_TASK_STATUSES = {"pending", "in_progress", "waiting_client", "internal_waiting", "delayed"}
 FINAL_COMMISSION_STATUSES = {"confirmed", "payable", "paid"}
-PASS_THROUGH_EXPENSE_MARKERS = {"ad", "ads", "advertising", "投流", "广告", "代充值"}
 PAYROLL_EXPENSE_MARKERS = {"salary", "payroll", "工资", "薪资"}
 
 
@@ -125,10 +124,9 @@ def _service_amount(payment: Payments) -> float:
 
 
 def _is_pass_through_expense(expense: Expenses) -> bool:
-    haystack = " ".join(str(value or "").lower() for value in (
-        expense.expense_category, expense.expense_type, expense.notes,
-    ))
-    return any(marker in haystack for marker in PASS_THROUGH_EXPENSE_MARKERS)
+    # Finance records historical ad principal under this reserved expense type.
+    # Current ad funds are accounted for separately through closed settlements.
+    return expense.expense_type == "ads_fee"
 
 
 def _is_payroll_company_expense(expense: Company_expenses) -> bool:

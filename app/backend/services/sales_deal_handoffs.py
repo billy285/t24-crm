@@ -469,7 +469,8 @@ async def register(db, lead_id, payload, user):
         note=f"统一价格成交交接 #{row.id}"))
     db.add(SalesLeadConversionLogs(lead_id=lead.id, customer_id=customer.id, generated_customer_code=customer.customer_code or f"existing-{customer.id}",
         duplicate_check_json=json.dumps({"checked": True, "linked_existing": not new_customer}),
-        lead_snapshot_json=json.dumps({"source": "fixed_catalog_sale", "handoff_id": row.id, "source_snapshot": source}, ensure_ascii=False),
+        lead_snapshot_json=json.dumps({"source": "fixed_catalog_sale", "handoff_id": row.id,
+            "assigned_sales_id": lead.assigned_sales_id, "assigned_sales_name": lead.assigned_sales_name, "source_snapshot": source}, ensure_ascii=False),
         generate_service_board=False, converted_by_id=int(user.id), converted_by_name=user.name))
     lead.converted_customer_id, lead.converted_at = customer.id, now
     lead.converted_by_id, lead.converted_by_name, lead.status = int(user.id), user.name, "won"

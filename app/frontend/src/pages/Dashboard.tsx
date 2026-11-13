@@ -46,15 +46,16 @@ type SalesManagementDashboard = {
   metrics: {
     assigned: number; completed: number; completion_rate: number; calls: number;
     connected: number; connection_rate: number; interested: number; interest_rate: number;
-    appointments: number; appointment_rate: number; converted: number; conversion_rate: number;
+    appointments: number; appointment_rate: number; converted: number; conversion_rate: number; unattributed_conversions?: number;
   };
   owner_attention?: {
     high_intent_stale: number; due_followups: number; overdue_followups: number;
-    pending_quotes: number; unpaid_handoffs: number;
+    pending_quotes: number; unpaid_handoffs: number; receipt_conflicts?: number;
   };
   deal_pipeline?: {
     pending_quotes: number; approved_quotes: number; approved_quote_amount: number;
     confirmed_received_amount: number; unpaid_handoffs: number;
+    confirmed_received_by_currency?: Record<string, number>; approved_quote_by_currency?: Record<string, number>;
   };
 };
 
@@ -784,6 +785,10 @@ export default function Dashboard() {
     };
     const attention = salesManagement.owner_attention || { high_intent_stale: 0, due_followups: 0, overdue_followups: 0, pending_quotes: 0, unpaid_handoffs: 0 };
     const pipeline = salesManagement.deal_pipeline || { pending_quotes: 0, approved_quotes: 0, approved_quote_amount: 0, confirmed_received_amount: 0, unpaid_handoffs: 0 };
+    const amountsByCurrency = (amounts: Record<string, number> | undefined, usd: number) => {
+      const values = Object.entries(amounts ?? {});
+      return values.length ? values.map(([currency, value]) => `${currency === 'UNKNOWN' ? '币种待核' : currency} ${value.toLocaleString()}`).join(' / ') : `USD ${usd.toLocaleString()}`;
+    };
     const lowExecution = people.filter(item => item.metrics.assigned > 0 && item.metrics.completion_rate < 80).length;
     const weakNotes = people.filter(item => item.metrics.calls >= 5 && item.metrics.note_quality_rate < 70).length;
     const funnel = [
@@ -803,12 +808,14 @@ export default function Dashboard() {
       { label: '预约率', value: `${metrics.appointment_rate}%`, helper: `${metrics.appointments} 个已预约`, icon: CalendarCheck2, tone: 'text-violet-700 bg-violet-50', link: '/sales-leads' },
       { label: '转正式客户', value: metrics.converted, helper: '仅统计确认转入', icon: Handshake, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
       { label: '待审批报价', value: pipeline.pending_quotes, helper: `${pipeline.approved_quotes} 份已批准`, icon: FileCheck2, tone: 'text-orange-700 bg-orange-50', link: '/sales-leads' },
-      { label: '售前确认收款', value: `$${pipeline.confirmed_received_amount.toLocaleString()}`, helper: `已批报价 $${pipeline.approved_quote_amount.toLocaleString()}`, icon: Banknote, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
+      { label: '累计确认首款', value: amountsByCurrency(pipeline.confirmed_received_by_currency, pipeline.confirmed_received_amount), helper: `已批报价 ${amountsByCurrency(pipeline.approved_quote_by_currency, pipeline.approved_quote_amount)}`, icon: Banknote, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
     ];
     const ownerTodos = [
       { label: '高意向超过24小时未推进', count: attention.high_intent_stale, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
       { label: '已经逾期的回访', count: attention.overdue_followups, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
       { label: '今天必须完成的回访', count: attention.due_followups, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+      { label: '新旧成交记录的首款待核对', count: attention.receipt_conflicts || 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+      { label: '历史成交的销售归属待核对', count: salesManagement.metrics.unattributed_conversions || 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
       { label: '成交交接仍未收全款', count: attention.unpaid_handoffs, tone: 'text-orange-700 bg-orange-50 border-orange-100' },
       { label: '任务完成率低于80%的销售', count: lowExecution, tone: 'text-blue-700 bg-blue-50 border-blue-100' },
       { label: '通话备注质量需要改善', count: weakNotes, tone: 'text-violet-700 bg-violet-50 border-violet-100' },

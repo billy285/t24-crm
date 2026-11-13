@@ -39,6 +39,7 @@ from services.sales_task_assignment import sync_pending_daily_tasks
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
 from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
+from services.sales_conversion_reporting import conversion_counts, currency_totals, first_receipts, sales_conversions
 from services.sales_workflow_locks import lock_sales_workflow
 from services.customer_codes import allocate_customer_code
 from services.phone_numbers import parse_phone_number, phone_match_key
@@ -1747,17 +1748,15 @@ async def sales_management_dashboard(
     connected = sum(_provider_connected(item) for item in today_activities)
     interested = sum(item.outcome in {"interested", "appointment"} for item in today_activities)
     appointments = sum(item.outcome == "appointment" for item in today_activities)
-    # Conversion logs are the audit source of truth. Some legacy SQLite rows do not
-    # preserve timezone metadata on the lead row, so counting logs avoids under-reporting.
-    conversion_logs = [] if not lead_ids else (await db.execute(
-        select(SalesLeadConversionLogs).where(SalesLeadConversionLogs.lead_id.in_(lead_ids))
-    )).scalars().all()
-    converted = len(conversion_logs)
+    conversions = await sales_conversions(db)
+    if scope is not None:
+        team_ids = {_employee_id(current_user), *(await _direct_report_ids(db, current_user))}
+        visible_leads = set(lead_ids)
+        conversions = [r for r in conversions if r.seller_id in team_ids
+            or (r.seller_id is None and r.lead_id in visible_leads)]
+    converted = len(conversions)
     quotes = [] if not lead_ids else (await db.execute(
         select(SalesQuoteRequests).where(SalesQuoteRequests.lead_id.in_(lead_ids))
-    )).scalars().all()
-    handoffs = [] if not lead_ids else (await db.execute(
-        select(SalesHandoffChecklists).where(SalesHandoffChecklists.lead_id.in_(lead_ids))
     )).scalars().all()
     stale_before = target_date - timedelta(days=1)
     active_follow_up_statuses = {"follow_up", "interested", "appointment"}
@@ -1779,15 +1778,11 @@ async def sales_management_dashboard(
     )
     pending_quotes = [quote for quote in quotes if quote.status == "submitted"]
     approved_quotes = [quote for quote in quotes if quote.status == "approved"]
-    unpaid_handoffs = [
-        handoff for handoff in handoffs
-        if handoff.generated_deal_id is None and (handoff.payment_status or "pending") != "paid"
-    ]
-    confirmed_received_amount = round(sum(
-        float(handoff.amount_received or 0)
-        for handoff in handoffs
-        if (handoff.payment_status or "pending") in {"deposit_paid", "paid"}
-    ), 2)
+    # Before conversion the current assignment governs visibility; after conversion use the original seller.
+    receipt_leads = {lead.id for lead in leads if not lead.converted_customer_id} | {r.lead_id for r in conversions}
+    receipts, unpaid_handoffs, receipt_conflicts = await first_receipts(db, receipt_leads)
+    received = currency_totals((r.currency, r.amount) for r in receipts)
+    approved = currency_totals((q.currency, q.final_amount) for q in approved_quotes)
     denominator = max(len(today_activities), 1)
     people = {}
     for item in today_activities:
@@ -1805,8 +1800,10 @@ async def sales_management_dashboard(
         "calls": len(today_activities), "connected": connected, "connection_rate": round(connected / denominator * 100, 1),
         "interested": interested, "interest_rate": round(interested / denominator * 100, 1),
         "appointments": appointments, "appointment_rate": round(appointments / denominator * 100, 1),
-        "converted": converted, "conversion_rate": round(converted / max(len(leads), 1) * 100, 1),
+        "converted": converted, "unattributed_conversions": sum(r.seller_id is None for r in conversions),
+        "conversion_rate": round(converted / max(len(receipt_leads), 1) * 100, 1),
     }, "owner_attention": {
+        "receipt_conflicts": len(receipt_conflicts),
         "high_intent_stale": high_intent_stale,
         "due_followups": due_followups,
         "overdue_followups": overdue_followups,
@@ -1815,8 +1812,8 @@ async def sales_management_dashboard(
     }, "deal_pipeline": {
         "pending_quotes": len(pending_quotes),
         "approved_quotes": len(approved_quotes),
-        "approved_quote_amount": round(sum(float(quote.final_amount or 0) for quote in approved_quotes), 2),
-        "confirmed_received_amount": confirmed_received_amount,
+        "approved_quote_amount": approved.get("USD", 0), "approved_quote_by_currency": approved,
+        "confirmed_received_amount": received.get("USD", 0), "confirmed_received_by_currency": received,
         "unpaid_handoffs": len(unpaid_handoffs),
     }, "source_quality": [{**item, "quality_rate": round(item["usable"] / max(item["total"], 1) * 100, 1)} for item in sources.values()], "salespeople": list(people.values())}
 
@@ -1909,15 +1906,7 @@ async def sales_call_report(
             for row in (await db.execute(select(SalesLeads).where(SalesLeads.id.in_(lead_ids)))).scalars().all()
         }
 
-    conversions_by_sales = {sales_id: 0 for sales_id in salesperson_ids}
-    conversion_logs = (await db.execute(select(SalesLeadConversionLogs))).scalars().all()
-    for log in conversion_logs:
-        log_day = _business_date(log.created_at)
-        if not log_day or not start_date <= log_day <= today:
-            continue
-        sales_id = _parse_json_dict(log.lead_snapshot_json).get("assigned_sales_id")
-        if sales_id in conversions_by_sales:
-            conversions_by_sales[sales_id] += 1
+    conversions_by_sales = await conversion_counts(db, salesperson_ids, start_date, today)
 
     result_counts: dict[str, int] = {}
     daily_map = {
@@ -2131,16 +2120,7 @@ async def sales_performance_dashboard(
         if lead.status == "follow_up" and follow_up_day and follow_up_day < today:
             overdue_by_sales[lead.assigned_sales_id] = overdue_by_sales.get(lead.assigned_sales_id, 0) + 1
 
-    conversion_logs = (await db.execute(select(SalesLeadConversionLogs))).scalars().all()
-    conversions_by_sales = {sales_id: 0 for sales_id in salesperson_ids}
-    for log in conversion_logs:
-        log_day = _business_date(log.created_at)
-        if not log_day or not start_date <= log_day <= today:
-            continue
-        snapshot = _parse_json_dict(log.lead_snapshot_json)
-        sales_id = snapshot.get("assigned_sales_id")
-        if sales_id in conversions_by_sales:
-            conversions_by_sales[sales_id] += 1
+    conversions_by_sales = await conversion_counts(db, salesperson_ids, start_date, today)
 
     items = []
     for sales_id in salesperson_ids:

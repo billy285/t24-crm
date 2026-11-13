@@ -1,6 +1,6 @@
 import json
 from collections import Counter, defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from calendar import monthrange
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, update
@@ -31,7 +31,7 @@ from models.sales_leads import SalesLeads
 from models.sales_call_activities import SalesCallActivities
 from models.ringcentral_call_records import RingCentralCallRecords
 from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
-from models.sales_lead_conversion_logs import SalesLeadConversionLogs
+from services.sales_conversion_reporting import first_receipts, sales_conversions
 from models.sales_deal_controls import SalesQuoteRequests, SalesHandoffChecklists
 from models.employees import Employees
 from models.merchant_pool import MerchantPool
@@ -859,24 +859,9 @@ async def team(
             )
         )
     ).all()
-    logs = (
-        await db.scalars(
-            select(SalesLeadConversionLogs).where(
-                SalesLeadConversionLogs.created_at >= utc_start,
-                SalesLeadConversionLogs.created_at <= utc_end,
-            )
-        )
-    ).all()
-    paid = set(
-        (
-            await db.scalars(
-                select(SalesHandoffChecklists.lead_id).where(
-                    SalesHandoffChecklists.finance_payment_confirmed.is_(True),
-                    SalesHandoffChecklists.payment_status == "paid",
-                )
-            )
-        ).all()
-    )
+    logs = await sales_conversions(db, start=utc_start, until=utc_end + timedelta(microseconds=1))
+    receipts, _, _ = await first_receipts(db, {r.lead_id for r in logs if r.seller_id in ids})
+    paid = {receipt.lead_id for receipt in receipts if receipt.paid_in_full}
     if evidence_employee is not None and evidence_employee not in ids:
         raise HTTPException(403, "员工不在可查看范围内")
     if evidence_employee is not None and metric not in {
@@ -908,7 +893,7 @@ async def team(
         wins = {
             r.lead_id
             for r in logs
-            if unpack(r.lead_snapshot_json).get("assigned_sales_id") == e.id
+            if r.seller_id == e.id
             and r.lead_id in paid
         }
         complete = sum(
@@ -1069,7 +1054,7 @@ async def team(
             }
             for r in targets
         ],
-        "notice": "管理参考，不自动影响工资。真实拨打按已同步通话去重；有效商机按决策人及需求记录去重；演示需记录实际完成；成交须转客户且既有收款确认仍有效。资料不足 10 条非未接通结果或缺少目标时不评分。主管历史月份仅显示当前团队中留有本主管目标快照的员工；老板可查看全部员工。",
+        "notice": "管理参考，不自动影响工资。真实拨打按已同步通话去重；有效商机按决策人及需求记录去重；演示需记录实际完成；成交按转客户当月和原成交销售归属，仅计入首笔全额收款已确认的线索。资料不足 10 条非未接通结果或缺少目标时不评分。主管历史月份仅显示当前团队中留有本主管目标快照的员工；老板可查看全部员工。",
     }
 
 

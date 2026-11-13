@@ -532,3 +532,90 @@ async def test_wrong_service_span_and_generic_handoff_cannot_override_new_operat
         assert not (await db.get(Deals, row["deal_id"])).is_handed_over
         assert (await db.get(SalesDealHandoff, row["id"])).operations_status == "pending"
         assert (await db.get(Subscriptions, row["subscription_id"])).status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_seller_conversion_reports(sale_api):
+    from models.sales_lead_conversion_logs import SalesLeadConversionLogs
+
+    client, sessions = sale_api
+    response = await client.post(PREFIX + "/leads/1", headers=headers(16), json=await draft(client))
+    assert response.status_code == 200, response.text
+    row = response.json()["handoff"]
+
+    async def report(path, actor=1):
+        response = await client.get("/api/v1/" + path, headers=headers(actor))
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    async def counts():
+        team = await report("sales-intelligence/team")
+        personal = await report("sales-leads/dashboard/performance", 11)
+        calls = await report("sales-leads/dashboard/call-report", 11)
+        management = await report("sales-leads/dashboard/management")
+        return (management["metrics"]["converted"], personal["items"][0]["metrics"]["conversions"],
+            calls["summary"]["conversions"], next(r["wins"] for r in team["items"] if r["employee_id"] == 11),
+            management["deal_pipeline"]["confirmed_received_by_currency"], management["owner_attention"]["unpaid_handoffs"])
+
+    assert await counts() == (1, 1, 1, 0, {}, 1)
+    receipt = await client.post(f"{PREFIX}/{row['id']}/finance-confirmation", headers=headers(1), json=payment())
+    assert receipt.status_code == 200, receipt.text
+    assert await counts() == (1, 1, 1, 1, {"USD": 198}, 0)
+    async with sessions() as db:
+        log = await db.scalar(select(SalesLeadConversionLogs))
+        source = json.loads(log.lead_snapshot_json)
+        assert log.converted_by_id == 16 and source.pop("assigned_sales_id") == 11
+        # Existing standard conversions had no seller snapshot. Same-lead replay rows and a later transfer
+        # must not change the original attribution or add a second conversion or payment.
+        source.pop("assigned_sales_name")
+        log.lead_snapshot_json = json.dumps(source)
+        db.add(SalesLeadConversionLogs(lead_id=1, customer_id=log.customer_id, generated_customer_code=log.generated_customer_code,
+            duplicate_check_json="{}", lead_snapshot_json=log.lead_snapshot_json, converted_by_id=1))
+        (await db.get(SalesLeads, 1)).assigned_sales_id = 12
+        await db.commit()
+    assert await counts() == (1, 1, 1, 1, {"USD": 198}, 0)
+    assert (await report("sales-leads/dashboard/call-report", 12))["summary"]["conversions"] == 0
+    evidence = await report("sales-intelligence/team?evidence_employee=11&metric=wins", 11)
+    assert len(evidence["items"]) == 1 and evidence["items"][0]["lead_id"] is None
+    async with sessions() as db:
+        # Conflicting old evidence is a manager exception and gives neither employee credit.
+        duplicate = await db.scalar(select(SalesLeadConversionLogs).order_by(SalesLeadConversionLogs.id.desc()))
+        duplicate.lead_snapshot_json = json.dumps({**source, "assigned_sales_id": 12})
+        await db.commit()
+    assert await counts() == (1, 0, 0, 0, {"USD": 198}, 0)
+    assert (await report("sales-leads/dashboard/management"))["metrics"]["unattributed_conversions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_conversion_month_boundary_currency_deposits_and_duplicate_cash(sale_api):
+    from models.sales_deal_controls import SalesHandoffChecklists
+    from models.sales_lead_conversion_logs import SalesLeadConversionLogs
+    from services.sales_conversion_reporting import conversion_counts
+
+    client, sessions = sale_api
+    row = await registered(client)
+    assert (await client.post(f"{PREFIX}/{row['id']}/finance-confirmation", headers=headers(1), json=payment())).status_code == 200
+    async with sessions() as db:
+        db.add(SalesLeads(id=2, business_name="CAD merchant", phone="+12125550101", assigned_sales_id=11))
+        for lead_id, amount, currency in ((1, 198, "USD"), (2, 500, "CAD")):
+            quote = SalesQuoteRequests(lead_id=lead_id, package_name="旧报价", final_amount=amount, currency=currency,
+                status="approved", submitted_by_id=11)
+            db.add(quote)
+            await db.flush()
+            db.add(SalesHandoffChecklists(lead_id=lead_id, quote_id=quote.id, payment_status="paid" if lead_id == 1 else "deposit_paid",
+                payment_reference="SYNTHETIC-RECEIPT-001", amount_received=198 if lead_id == 1 else 50,
+                finance_payment_confirmed=lead_id == 1, payment_confirmed_at=datetime.now(timezone.utc)))
+        log = await db.scalar(select(SalesLeadConversionLogs))
+        # 16:00 UTC is midnight in Beijing. Replays in a later month must not move the sale.
+        log.created_at = datetime(2026, 10, 31, 15, 59, 59, tzinfo=timezone.utc)
+        db.add(SalesLeadConversionLogs(lead_id=1, customer_id=row["customer_id"], generated_customer_code=log.generated_customer_code,
+            duplicate_check_json="{}", lead_snapshot_json=log.lead_snapshot_json, converted_by_id=1,
+            created_at=datetime(2026, 10, 31, 16, tzinfo=timezone.utc)))
+        await db.commit()
+        for day, count in ((date(2026, 10, 31), 1), (date(2026, 11, 1), 0)):
+            assert await conversion_counts(db, [11], day, day) == {11: count}
+    dashboard = (await client.get("/api/v1/sales-leads/dashboard/management", headers=headers(1))).json()
+    assert dashboard["deal_pipeline"]["confirmed_received_by_currency"] == {"USD": 198, "CAD": 50}
+    assert dashboard["deal_pipeline"]["approved_quote_by_currency"] == {"USD": 198, "CAD": 500}
+    assert dashboard["deal_pipeline"]["confirmed_received_amount"] == 198
+    assert dashboard["owner_attention"]["receipt_conflicts"] == 0

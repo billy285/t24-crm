@@ -4,10 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from models.expenses import Expenses
+from models.management_decisions import CustomerEngagement
 from services.business_intelligence import (
     build_formal_monthly_profit,
     build_os_paid_customer_evidence,
     build_team_capacity,
+    build_unit_economics,
 )
 from services.company_roadmap import (
     _current_recommendation,
@@ -31,6 +34,40 @@ def _profit_base(**overrides):
     }
     base.update(overrides)
     return base
+
+
+@pytest.mark.asyncio
+async def test_customer_cost_uses_ledger_type_across_project_and_company_profit():
+    period = {"start_date": date(2026, 2, 1), "end_date": date(2026, 2, 28)}
+    project = CustomerEngagement(id=1, customer_id=7, business_line_id=1, product_id=1, currency="USD")
+    expense = Expenses(customer_id=7, expense_type="design_fee", amount=100, currency="USD",
+                       expense_date=datetime(2026, 2, 15, tzinfo=timezone.utc))
+    legacy_principal = Expenses(customer_id=7, expense_type="ads_fee", amount=300, currency="USD",
+                                expense_date=expense.expense_date, notes="同一客户")
+    rate = SimpleNamespace(base_currency="USD", quote_currency="CNY", year_month="2026-02",
+                           status="locked", average_rate=7, source="manual")
+    base = _profit_base(
+        projects=[project], customer_by_id={}, line_by_id={}, product_by_id={},
+        expenses=[expense, legacy_principal], exchange_rates=[rate],
+    )
+    for expense.notes, expense.expense_category in [
+        ("Design software", "customer"), ("Adobe Photoshop license", "customer"),
+        ("为客户拍摄广告素材", "广告创意"),
+    ]:
+        economics = await build_unit_economics(None, base=base, **period)
+        month = (await build_formal_monthly_profit(None, base=base, **period))["rows"][0]
+        assert economics["projects"][0]["metrics"][0]["customer_cost"] == 100
+        assert economics["totals"]["USD"]["contribution_profit"] == -100
+        assert month["customer_cost_usd"] == 100
+        assert month["formal_profit_cny"] == month["cash_profit_cny"] == -700
+
+    # A close taken before this correction still reports its stored figures.
+    snapshot = {**month, "customer_cost_usd": 0, "formal_profit_cny": 0, "cash_profit_cny": 0}
+    base["profit_closes"] = [SimpleNamespace(year_month="2026-02", status="locked",
+                              snapshot_json=json.dumps(snapshot), locked_by="Owner", locked_at=None)]
+    locked = (await build_formal_monthly_profit(None, base=base, **period))["rows"][0]
+    assert locked["close_status"] == "locked"
+    assert locked["customer_cost_usd"] == locked["formal_profit_cny"] == locked["cash_profit_cny"] == 0
 
 
 @pytest.mark.asyncio

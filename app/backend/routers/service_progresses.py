@@ -14,6 +14,7 @@ from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services.service_progresses import Service_progressesService
 from services.customer_scope import ensure_customer_access
+from services.service_weekly_evidence import weekly_evidence
 from services.service_board_access import require_service_board_access
 from models.service_tasks import Service_tasks
 
@@ -293,6 +294,15 @@ async def query_service_progressess_all(
     except Exception as e:
         logger.error(f"Error querying service_progressess: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/weekly-evidence")
+async def read_weekly_evidence(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_service_board_access(db, current_user)
+    return await weekly_evidence(db, current_user)
 
 
 @router.get("/{id}", response_model=Service_progressesResponse)
