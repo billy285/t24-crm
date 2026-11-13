@@ -2,7 +2,7 @@
   "backend_focused_tests_passed": true,
   "baseline_git_commit": "a65b85572cede1d5622497c731015a9af8e81919",
   "baseline_source_sha": "c8fcbdf92047a0c0eba2cc7332465daddf760fe5",
-  "build_receipt_sha256": "7558fc5652342d88d928e8d8f4bb749770593400d4d9d36dc82fb40611a26a73",
+  "build_receipt_sha256": "1230f94c63806d7f1789705389c7de1b1797ffdc934814d54ca3b6033189e0be",
   "changed_source_files": {
     "app/backend/routers/finance_adjustments.py": "f3e355228a9e382ee8635e53ef95999daad80375b68b00df307d9df5d05c6107",
     "app/backend/routers/stripe_bank_reconciliation.py": "1c1d3d3f306f12d8a0a6ab691691d26e7ec03d0cdec5376b839227dc969761f8",
@@ -11,7 +11,7 @@
     "app/backend/services/sales_deal_handoffs.py": "fd3b41199bcfd740190d81b06d0f0e02353b8091aabab92b64b487dfc9215a2d",
     "app/backend/services/sales_deal_payments.py": "6d56de997cdae1514350efecca03249649146d2e69dac5469bd8d98961c7eda7",
     "app/backend/services/stripe_auto_posting.py": "2f94d8797aed0cef4ab62a6a6415c936b4208477ca3bf3059c901d4884929784",
-    "app/backend/services/stripe_bank_reconciliation.py": "bd210584c0ce496588211b9c82d442a52ff6591899b265616863190cc840fcd2",
+    "app/backend/services/stripe_bank_reconciliation.py": "c76a877683824ee821b1bdcbe70700b70f76e9cafb765f34038a34f9a6d770b7",
     "app/backend/services/stripe_history_provider.py": "5a866132e885cd0d8af76bb1ed3878e70ab9d7347efa5655597238911c91570f",
     "app/backend/services/stripe_history_reconciliation.py": "03d6557bb8e0f3f269cf2a86bedaafd692aaecb8a91c3b5c3a8c9f15d9eea355",
     "app/frontend/src/components/StripeAutoPosting.tsx": "3636856d69a6dc6ca2a1fd5c71cc6cb2b2990d35dd939ee3188ec237d81727f9",
@@ -33,7 +33,7 @@
     "app/backend/tests/test_sales_catalog_handoffs.py": "1b883915883baa65b96c12ad06f6de431be1604bf8b9baa1c1f9fbf0117c7785",
     "app/backend/tests/test_sales_deal_payments.py": "9344a67de0b9e168bf7b917fe246408035d9bebf1c280c5d277e6e59cda571a8",
     "app/backend/tests/test_stripe_auto_posting.py": "ffc8314589f3c435641664b0d3e55d7317aacd047e7e52180556347a8392ccd1",
-    "app/backend/tests/test_stripe_bank_reconciliation.py": "1cb265d12d48001b88b24a6138f1390fdba7b714aac12fdaf33f123993091b2f",
+    "app/backend/tests/test_stripe_bank_reconciliation.py": "b3658cc72d02cfd3817448830f2f8e2951243a0be799c48031a7db6917709539",
     "app/backend/tests/test_stripe_history_reconciliation.py": "696f1dd6fbdb9f6ab90acb76ce352062b6b36f82b26d3e7b9f396c0d56576aa5",
     "app/backend/tests/test_stripe_unified_source_health.py": "45e13c8630c6e42695b34e1c4c2740d78a1ce733ffe28ce5906c74f593537fdb",
     "app/backend/tests/test_verified_stripe_financial_amounts.py": "ca15022e71db4b716a9d2b3cbef78ca03d3eacc228841043ec096405dab31dc8",
@@ -41,11 +41,11 @@
     "app/frontend/tests/stripe-auto-posting.unit.test.mjs": "ee39a1d005bfc57e3be32d6ed01cd9ae12945d812608d119bd92f15dac7fba50",
     "app/frontend/tests/stripe-bank-reconciliation.test.mjs": "a53e86d70966eb4bcb54b3f765fce433b96bfdaedd40e2310d9cada64718530f"
   },
-  "dist_inventory_sha256": "0763e705e28fbe5a1c3f831c4e4124b009943543590f4b86bd41c0068034b9ad",
+  "dist_inventory_sha256": "308044520bd76987e1201070f92b8c36ad03b0a751bb3d7a012e20b96c3b4601",
   "fresh_build_passed": true,
   "frontend_version": "d1ccf53a33b1",
   "no_migration": true,
   "source_commit_bytes_verified": true,
-  "source_sha": "fd7cd1910b38b27dce11cdb2e579611a5ca6e3bb",
+  "source_sha": "c7fec53771fa9f46998d4c8054aeb5d6e9daf1be",
   "stage": "CRM_STRIPE_ACCOUNTING_SOURCE_FREEZE"
 }
