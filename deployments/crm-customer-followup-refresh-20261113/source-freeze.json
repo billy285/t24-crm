@@ -1,0 +1,27 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "d1dfab62d20a971cf48a43c382f0bd69a1a824db",
+  "baseline_source_sha": "4f1770c9b830fcadd896fc06a90de817cae9b14c",
+  "build_receipt_sha256": "01392a0284dd0b2a50510df58eb0532a444a5c08050c8fe7e604424cc57d5b03",
+  "changed_source_files": {
+    "app/backend/routers/app_config.py": "0f5a399a8b713d507d9aa4f5a222c10e7c98d9873b9ece54cdc794696d3111d0",
+    "app/backend/tests/test_customer_followup_status_config.py": "d6cb6deba08331707051e21d054ffff326fb00249ec28624419406ec5ebb1657",
+    "app/frontend/src/components/CustomerFollowUpStatusManager.tsx": "25a8909a1b5c892e10dd2310dae73dad9b3b9bbc25380bc82fdec9a68ee1d623",
+    "app/frontend/src/components/customer-detail-navigation.css": "dcb815263e9e0e1d44f5cef81f419f57582c3c13a157742b0a8922c2e1f63794",
+    "app/frontend/src/lib/customer-detail-refresh.ts": "e8b0a3c2441f0bd533e491d29c64ae3cf2bcfb6d9f4bd952d65f501c6f6babd7",
+    "app/frontend/src/lib/customer-followup-statuses.ts": "0d8bbb9c267e4b165cf6295046bb97939dd38af6b70d4832f423a864a4cabce9",
+    "app/frontend/src/lib/dict-config.ts": "ad83ab7f1e05144b68b87047349afabf6cc9beff5497bafdf1f1ee9e20b67526",
+    "app/frontend/src/pages/Customers.tsx": "8aeafddf9fcd393b69feb8a0e0ac378d81d2b3bd03b101b463d1d481fc4c0fa5",
+    "app/frontend/src/pages/Settings.tsx": "44accb288985702079365734e9bd16f6c4d961a4a97f90d36bf6e580170f241a",
+    "app/frontend/tests/customer-detail-refresh.test.mjs": "a2739c81c513c6b84922f66a5da34bb6d31fc287b0afc5b59b77a79950c23a8d",
+    "app/frontend/tests/customer-followup-integration.test.mjs": "a757f851f1b899f4807c919d1491718622cc9b7a575081ff9233040e3f5d1064",
+    "app/frontend/tests/customer-followup-statuses.test.mjs": "03723c723bc5bda7d647b20f85f45f646a7ee4127688f967ced542fb8181dcee"
+  },
+  "dist_inventory_sha256": "8be0d0ee5ad5c2bed7d225fdadae400616d75a35de71cddfb69f0d2f98955087",
+  "fresh_build_passed": true,
+  "frontend_version": "e38d2dcbcd38",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "87e8562807bcc5d7dbc7ffa65f1e579f5d412bcf",
+  "stage": "CRM_CUSTOMER_FOLLOWUP_REFRESH_SOURCE_FREEZE"
+}
