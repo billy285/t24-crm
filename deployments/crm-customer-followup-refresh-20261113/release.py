@@ -17,8 +17,8 @@ import types
 SCOPE = 'crm-customer-followup-refresh'
 DATE = '20261113'
 STAGE = 'CRM_CUSTOMER_FOLLOWUP_REFRESH'
-PREFLIGHT_CODE_SHA = '2f73ff9df8e7d71efd0debf4d608ba7530f72422040db93b1f9de01c7a0587e2'
-RUNTIME_CODE_SHA = '5fd6dca9758dfe7ef2f18d37f3a270de868a437a9438a35ce05f28393b251686'
+PREFLIGHT_CODE_SHA = 'a40622549366fad22ff2e1b2644bb61b1f35f59a10117982c006756311d54978'
+RUNTIME_CODE_SHA = 'edc6f5c4df2ecab1af8a823c1cd04ddae5bf3b2d55fee1c4decf766fa135f512'
 REVIEWED_SOURCE_FILES = frozenset(('app/backend/routers/app_config.py', 'app/backend/tests/test_customer_followup_status_config.py', 'app/frontend/src/components/CustomerFollowUpStatusManager.tsx', 'app/frontend/src/components/customer-detail-navigation.css', 'app/frontend/src/lib/customer-detail-refresh.ts', 'app/frontend/src/lib/customer-followup-statuses.ts', 'app/frontend/src/lib/dict-config.ts', 'app/frontend/src/pages/Customers.tsx', 'app/frontend/src/pages/Settings.tsx', 'app/frontend/tests/customer-detail-refresh.test.mjs', 'app/frontend/tests/customer-followup-integration.test.mjs', 'app/frontend/tests/customer-followup-statuses.test.mjs'))
 TRUE_FLAGS = ('backend_changes', 'runtime_replacement', 'existing_hashed_assets_preserved')
 FALSE_FLAGS = ('database_writes', 'database_migration', 'environment_changes', 'permissions_changes', 'provider_or_publication_actions', 'credentials_included')

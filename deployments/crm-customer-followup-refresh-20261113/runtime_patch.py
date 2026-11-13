@@ -49,10 +49,17 @@ def inspect(name):
     return rows[0]
 
 
+def missing_requested(result, name):
+    if result.returncode != 1 or result.stdout.strip() != b'[]':
+        return False
+    pattern = rb'(?i:(?:error: |error response from daemon: )?no such (?:object|container): )' + re.escape(name.encode('utf-8')) + rb'\r?\n?'
+    return re.fullmatch(pattern, result.stderr) is not None
+
+
 def optional(name):
     result = subprocess.run(['docker', 'inspect', name], capture_output=True, timeout=30)
     if result.returncode:
-        need(b'No such' in result.stderr or b'not found' in result.stderr, 'RUNTIME_LOOKUP_FAILED')
+        need(missing_requested(result, name), 'RUNTIME_LOOKUP_FAILED')
         return None
     rows = json.loads(result.stdout)
     need(isinstance(rows, list) and len(rows) == 1, 'SINGLE_OPTIONAL_RUNTIME_REQUIRED')
@@ -134,7 +141,11 @@ def configuration_equal(current, original, image, source, *, original_runtime=Fa
         expected['Hostname'] = current['Id'][:12]
         expected['Labels'] = {**(expected.get('Labels') or {}), 't24.release.scope': SCOPE, 't24.release.source': source}
     need(current['Config'] == expected and current['Image'] == image, 'EXACT_RUNTIME_CONFIG_REQUIRED')
-    need(current['HostConfig'] == original['HostConfig'], 'EXACT_HOST_SECURITY_AND_MOUNTS_REQUIRED')
+    host = dict(current['HostConfig'])
+    # Docker29 serializes candidate OomKillDisable's explicit null default as false.
+    if not original_runtime and 'OomKillDisable' in original['HostConfig'] and original['HostConfig']['OomKillDisable'] is None and host.get('OomKillDisable') is False:
+        host['OomKillDisable'] = None
+    need(host == original['HostConfig'], 'EXACT_HOST_SECURITY_AND_MOUNTS_REQUIRED')
     need(current['Config'].get('Env') == original['Config'].get('Env'), 'EXACT_RUNTIME_ENVIRONMENT_REQUIRED')
     need(sorted_mounts(current) == sorted_mounts(original), 'EXACT_ALL_MOUNT_FIELDS_REQUIRED')
     actual_networks, prior_networks = networks(current), networks(original)
