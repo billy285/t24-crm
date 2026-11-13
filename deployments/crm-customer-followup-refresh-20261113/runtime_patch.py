@@ -214,7 +214,7 @@ from routers.app_config import router,DEFAULT_CUSTOMER_FOLLOWUP_STATUSES,custome
 assert len(DEFAULT_CUSTOMER_FOLLOWUP_STATUSES.split(','))==8
 assert {r.path for r in router.routes if r.path.endswith('/customer-followup-statuses')}=={'/api/v1/app-config/dict_config/customer-followup-statuses'}
 assert {'GET','PATCH'} <= {m for r in router.routes if r.path.endswith('/customer-followup-statuses') for m in r.methods}
-c=sqlite3.connect('file:/validation/crm_prod.db?mode=ro',uri=True);c.execute('PRAGMA query_only=ON')
+c=sqlite3.connect('file:/validation/crm_prod.db?mode=ro&immutable=1',uri=True);c.execute('PRAGMA query_only=ON')
 assert c.execute('SELECT version_num FROM alembic_version').fetchall()==[(HEAD,)]
 definitions=[list(r) for r in c.execute(\"SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name\")]
 assert hashlib.sha256(json.dumps(definitions,sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()==SCHEMA
@@ -228,7 +228,7 @@ c.close();print(json.dumps({'offline_import_and_service_dictionary_valid':True,'
     inherited = images[0].get('Config', {}).get('Env') or []
     need(isinstance(inherited, list) and all(isinstance(value, str) and re.fullmatch('[A-Za-z_][A-Za-z0-9_]*', value.split('=', 1)[0]) for value in inherited), 'BOUNDED_OFFLINE_ENVIRONMENT_REQUIRED')
     env = {value.split('=', 1)[0]: '' for value in inherited}
-    env.update({'PATH': '/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8',
+    env.update({'PATH': '/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8', 'PORT': '8000', 'LOG_LEVEL': 'INFO',
         'APP_ENV': 'test', 'ENVIRONMENT': 'test', 'ENV': 'test', 'DATABASE_SCHEMA_MODE': 'verify_only',
         'JWT_SECRET_KEY': 'offline-synthetic-jwt-012345678901234567890123456789',
         'MASK_KEY': 'offline-synthetic-mask-012345678901234567890123456789',
