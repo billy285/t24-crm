@@ -4861,7 +4861,7 @@ function FinanceWorkspace() {
                         <th className="px-3 py-2.5 font-medium hidden xl:table-cell">管理费</th>
                         <th className="px-3 py-2.5 font-medium hidden xl:table-cell">投流充值</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">Stripe手续费</th>
-                        <th className="px-3 py-2.5 font-medium hidden xl:table-cell">净入账</th>
+                        <th className="px-3 py-2.5 font-medium hidden xl:table-cell">渠道净额</th>
                         <th className="px-3 py-2.5 font-medium">欠款</th>
                         <th className="px-3 py-2.5 font-medium hidden md:table-cell">模式</th>
                         <th className="px-3 py-2.5 font-medium hidden lg:table-cell">方式</th>
@@ -4903,7 +4903,7 @@ function FinanceWorkspace() {
                           <td className="px-3 py-2.5 text-cyan-600 hidden lg:table-cell">
                             {calculateStripePlatformFee(p) > 0 ? fmt(calculateStripePlatformFee(p)) : '-'}
                           </td>
-                          <td className="px-3 py-2.5 hidden xl:table-cell">{fmt(getStoredMoney(p.net_amount) ?? Math.max(Number(p.amount_paid || 0) - calculateStripePlatformFee(p), 0))}</td>
+                          <td className="px-3 py-2.5 hidden xl:table-cell"><span title={isStripeSubscriptionPayment(p) ? 'Stripe 渠道净额可能含代收税，不代表银行到账。历史估算不代表平台实际净额，以支付凭据及银行流水分别核验。' : '渠道净额不代表银行到账，以银行流水匹配结果为准。'}>{fmt(getStoredMoney(p.net_amount) ?? Math.max(Number(p.amount_paid || 0) - calculateStripePlatformFee(p), 0))}<span className="sr-only">{isStripeSubscriptionPayment(p) ? 'Stripe 净额可能含代收税；历史估算不代表实际净额；银行到账须另核对流水。' : '银行到账须另核对流水。'}</span></span></td>
                           <td className="px-3 py-2.5">{(p.outstanding_amount || 0) > 0 ? <span className="text-red-600 font-medium">{fmt(p.outstanding_amount)}</span> : '-'}</td>
                           <td className="px-3 py-2.5 hidden md:table-cell">
                             <Badge
@@ -6880,7 +6880,7 @@ function FinanceWorkspace() {
               <p className="font-medium text-slate-800">{refundTarget?.customer_name || '-'}</p>
               <p className="mt-1 text-xs text-slate-500">原收款 {formatMoney(toMoneyNumber(refundTarget?.amount_paid), normalizeCurrency(refundTarget?.currency, 'USD'))} · {normalizeCurrency(refundTarget?.currency, 'USD')} · {refundTarget?.payment_date?.slice(0, 10) || '-'}</p>
             </div>
-<div className="grid grid-cols-2 gap-4"><div><Label>退款金额 *</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
+<div className="grid grid-cols-2 gap-4"><div><Label>退还服务费（税前）*</Label><Input type="number" min="0" step="0.01" value={refundForm.refund_amount} onChange={e => setRefundForm({ ...refundForm, refund_amount: e.target.value })} /><p className="mt-1 text-xs text-slate-500">含税退款需先核对服务费与税费拆分；异常税费保留平台凭据，不自动猜测冲账。</p></div><div><Label>退款日期 *</Label><Input type="date" value={refundForm.refund_date} onChange={e => setRefundForm({ ...refundForm, refund_date: e.target.value })} /></div></div>
 <div><Label>Stripe 实际退回的手续费</Label><Input type="number" min="0" step="0.01" value={refundForm.stripe_fee_refunded_amount} onChange={e => setRefundForm({ ...refundForm, stripe_fee_refunded_amount: e.target.value })} /><p className="mt-1 text-xs text-amber-600">当前业务规则是公司承担手续费，Stripe 没有退手续费时保持 0。</p></div>
 <div><Label>退款原因</Label><Input value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })} /></div></div></section><FinanceOptionalSection id="finance-refund-optional" title="平台凭据与备注" hasContent={Boolean(refundForm.provider_refund_id || refundForm.notes)} initiallyOpen={Boolean(refundForm.provider_refund_id || refundForm.notes)}><div><Label>Stripe 退款编号</Label><Input value={refundForm.provider_refund_id} onChange={e => setRefundForm({ ...refundForm, provider_refund_id: e.target.value })} placeholder="re_...（可后补）" /></div>
 

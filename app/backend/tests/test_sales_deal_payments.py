@@ -189,7 +189,7 @@ def test_secret_file_private_absolute_regular_only(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tax_evidence_owner_only_preserves_original_base_financial_formula_and_lock(sale_api, monkeypatch):
+async def test_tax_evidence_owner_only_posts_actual_fee_preserving_base_and_lock(sale_api, monkeypatch):
     client, sessions = sale_api
     monkeypatch.setenv("T24_SALES_STRIPE_WEBHOOK_SECRET", SECRET)
     handoff, request = await sale_with_link(client, sessions)
@@ -218,12 +218,52 @@ async def test_tax_evidence_owner_only_preserves_original_base_financial_formula
         assert (evidence.service_minor, evidence.tax_minor, evidence.fee_minor, evidence.gross_minor, evidence.net_minor) == (19800, 1733, 650, 21533, 20883)
         posted = await db.scalar(select(Payments))
         assert posted.amount_paid == 198 and posted.amount_due == 198 and posted.management_amount == 198
-        assert posted.stripe_fee_amount == 6.04  # existing formula, not independently observed 6.50
+        assert posted.stripe_fee_amount == 6.5 and posted.net_amount == 208.83
+        from services.deal_payment_sync import sync_payment_from_deal
+        deal = await db.get(Deals, handoff["deal_id"])
+        deal.notes = "Synthetic metadata edit after verified payment"
+        await db.flush()
+        preserved = await sync_payment_from_deal(db, deal)
+        assert preserved.id == posted.id
+        assert (preserved.amount_paid, preserved.management_amount, preserved.stripe_fee_amount, preserved.net_amount) == (198, 198, 6.5, 208.83)
+        await db.rollback()
+        deal = await db.get(Deals, handoff["deal_id"], populate_existing=True)
+        assert deal.notes == "Synthetic metadata edit after verified payment"  # commit=True contract is retained
+        await db.refresh(posted)
         assert posted.payment_date.date() == date(2026, 10, 2)
         assert await db.scalar(select(func.count()).select_from(CustomerAccessGrant)) == 0
     assert (await client.post(f"{PAYMENTS}/{handoff['id']}/request", headers=headers())).status_code == 409
     owner = (await client.get(f"{PAYMENTS}/{handoff['id']}/observations", headers=headers(1))).json()
     assert owner["receipt_evidence"]["accounting_amount"] == 198 and owner["receipt_evidence"]["tax_amount"] == 17.33
+
+
+@pytest.mark.asyncio
+async def test_paid_receipt_resync_rejects_amount_change_or_reference_only_link(sale_api):
+    from fastapi import HTTPException
+    from services.deal_payment_sync import sync_payment_from_deal
+    client, sessions = sale_api
+    handoff = await registered(client)
+    response = await client.post(f"{PREFIX}/{handoff['id']}/finance-confirmation", headers=headers(1), json=taxed_receipt())
+    assert response.status_code == 200, response.text
+    async with sessions() as db:
+        deal = await db.get(Deals, handoff["deal_id"])
+        deal.deal_amount = 199
+        with pytest.raises(HTTPException) as caught:
+            await sync_payment_from_deal(db, deal)
+        assert caught.value.status_code == 409
+        await db.rollback()
+        payment = await db.scalar(select(Payments))
+        assert (payment.amount_paid, payment.stripe_fee_amount, payment.net_amount) == (198, 6.5, 208.83)
+        # Matching transaction text is not the paid handoff's authoritative ID.
+        row = await db.get(SalesDealHandoff, handoff["id"])
+        row.payment_id = None
+        deal = await db.get(Deals, handoff["deal_id"])
+        with pytest.raises(HTTPException) as caught:
+            await sync_payment_from_deal(db, deal)
+        assert caught.value.status_code == 409
+        await db.rollback()
+        payment = await db.scalar(select(Payments))
+        assert (payment.amount_paid, payment.management_amount, payment.stripe_fee_amount, payment.net_amount) == (198, 198, 6.5, 208.83)
 
 
 @pytest.mark.asyncio
@@ -335,19 +375,42 @@ async def test_pre_extension_paid_fingerprint_replays_without_creating_new_evide
     client, sessions = sale_api
     handoff = await registered(client)
     url = f"{PREFIX}/{handoff['id']}/finance-confirmation"
-    assert (await client.post(url, headers=headers(1), json=payment())).status_code == 200
     old_fields = ("amount_received", "payment_date", "currency", "payment_method", "transaction_reference")
-    model = VerifyReceipt(**payment()).model_dump(mode="json")
+    old_payload = {key: value for key, value in payment().items() if key in old_fields}
+    model = VerifyReceipt(**old_payload).model_dump(mode="json")
     async with sessions() as db:
         row = await db.get(SalesDealHandoff, handoff["id"])
+        # Seed a pre-extension receipt directly. A fresh Stripe confirmation now
+        # requires actual amount evidence, but existing paid rows must replay.
+        receipt = Payments(customer_id=row.customer_id, source_deal_id=row.deal_id,
+            amount_due=198, amount_paid=198, management_amount=198, ads_recharge_amount=0,
+            stripe_fee_amount=6.04, net_amount=191.96, currency="USD", user_id="1")
+        db.add(receipt)
+        await db.flush()
+        row.payment_status, row.payment_id = "paid", receipt.id
         row.payment_fingerprint = digest({key: model[key] for key in old_fields})
         await db.commit()
-    replay = await client.post(url, headers=headers(1), json=payment())
+    replay = await client.post(url, headers=headers(1), json=old_payload)
     assert replay.status_code == 200 and replay.json()["idempotent_replay"]
     assert (await client.post(url, headers=headers(1), json=taxed_receipt())).status_code == 409
     async with sessions() as db:
         assert await db.scalar(select(func.count()).select_from(Payments)) == 1
         assert await db.scalar(select(func.count()).select_from(SalesReceiptEvidence)) == 0
+
+
+@pytest.mark.asyncio
+async def test_fresh_stripe_confirmation_without_actual_amount_evidence_never_posts(sale_api):
+    client, sessions = sale_api
+    handoff = await registered(client)
+    old_fields = {key: value for key, value in payment().items() if key in
+        {"amount_received", "payment_date", "currency", "payment_method", "transaction_reference"}}
+    result = await client.post(f"{PREFIX}/{handoff['id']}/finance-confirmation", headers=headers(1), json=old_fields)
+    assert result.status_code == 409 and "完整实际" in result.text
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Payments)) == 0
+        assert await db.scalar(select(func.count()).select_from(SalesReceiptEvidence)) == 0
+        assert (await db.get(SalesDealHandoff, handoff["id"])).payment_status == "pending"
+        assert not (await db.get(Deals, handoff["deal_id"])).is_paid
 
 
 @pytest.mark.asyncio

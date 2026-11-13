@@ -12,6 +12,7 @@ class BindingPreview(Strict):
     stripe_subscription_id: str = Field(pattern=r"^sub_[A-Za-z0-9_]{1,220}$")
     sync_from: date
     income_type: Literal["management_fee", "website_fee", "ordering_fee", "other_income"]
+    source_handoff_id: int | None = Field(default=None, ge=1)
 
 
 class BindingConfirm(Strict):

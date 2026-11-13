@@ -17,6 +17,15 @@ MANAGEMENT_FEE_KEY = "management_fee"
 ADS_FEE_KEY = "ads_fee"
 STRIPE_PLATFORM_FEE_RATE = 0.029
 STRIPE_PLATFORM_FEE_FIXED = 0.3
+CATALOG_SERVICE_INCOME_TYPES = {
+    "managed_service": MANAGEMENT_FEE_KEY,
+    "restaurant_os": "ordering_fee",
+    "beauty_os": "other_income",
+    "one_time_project": "other_income",
+}
+KNOWN_SERVICE_PRODUCT_TYPES = frozenset({
+    *CATALOG_SERVICE_INCOME_TYPES, "social_media", "website", "ordering_system",
+})
 
 
 def normalize_payment_method(method: Optional[str]) -> Optional[str]:
@@ -30,6 +39,9 @@ def infer_payment_mode(payment_method: Optional[str]) -> str:
 
 
 def infer_payment_income_type(product_type: Optional[str], package_name: Optional[str]) -> str:
+    catalog_income = CATALOG_SERVICE_INCOME_TYPES.get((product_type or "").strip().lower())
+    if catalog_income:
+        return catalog_income
     normalized = (package_name or "").lower()
     if product_type == "ordering_system" or "点餐" in normalized:
         return "ordering_fee"
@@ -53,11 +65,18 @@ def _calculate_stripe_fee(amount_paid: float, payment_method: Optional[str], pay
     return round(amount_paid * STRIPE_PLATFORM_FEE_RATE + STRIPE_PLATFORM_FEE_FIXED, 2)
 
 
-def _derive_income_split(income_type: Optional[str], amount_paid: float) -> Tuple[float, float]:
+def _derive_income_split(
+    income_type: Optional[str], amount_paid: float, *, service_revenue: bool = False,
+) -> Tuple[Optional[float], float]:
     if income_type == MANAGEMENT_FEE_KEY:
         return amount_paid, 0.0
     if income_type == ADS_FEE_KEY:
         return 0.0, amount_paid
+    if service_revenue and income_type in {"website_fee", "ordering_fee", "renewal_fee", "other_income"}:
+        # None preserves the existing non-management service-revenue fallback.
+        # A zero would incorrectly exclude the receipt from revenue/commission;
+        # using the paid amount would incorrectly apply the management deduction.
+        return None, 0.0
     return 0.0, 0.0
 
 
@@ -174,6 +193,32 @@ async def sync_payment_from_deal(
     if payment is None:
         payment = await _load_matching_payment(db, deal)
 
+    if handoff is not None and handoff.payment_status == "paid":
+        # A later deal/metadata save must not re-price an already verified
+        # receipt or reclassify historical service income. The authoritative
+        # link is the paid handoff's payment ID, never a free-form reference.
+        if (payment is None or payment.id != handoff.payment_id
+                or payment.source_deal_id != deal.id or handoff.deal_id != deal.id
+                or payment.customer_id != deal.customer_id or handoff.customer_id != deal.customer_id
+                or not deal.is_paid or deal.deal_amount != handoff.amount
+                or payment.amount_due != handoff.amount or payment.amount_paid != handoff.amount
+                or payment.currency != handoff.currency
+                or any(value is not None for value in (amount_paid_override, payment_method_override,
+                    payment_mode_override, currency_override, transaction_reference_override, payment_date_override))):
+            raise HTTPException(409, "已核款成交的金额或收款关联已变化，请走原财务更正流程，未覆盖原收款")
+        from models.sales_deal_payments import SalesReceiptEvidence
+        evidence = await db.scalar(select(SalesReceiptEvidence).where(SalesReceiptEvidence.handoff_id == handoff.id))
+        if evidence is not None and (evidence.service_minor / 100 != payment.amount_paid
+                or evidence.currency != payment.currency):
+            raise HTTPException(409, "已核款凭据与原收款不一致，请走原财务更正流程，未覆盖原收款")
+        # Pre-evidence historical receipts keep their old values too; absence
+        # of evidence does not promote them to verified actual Stripe amounts.
+        await ensure_payment_writes_open(db, [payment], payment_ids=[payment.id], action="同步成交收款")
+        if commit:
+            await db.commit()
+            await db.refresh(payment)
+        return payment
+
     chosen_payment_date = payment_date_override or _choose_payment_date(deal, subscription)
     is_synced_payment = bool(payment and payment.source_deal_id == deal.id)
     payment_date = chosen_payment_date if (payment is None or is_synced_payment) else (payment.payment_date or chosen_payment_date)
@@ -195,7 +240,10 @@ async def sync_payment_from_deal(
     else:
         payment_method = payment_method or "other"
     income_type = infer_payment_income_type(deal.product_type, deal.package_name)
-    management_amount, ads_recharge_amount = _derive_income_split(income_type, amount_paid)
+    management_amount, ads_recharge_amount = _derive_income_split(
+        income_type, amount_paid,
+        service_revenue=(deal.product_type or "").strip().lower() in KNOWN_SERVICE_PRODUCT_TYPES,
+    )
     stripe_fee_amount = _calculate_stripe_fee(amount_paid, payment_method, payment_mode)
     product_name = (
         deal.package_name

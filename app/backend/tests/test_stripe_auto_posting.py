@@ -98,9 +98,7 @@ async def test_trial_3_services_no_financial_writes_history_excluded_and_one_new
         assert job.status == 'auto_posted', job.reason
         payment = await db.get(Payments, posting.payment_id)
         assert payment.amount_paid == 198 and payment.currency == 'USD'
-        from services.deal_payment_sync import _calculate_stripe_fee
-        original_fee = _calculate_stripe_fee(198, 'stripe', 'subscription_auto')
-        assert payment.stripe_fee_amount == original_fee and payment.net_amount == 198 - original_fee
+        assert payment.stripe_fee_amount == 6.5 and payment.net_amount == 208.83
         assert payment.management_amount == 198 and payment.ads_recharge_amount == 0
         assert payment.transaction_reference == raw['id'] and '系统自动' in payment.recorded_by
         assert posting.action == 'auto_create_payment'

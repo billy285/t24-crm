@@ -44,7 +44,7 @@ class StripeHistoryReader:
     async def _get(self, path, parameters=None):
         if not self._secret:
             unavailable("stripe_read_not_configured")
-        if not re.fullmatch(r"/v1/(?:balance|subscriptions(?:/sub_[A-Za-z0-9_]{1,220})?|invoices(?:/in_[A-Za-z0-9_]{1,220})?)", path):
+        if not re.fullmatch(r"/v1/(?:balance|subscriptions(?:/sub_[A-Za-z0-9_]{1,220})?|invoices(?:/in_[A-Za-z0-9_]{1,220})?|payouts(?:/po_[A-Za-z0-9_]{1,220})?|balance_transactions)", path):
             unavailable("stripe_resource_not_allowed")
         try:
             async with httpx.AsyncClient(transport=self._transport, timeout=httpx.Timeout(15, connect=5), follow_redirects=False) as client:
@@ -108,6 +108,35 @@ class StripeHistoryReader:
         if value.get("id") != invoice_id or value.get("livemode") is not True:
             unavailable("stripe_invoice_invalid")
         return value
+
+    async def payouts(self, starting_after=None):
+        await self.account_context()
+        parameters = {"limit": PAGE_LIMIT}
+        if starting_after:
+            parameters["starting_after"] = starting_after
+        return self._page(await self._get("/v1/payouts", parameters))
+
+    async def payout(self, payout_id):
+        await self.account_context()
+        value = await self._get("/v1/payouts/" + payout_id)
+        if value.get("id") != payout_id or value.get("object") != "payout" or value.get("livemode") is not True:
+            unavailable("stripe_payout_invalid")
+        return value
+
+    async def payout_transactions(self, payout_id, starting_after=None):
+        if not re.fullmatch(r"po_[A-Za-z0-9_]{1,220}", payout_id):
+            unavailable("stripe_payout_invalid")
+        await self.account_context()
+        parameters = {"limit": PAGE_LIMIT, "payout": payout_id}
+        if starting_after:
+            parameters["starting_after"] = starting_after
+        value = await self._get("/v1/balance_transactions", parameters)
+        rows = value.get("data")
+        # BalanceTransaction has no livemode field. The fixed live account and
+        # separately verified live payout establish its provider context.
+        if value.get("object") != "list" or not isinstance(rows, list) or len(rows) > PAGE_LIMIT or type(value.get("has_more")) is not bool or not all(isinstance(row, dict) and row.get("object") == "balance_transaction" for row in rows):
+            unavailable("stripe_payout_page_invalid")
+        return rows, value["has_more"]
 
     @staticmethod
     def _page(value):

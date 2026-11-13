@@ -23,7 +23,6 @@ from models.stripe_history_reconciliation import (StripeHistoryBinding, StripeHi
 from models.subscriptions import Subscriptions
 from services import stripe_history_provider as provider
 from services import stripe_history_reconciliation as service
-from services.deal_payment_sync import _calculate_stripe_fee, _derive_income_split
 
 API = "/api/v1/stripe-history-reconciliation"
 START = int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())
@@ -163,7 +162,7 @@ async def test_binding_preview_explicit_confirmation_idempotence_and_no_old_rows
 
 
 @pytest.mark.asyncio
-async def test_sync_twice_stable_pending_cash_proof_then_explicit_owner_posts_original_math_once(history_api):
+async def test_sync_twice_stable_pending_cash_proof_then_owner_posts_actual_fee_once(history_api):
     client, sessions, fake = history_api
     binding = await bind(client)
     before = await snapshot(sessions)
@@ -175,8 +174,9 @@ async def test_sync_twice_stable_pending_cash_proof_then_explicit_owner_posts_or
     assert await snapshot(sessions) == before
     review = (await client.get(f"{API}/invoice-reviews/{first['items'][0]['id']}", headers=headers(1))).json()["review"]
     assert review["can_create_payment"] and review["fee_amount"] == 6.5 and review["tax_amount"] == 17.33
-    assert review["accounting_preview"]["stripe_fee_amount"] == _calculate_stripe_fee(198, "stripe", "subscription_auto") == 6.04
-    assert review["accounting_preview"]["net_amount"] == 191.96
+    assert review["accounting_preview"]["stripe_fee_amount"] == 6.5
+    assert review["accounting_preview"]["net_amount"] == 208.83
+    assert review["accounting_preview"]["amount_paid"] == 198  # tax is not service income
     response = await client.post(f"{API}/invoice-reviews/{review['id']}/confirm", headers=headers(1), json=confirmation(review["revision"]))
     assert response.status_code == 200, response.text
     assert response.json()["review"]["status"] == "confirmed"
@@ -185,7 +185,7 @@ async def test_sync_twice_stable_pending_cash_proof_then_explicit_owner_posts_or
     assert replay.status_code == 200 and replay.json()["idempotent_replay"]
     async with sessions() as db:
         payment = await db.get(Payments, response.json()["payment_id"])
-        assert (payment.amount_paid, payment.management_amount, payment.ads_recharge_amount, payment.stripe_fee_amount, payment.net_amount) == (198, 198, 0, 6.04, 191.96)
+        assert (payment.amount_paid, payment.management_amount, payment.ads_recharge_amount, payment.stripe_fee_amount, payment.net_amount) == (198, 198, 0, 6.5, 208.83)
         assert payment.source_deal_id is None and payment.transaction_reference == "in_history100"
         entries = (await db.scalars(select(CommissionEntry))).all()
         assert len(entries) == 1 and entries[0].entry_type == "renewal" and entries[0].commission_amount == 19.8
@@ -242,8 +242,8 @@ async def test_completed_local_payment_has_same_full_cash_proof_without_automati
     assert row["status"] == "pending_review" and row["issues"] == []
     detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
     assert detail["can_create_payment"] and detail["fee_amount"] == 6.5 and detail["net_amount"] == 208.83
-    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.04
-    assert detail["accounting_preview"]["net_amount"] == 191.96
+    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.5
+    assert detail["accounting_preview"]["net_amount"] == 208.83
     assert await snapshot(sessions) == before
 
 
@@ -296,7 +296,7 @@ async def test_completed_ach_py_charge_and_exact_balance_source_are_supported_wi
     assert row["status"] == "pending_review" and row["issues"] == []
     detail = (await client.get(f"{API}/invoice-reviews/{row['id']}", headers=headers(1))).json()["review"]
     assert detail["can_create_payment"]
-    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.04
+    assert detail["accounting_preview"]["stripe_fee_amount"] == 6.5
     async with sessions() as db:
         review = await db.get(StripeHistoryInvoiceReview, row["id"])
         assert review.snapshot["stripe_charge_id"] == "py_history100"
@@ -549,6 +549,8 @@ async def test_unrelated_closed_fuzzy_candidate_does_not_block_correct_explicit_
 
 @pytest.mark.asyncio
 async def test_owner_renewal_coverage_historical_binding_unique_invoice_signals_and_fresh_cash_resolution(history_api, monkeypatch):
+    from services import service_follow_through
+    monkeypatch.setattr(service_follow_through, "today", lambda: date(2026, 10, 21))
     client, sessions, _ = history_api
     monkeypatch.setenv("T24_SALES_STRIPE_WEBHOOK_SECRET", SECRET)
     binding = await bind(client)

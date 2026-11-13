@@ -88,7 +88,10 @@ async def registered(client, **updates):
 
 
 def payment(**updates):
-    return {"amount_received": 198, "payment_date": "2026-10-02", "currency": "USD", "payment_method": "stripe", "transaction_reference": "SYNTHETIC-RECEIPT-001", **updates}
+    value = {"amount_received": 198, "payment_date": "2026-10-02", "currency": "USD", "payment_method": "stripe", "transaction_reference": "SYNTHETIC-RECEIPT-001", **updates}
+    if value["payment_method"] == "stripe":
+        value = {"service_amount": 198, "tax_amount": 0, "fee_amount": 6.04, "gross_amount": 198, "net_amount": 191.96, **value}
+    return value
 
 
 async def grant(sessions, customer_id, employee_id=13, **updates):
@@ -276,7 +279,7 @@ def test_payment_product_vocabulary_preserves_existing_financial_classification(
     from services.deal_payment_sync import infer_payment_income_type
     kind = _financial_product_type({"name": name, "business_line_code": line}, ["Google Ads"])
     assert kind == expected
-    assert infer_payment_income_type(kind, name) == {"social_media": "management_fee", "ads": "ads_fee", "website": "website_fee", "restaurant_os": "other_income", "beauty_os": "other_income"}[expected]
+    assert infer_payment_income_type(kind, name) == {"social_media": "management_fee", "ads": "ads_fee", "website": "website_fee", "restaurant_os": "ordering_fee", "beauty_os": "other_income"}[expected]
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from models.ad_fund_settlements import AdFundSettlement
 from models.finance_refunds import FinanceRefund
 from models.finance_profit_closes import MonthlyProfitClose
 from models.payments import Payments
+from models.sales_leads import SalesLeads
 from routers.finance_adjustments import (
     AdFundSettlementWrite,
     RefundCreate,
@@ -30,6 +31,7 @@ async def _create_tables(engine) -> None:
         await connection.run_sync(FinanceRefund.__table__.create)
         await connection.run_sync(AdFundSettlement.__table__.create)
         await connection.run_sync(MonthlyProfitClose.__table__.create)
+        await connection.run_sync(SalesLeads.__table__.create)
 
 
 @pytest.mark.asyncio

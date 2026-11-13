@@ -2,3 +2,13 @@
 .shr-reminders-exceptions{margin-top:8px;border-top:1px solid #e4eaf4;padding-top:7px;min-width:0}.shr-reminders-exceptions>p{margin:4px 0;color:#8a5b26;font-size:11px;overflow-wrap:anywhere}.shr-reminders-counts button:disabled{cursor:default}
 
 .shr-reminders-automation{display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #e4eaf4}.shr-reminders-automation button{display:flex;align-items:center;gap:7px;background:none;border:0;padding:2px 0;min-height:28px;text-align:left;color:#526786;font-size:11px;cursor:pointer;flex-wrap:wrap}.shr-reminders-automation strong{font-size:16px;line-height:1;color:#18734f;font-variant-numeric:tabular-nums}.shr-reminders-automation strong small{font-size:10px;font-weight:400}.shr-reminders-automation .shr-reminders-attention,.shr-reminders-automation .shr-reminders-attention strong{color:#b45309}.shr-reminders-automation .shr-reminders-manage{color:#326cd0;margin-left:auto}.shr-reminders-compact .shr-reminders-automation{gap:4px 14px;margin-top:5px;padding-top:5px}@media(max-width:520px){.shr-reminders-automation{gap:4px 12px}.shr-reminders-automation button:first-child{width:100%}.shr-reminders-automation .shr-reminders-manage{margin-left:0}}
+
+/* Runtime health is distinct from the daily historical evidence scan. */
+.shr-reminders .shr-reminders-runtime { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; margin-top:7px; font-size:12px; line-height:1.7; }
+.shr-reminders .shr-reminders-runtime button { display:flex; align-items:center; gap:5px; min-height:32px; border:0; background:none; padding:0; font-size:12px; text-align:left; color:inherit; cursor:pointer; }
+.shr-reminders .shr-reminders-runtime span { color:var(--crm-muted,#64748b); overflow-wrap:anywhere; }
+.shr-reminders .shr-reminders-runtime button svg { flex:none; }
+@media(max-width:639px) {
+  .shr-reminders .shr-reminders-runtime { display:grid; grid-template-columns:minmax(0,1fr); gap:0; }
+  .shr-reminders .shr-reminders-runtime button,.shr-reminders .shr-reminders-refresh,.shr-reminders .shr-reminders-counts button,.shr-reminders .shr-reminders-automation button { min-height:44px; }
+}

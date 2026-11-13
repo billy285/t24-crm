@@ -16,6 +16,7 @@ from models.finance_refunds import FinanceRefund
 from models.payments import Payments
 from services.commissions import commission_ledger_available, sync_refund_commission
 from services.finance_period_lock import ensure_profit_months_open
+from services.sales_workflow_locks import lock_sales_workflow
 from schemas.auth import UserResponse
 
 
@@ -47,15 +48,21 @@ def _refund_ads_share(payment: Payments, refund: FinanceRefund) -> float:
 
 class RefundCreate(BaseModel):
     payment_id: int = Field(gt=0)
-    refund_amount: float = Field(gt=0)
+    refund_amount: float = Field(gt=0, allow_inf_nan=False)
     refund_date: datetime
-    provider: str = "stripe"
-    provider_refund_id: Optional[str] = None
-    stripe_fee_refunded_amount: float = Field(default=0, ge=0)
+    provider: str = Field(default="stripe", max_length=40)
+    provider_refund_id: Optional[str] = Field(default=None, max_length=160)
+    stripe_fee_refunded_amount: float = Field(default=0, ge=0, allow_inf_nan=False)
     status: Literal["pending", "completed", "failed"] = "completed"
     reason: Optional[str] = None
     notes: Optional[str] = None
     recorded_by: Optional[str] = None
+
+    @model_validator(mode="after")
+    def positive_booked_amount(self):
+        if _money(self.refund_amount) <= 0:
+            raise ValueError("退款金额四舍五入后必须至少为 0.01")
+        return self
 
 
 class RefundResponse(BaseModel):
@@ -84,6 +91,15 @@ class RefundListResponse(BaseModel):
     total: int
 
 
+def _refund_identity(payment_id, amount, refunded_fee, status, refunded_at):
+    # Refund dates follow the existing booked calendar/month convention.
+    # SQLite stores these wall-clock values without the supplied UTC offset;
+    # compare that same representation so an exact offset-bearing retry is
+    # idempotent without shifting an existing refund to another month.
+    moment = refunded_at.replace(tzinfo=None)
+    return (int(payment_id), _money(amount), _money(refunded_fee), status, moment.isoformat())
+
+
 @router.get("/refunds", response_model=RefundListResponse)
 async def list_refunds(
     skip: int = Query(0, ge=0),
@@ -104,6 +120,25 @@ async def create_refund(
     current_user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Serialize external-refund deduplication, reserved totals and month checks
+    # with the existing receipt/close lock; no schema or historical row rewrite.
+    await lock_sales_workflow(db)
+    provider = (data.provider or "stripe").strip().lower() or "stripe"
+    reference = (data.provider_refund_id or "").strip() or None
+    if reference:
+        existing = (await db.scalars(select(FinanceRefund).where(
+            func.lower(func.trim(FinanceRefund.provider)) == provider,
+            func.trim(FinanceRefund.provider_refund_id) == reference,
+        ).limit(2))).all()
+        if existing:
+            candidate = existing[0]
+            requested = _refund_identity(data.payment_id, data.refund_amount, data.stripe_fee_refunded_amount, data.status, data.refund_date)
+            stored = _refund_identity(candidate.payment_id, candidate.refund_amount, candidate.stripe_fee_refunded_amount, candidate.status, candidate.refund_date)
+            if len(existing) != 1 or stored != requested:
+                raise HTTPException(status_code=409, detail="此渠道退款编号已有记录且内容不同或存在历史重复，请核对原退款；本次未新增")
+            result = RefundResponse.model_validate(candidate)
+            await db.rollback()
+            return result
     await ensure_profit_months_open(db, [data.refund_date], action="新增退款")
     payment = await db.get(Payments, data.payment_id)
     if not payment:
@@ -134,8 +169,8 @@ async def create_refund(
         refund_amount=_money(data.refund_amount),
         currency=(payment.currency or "USD").upper(),
         refund_date=data.refund_date,
-        provider=(data.provider or "stripe").strip().lower(),
-        provider_refund_id=(data.provider_refund_id or "").strip() or None,
+        provider=provider,
+        provider_refund_id=reference,
         stripe_fee_refunded_amount=_money(data.stripe_fee_refunded_amount),
         status=data.status,
         reason=(data.reason or "").strip() or None,

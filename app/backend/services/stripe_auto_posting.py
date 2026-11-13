@@ -27,8 +27,11 @@ STARTUP_DELAY_SECONDS = 300
 POLL_SECONDS = 30
 LEASE_SECONDS = 120
 BATCH_LIMIT = 5
+HEARTBEAT_STALE_SECONDS = LEASE_SECONDS + POLL_SECONDS * 2
 JOB_STATES = ('queued', 'retry', 'manual_required', 'auto_posted', 'manual_completed')
 BEIJING = ZoneInfo('Asia/Shanghai')
+_WORKER_TASK = None
+_WORKER_RUNTIME = {"started_at": None, "last_heartbeat_at": None, "last_batch_completed_at": None, "last_batch_error": None}
 
 
 def now():
@@ -111,7 +114,27 @@ async def summary(db):
             item['amount'] = round(item['amount'] + float(payment.amount_paid or 0), 2)
             item['count'] += 1
         return list(result.values())
-    return {'enabled_count': enabled_count, 'counts': counts, 'totals': totals(), 'today_totals': totals(True)}
+    return {'enabled_count': enabled_count, 'counts': counts, 'totals': totals(), 'today_totals': totals(True),
+        'health': worker_health(jobs, [posting for posting, _ in posted])}
+
+
+def worker_health(jobs=(), postings=()):
+    """Current-process worker observation, separate from persisted per-service consent."""
+    global_enabled = enabled()
+    supported = os.getenv('IS_LAMBDA') != 'true'
+    task = _WORKER_TASK
+    state = ('disabled' if not global_enabled else 'unsupported' if not supported else
+        'not_started' if task is None else 'stopped' if task.cancelled() else
+        'failed' if task.done() else 'starting' if _WORKER_RUNTIME['last_heartbeat_at'] is None else 'running')
+    attempts = [history.utc(job.last_attempt_at) for job in jobs if job.last_attempt_at]
+    successes = [history.utc(posting.created_at) for posting in postings if posting.created_at]
+    heartbeat = _WORKER_RUNTIME['last_heartbeat_at']
+    heartbeat_state = ('awaiting_start' if state == 'starting' else 'unavailable' if state != 'running' or heartbeat is None else
+        'stale' if (now() - history.utc(heartbeat)).total_seconds() > HEARTBEAT_STALE_SECONDS else 'current')
+    return {'global_enabled': global_enabled, 'worker_supported': supported, 'current_process_only': True,
+        'worker_state': state, 'heartbeat_state': heartbeat_state, 'heartbeat_stale_after_seconds': HEARTBEAT_STALE_SECONDS,
+        **_WORKER_RUNTIME, 'last_attempt_at': max(attempts, default=None),
+        'last_auto_posted_at': max(successes, default=None), 'checked_at': now()}
 
 
 def trial_data(policy, binding):
@@ -119,9 +142,13 @@ def trial_data(policy, binding):
         return None
     result = dict(policy.trial)
     checked = parse_time(result.get('checked_at'))
-    if not checked or now() - checked > timedelta(hours=24) or result.get('scope_fingerprint') != scope(binding):
+    changed = result.get('scope_fingerprint') != scope(binding)
+    expired = not checked or now() - checked > timedelta(hours=24)
+    result['validation_state'] = 'scope_changed' if changed else 'expired' if expired else 'passed' if result.get('passed') else 'not_passed'
+    if expired or changed:
         result['passed'] = False
-        result['reasons'] = list(result.get('reasons') or []) + ['模拟已过期或服务归属变化，请重新验证']
+        result['reasons'] = list(result.get('reasons') or []) + ['服务归属依据已变化，重新启用前需核验' if changed else '模拟有效期已过，重新启用前需核验；不代表已启用服务停止运行']
+    result['reenable_required'] = not bool(result.get('passed'))
     return result
 
 
@@ -422,10 +449,14 @@ async def run_batch(sessions=None):
     for _ in range(BATCH_LIMIT):
         if not enabled():
             break
+        if asyncio.current_task() is _WORKER_TASK:
+            _WORKER_RUNTIME['last_heartbeat_at'] = now()
         claim = await claim_job(sessions)
         if not claim:
             break
         await process_job(sessions, claim)
+        if asyncio.current_task() is _WORKER_TASK:
+            _WORKER_RUNTIME['last_heartbeat_at'] = now()
         count += 1
     return {'processed': count, 'enabled': True}
 
@@ -433,15 +464,29 @@ async def run_batch(sessions=None):
 async def loop():
     await asyncio.sleep(STARTUP_DELAY_SECONDS)
     while True:
-        with contextlib.suppress(Exception):
+        _WORKER_RUNTIME['last_heartbeat_at'] = now()
+        try:
             await run_batch()
+            _WORKER_RUNTIME['last_batch_completed_at'] = now()
+            _WORKER_RUNTIME['last_batch_error'] = None
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _WORKER_RUNTIME['last_batch_error'] = 'batch_failed'
+        finally:
+            _WORKER_RUNTIME['last_heartbeat_at'] = now()
         await asyncio.sleep(POLL_SECONDS)
 
 
 def start_auto_posting():
+    global _WORKER_TASK
     if not enabled() or os.getenv('IS_LAMBDA') == 'true':
         return None
-    return asyncio.create_task(loop())
+    if _WORKER_TASK is not None and not _WORKER_TASK.done():
+        return _WORKER_TASK
+    _WORKER_RUNTIME.update(started_at=now(), last_heartbeat_at=None, last_batch_completed_at=None, last_batch_error=None)
+    _WORKER_TASK = asyncio.create_task(loop(), name='stripe-auto-posting')
+    return _WORKER_TASK
 
 
 async def stop_auto_posting(task):

@@ -531,7 +531,9 @@ async def finance_confirm(db, handoff_id, payload, user):
     if candidates:
         raise HTTPException(409, "已有可能关联的收款，请先从原财务流程核对关联，避免重复记账或覆盖凭证")
     from services.sales_deal_payments import prepare_receipt_evidence
-    await prepare_receipt_evidence(db, row, payload, user)
+    evidence = await prepare_receipt_evidence(db, row, payload, user)
+    if payload.payment_method == "stripe" and evidence is None:
+        raise HTTPException(409, "新的 Stripe 收款必须填写完整实际服务费、税、手续费、客户实付和平台净额凭据，未生成收款")
     deal.is_paid = True
     row.payment_status = "verifying"
     await db.flush()
@@ -540,6 +542,11 @@ async def finance_confirm(db, handoff_id, payload, user):
         payment_mode_override="subscription_auto" if row.collection_method == "stripe_auto" else "manual_collection",
         currency_override=row.currency, transaction_reference_override=payload.transaction_reference,
         payment_date_override=moment(payload.payment_date))
+    if evidence is not None:
+        # The new receipt keeps tax-exclusive service income. Its separately
+        # verified Stripe balance net includes collected tax, not bank payout.
+        payment.stripe_fee_amount = evidence.fee_minor / 100
+        payment.net_amount = evidence.net_minor / 100
     payment.engagement_id, payment.business_line_id = row.engagement_id, deal.business_line_id
     payment.product_id = deal.product_id
     project = await db.get(CustomerEngagement, row.engagement_id)

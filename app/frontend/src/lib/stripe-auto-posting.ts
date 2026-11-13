@@ -3,7 +3,14 @@ export type StripeAutoPostingEvidence = {
   status: StripeAutoPostingStatus; reason?: string | null; payment_id?: number | null;
   authorized_by_name?: string | null; effective_from?: string | null; processed_at?: string | null;
 };
-export type StripeAutoPostingTrial = { passed: boolean; checked_at: string; invoice_count: number; reasons: string[] };
+export type StripeAutoPostingTrial = { passed: boolean; checked_at: string; invoice_count: number; reasons: string[]; validation_state?: 'passed' | 'expired' | 'scope_changed' | 'not_passed'; reenable_required?: boolean };
+export type StripeAutoPostingHealth = {
+  global_enabled: boolean; worker_supported: boolean; current_process_only: true;
+  worker_state: 'disabled' | 'unsupported' | 'not_started' | 'starting' | 'running' | 'stopped' | 'failed';
+  heartbeat_state?: 'awaiting_start' | 'current' | 'stale' | 'unavailable'; heartbeat_stale_after_seconds?: number;
+  started_at?: string | null; last_heartbeat_at?: string | null; last_batch_completed_at?: string | null;
+  last_batch_error?: string | null; last_attempt_at?: string | null; last_auto_posted_at?: string | null; checked_at: string;
+};
 export type StripeAutoPostingPolicy = {
   binding_id: number; customer_name: string; package_name: string; stripe_subscription_id: string;
   amount: number; currency: string; billing_cycle: string; enabled: boolean; effective_from: string | null;
@@ -13,7 +20,7 @@ export type StripeAutoPostingPolicy = {
 export type StripeAutoPostingTotal = { currency: string; amount: number; count: number };
 export type StripeAutoPostingSummary = {
   enabled_count: number; counts: Record<StripeAutoPostingStatus, number>; totals: StripeAutoPostingTotal[];
-  today_totals?: StripeAutoPostingTotal[];
+  today_totals?: StripeAutoPostingTotal[]; health?: StripeAutoPostingHealth;
 };
 export type StripeAutoPostingOverview = StripeAutoPostingSummary & { limit: number; items: StripeAutoPostingPolicy[] };
 export type StripeAutoPostingJob = {
@@ -41,7 +48,8 @@ export function validAutoPostingSelection(ids: number[], policies: StripeAutoPos
   return ids.every(id => Number.isSafeInteger(id) && id > 0 && policies.some(item => item.binding_id === id && item.eligible === true && item.enabled === false));
 }
 export function canEnableAutoPosting(policy: StripeAutoPostingPolicy, enabledCount: number, limit = 5): boolean {
-  return Number.isSafeInteger(limit) && limit >= 3 && policy.eligible === true && policy.trial?.passed === true && policy.enabled === false
+  return Number.isSafeInteger(limit) && limit >= 3 && policy.eligible === true && policy.trial?.passed === true && policy.trial.reenable_required !== true
+    && (!policy.trial.validation_state || policy.trial.validation_state === 'passed') && policy.enabled === false
     && Number.isSafeInteger(enabledCount) && enabledCount >= 0 && enabledCount < Math.min(limit, 5);
 }
 export function safeAutoPostingTotals(totals: unknown): StripeAutoPostingTotal[] | null {
@@ -65,4 +73,26 @@ export function autoPostingTotalsCount(totals: unknown): number | null {
 }
 export function isAwaitingAutoPosting(review: { auto_posting?: StripeAutoPostingEvidence | null }): boolean {
   return review.auto_posting?.status === 'queued' || review.auto_posting?.status === 'retry';
+}
+
+export function autoPostingHealthState(health?: StripeAutoPostingHealth): { label: string; tone: 'neutral' | 'warning' | 'complete'; note: string } {
+  const scope = '调度状态仅反映当前 API 进程；其他进程与整站持续运行情况需结合运行记录核对。';
+  if (!health || typeof health.global_enabled !== 'boolean') return { label: '自动调度状态待确认', tone: 'neutral', note: '尚未取得运行状态，请重新读取。' };
+  if (health.global_enabled === false) return { label: '全局自动记账未启用', tone: 'warning', note: '服务授权单独保留；总开关关闭期间不会自动处理新账单。' };
+  if (health.worker_supported === false || health.worker_state === 'unsupported') return { label: '当前进程不支持后台调度', tone: 'warning', note: scope };
+  if (health.worker_supported !== true || health.current_process_only !== true) return { label: '自动调度观察范围待确认', tone: 'neutral', note: scope };
+  if (health.worker_state === 'failed' || health.worker_state === 'stopped') return { label: '当前进程调度待检查', tone: 'warning', note: scope };
+  if (health.last_batch_error) return { label: '最近一次调度需检查', tone: 'warning', note: `最近批次未成功完成，请核对异常与后续重试结果。${scope}` };
+  if (health.worker_state === 'running' && health.heartbeat_state === 'current' && health.last_heartbeat_at) return { label: '当前进程调度运行中', tone: 'complete', note: scope };
+  if (health.heartbeat_state === 'stale') return { label: '当前进程心跳待确认', tone: 'neutral', note: `最近心跳已超出服务端观察窗口，请重新读取并核对最近批次。${scope}` };
+  return { label: health.worker_state === 'starting' ? '当前进程调度启动中' : '当前进程尚无运行确认', tone: 'neutral', note: scope };
+}
+
+export function autoPostingTrialState(policy: StripeAutoPostingPolicy): { label: string; note: string; showReasons: boolean } {
+  if (!policy.trial) return { label: '尚未模拟核验', note: '', showReasons: true };
+  const state = policy.trial.validation_state;
+  if (policy.enabled && state === 'expired') return { label: '已授权 · 重新开启前需复验', note: '模拟有效期用于再次启用校验，不代表已授权服务停止自动记账。', showReasons: false };
+  if (state === 'expired') return { label: '模拟已过期 · 启用前需复验', note: '请重新选择 3–5 项服务模拟，再逐项确认开启。', showReasons: true };
+  if (state === 'scope_changed') return { label: '服务范围变化 · 需重新核验', note: '请核对当前服务与订阅，再查看最近处理记录。', showReasons: true };
+  return { label: policy.trial.passed ? '模拟已通过' : '模拟待处理', note: '', showReasons: true };
 }

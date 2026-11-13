@@ -96,3 +96,17 @@
   .shr-form-dialog .shr-actions button { min-height:44px; font-size:13px; white-space:normal; }
   .shr-form-dialog > .shr-actions > button { flex:1 1 140px; }
 }
+
+/* Explicit verified source and separate Stripe balance/bank evidence. */
+.shr-page .shr-source-binding { min-width:0; padding:12px 14px; border:1px solid var(--crm-border,#dfe5ee); border-radius:9px; background:var(--crm-surface-subtle,#f8fafc); }
+.shr-page .shr-source-binding h3 { font-size:14px; line-height:1.6; color:var(--crm-ink,#243c5b); }
+.shr-page .shr-source-binding p,.shr-page .shr-source-binding dl { font-size:12px; line-height:1.8; color:var(--crm-muted,#64748b); margin-top:6px; overflow-wrap:anywhere; }
+.shr-page .shr-source-binding dl > div { display:flex; align-items:flex-start; flex-wrap:wrap; gap:4px 12px; }
+.shr-page .shr-source-binding dd { color:var(--crm-ink,#243c5b); min-width:0; overflow-wrap:anywhere; }
+.shr-invoice-dialog .shr-bank-evidence { min-width:0; border:1px solid var(--crm-border,#dfe5ee); border-radius:9px; background:var(--crm-surface-subtle,#f8fafc); padding:12px; }
+.shr-invoice-dialog .shr-bank-evidence h4 { font-size:13px; color:var(--crm-ink,#243c5b); line-height:1.7; }
+.shr-invoice-dialog .shr-bank-evidence p { font-size:12px; line-height:1.8; color:var(--crm-muted,#64748b); margin-top:4px; overflow-wrap:anywhere; }
+@media(max-width:639px) {
+  .shr-page .shr-mapping-form :is(button,select,input:not([type=checkbox]):not([type=radio])) { min-height:44px; }
+  .shr-page .shr-source-binding { padding:12px; }
+}

@@ -21,7 +21,8 @@ from models.deals import Deals
 from models.employees import Employees
 from models.management_decisions import CustomerEngagement, ProductCatalog, ProductPlan
 from models.payments import Payments
-from models.sales_deal_payments import SalesStripeObservation
+from models.sales_deal_payments import SalesPaymentRequest, SalesReceiptEvidence, SalesStripeObservation
+from models.sales_deal_handoffs import SalesDealHandoff
 from models.stripe_history_reconciliation import (StripeHistoryAudit, StripeHistoryBinding, StripeHistoryEvent,
     StripeHistoryInvoiceReview, StripeHistoryPolicy, StripeHistoryPosting, StripeHistoryPreview)
 from models.subscriptions import Subscriptions
@@ -36,7 +37,7 @@ from services.service_follow_through import _effective_legacy_subscriptions, day
 PILOT_LIMIT = 5
 ACTIVE_CRM = {"active", "trialing", "past_due", "expiring_soon", "renewal_pending", "expired"}
 REVIEW_STATES = ("pending_review", "needs_refresh", "exception", "confirmed", "linked_existing")
-NOTE = "历史付款保留老板核对；已单独授权服务的正常新账单可自动入账。原财务服务费、手续费、关账和分润规则不变。"
+NOTE = "历史付款保留老板核对；已授权服务正常新账单可自动入账。服务收入不含税；已核验新收款使用实际手续费与Stripe平台净额，历史账不重算；关账和分润沿用现有规则，银行到账另行核对。"
 ISSUES = {
     "subscription_identity": "订阅关联编号不完整或冲突", "customer_identity": "付款客户与绑定客户不一致", "currency_mismatch": "币种与绑定不一致",
     "not_paid": "账单尚未付清", "out_of_band": "账单含外部手工标记付款，无法证明实际扣款", "non_cash_credit": "账单含余额、抵扣或贷项，需单独核对",
@@ -115,6 +116,14 @@ async def crm_snapshot(db, subscription_id, *, effective=True):
 async def crm_services(db, user, search=""):
     await owner(db, user)
     rows = _effective_legacy_subscriptions((await db.scalars(select(Subscriptions))).all())
+    subscription_ids = [row.id for row in rows]
+    deal_ids = [row.deal_id for row in rows if row.deal_id]
+    handoffs = (await db.scalars(select(SalesDealHandoff).where(or_(
+        SalesDealHandoff.subscription_id.in_(subscription_ids), SalesDealHandoff.deal_id.in_(deal_ids))))).all() if rows else []
+    by_subscription, by_deal = {}, {}
+    for handoff in handoffs:
+        by_subscription.setdefault(handoff.subscription_id, {})[handoff.id] = handoff
+        by_deal.setdefault(handoff.deal_id, {})[handoff.id] = handoff
     items = []
     for row in rows:
         if row.status not in ACTIVE_CRM:
@@ -124,8 +133,76 @@ async def crm_services(db, user, search=""):
         except HTTPException:
             continue
         if not search or search.casefold() in (value["customer_name"] + " " + value["package_name"] + " " + str(value["customer_id"])).casefold():
-            items.append({**value, "status": row.status})
+            candidates = list({**by_subscription.get(row.id, {}), **by_deal.get(row.deal_id, {})}.values())
+            source = {"binding_source": "history", "source_ready": True}
+            if candidates:
+                source = {"binding_source": "sales_handoff", "source_ready": False,
+                    "source_reason": "新成交订阅来源尚未完成唯一关联及首笔核款，请先核对成交交接。"}
+                if len(candidates) == 1:
+                    try:
+                        origin = await sales_handoff_origin(db, value, candidates[0].id)
+                        source = {"binding_source": "sales_handoff", "source_ready": True,
+                            "source_handoff_id": origin["handoff_id"], "stripe_subscription_id": origin["stripe_subscription_id"],
+                            "source_income_type": origin["income_type"]}
+                    except HTTPException:
+                        pass
+            items.append({**value, "status": row.status, **source})
     return {"items": items[:200], "total": len(items), "truncated": len(items) > 200}
+
+
+async def sales_handoff_origin(db, crm, handoff_id, stripe_subscription_id=None):
+    """Resolve only the explicit, owner-verified first-receipt chain; never a name match."""
+    def require(condition):
+        if not condition:
+            raise HTTPException(409, "新成交订阅来源、首笔核款或客户项目关联不一致，请先核对原成交；未建立或改写绑定")
+    handoff = await db.get(SalesDealHandoff, handoff_id, populate_existing=True)
+    require(handoff is not None and handoff.payment_status == "paid" and handoff.collection_method == "stripe_auto")
+    require(handoff.customer_id == crm["customer_id"] and handoff.subscription_id == crm["crm_subscription_id"]
+        and handoff.engagement_id == crm["engagement_id"] and handoff.deal_id == crm["deal_id"])
+    plan = handoff.plan_snapshot
+    require(isinstance(plan, dict) and all(plan.get(key) == crm[field] for key, field in (
+        ("id", "product_plan_id"), ("product_id", "product_id"), ("business_line_id", "business_line_id")))
+        and plan.get("default_currency") == crm["currency"] == handoff.currency
+        and plan.get("default_billing_cycle") == crm["billing_cycle"]
+        and minor(plan.get("standard_price")) == minor(handoff.amount) == minor(crm["amount"]))
+    project = await db.get(CustomerEngagement, handoff.engagement_id, populate_existing=True)
+    deal = await db.get(Deals, handoff.deal_id, populate_existing=True)
+    require(project is not None and deal is not None and deal.is_paid is True
+        and project.customer_id == deal.customer_id == crm["customer_id"]
+        and deal.engagement_id == project.id
+        and all(getattr(project, key) == getattr(deal, key) == crm[key] for key in ("business_line_id", "product_id", "product_plan_id")))
+    request = await db.scalar(select(SalesPaymentRequest).where(SalesPaymentRequest.handoff_id == handoff.id))
+    require(request is not None)
+    from services.sales_deal_payments import handoff_link
+    link = handoff_link(handoff)
+    require(link is not None and request.link_snapshot == link)
+    observations = (await db.scalars(select(SalesStripeObservation).where(SalesStripeObservation.request_id == request.id).limit(2))).all()
+    require(len(observations) == 1)
+    observation = observations[0]
+    sub_id = _id(observation.subscription_id, "sub_")
+    require(sub_id is not None and (stripe_subscription_id is None or sub_id == stripe_subscription_id)
+        and observation.status == "paid_observed" and observation.match_issues == []
+        and _id(observation.session_id, "cs_") and _id(observation.invoice_id, "in_") and _id(observation.payment_intent_id, "pi_")
+        and observation.currency == handoff.currency and observation.service_minor == minor(handoff.amount))
+    all_observations = (await db.scalars(select(SalesStripeObservation.id).where(SalesStripeObservation.subscription_id == sub_id).limit(2))).all()
+    require(all_observations == [observation.id])
+    evidence = await db.scalar(select(SalesReceiptEvidence).where(SalesReceiptEvidence.handoff_id == handoff.id))
+    payment = await db.get(Payments, handoff.payment_id, populate_existing=True) if handoff.payment_id else None
+    require(evidence is not None and evidence.observation_id == observation.id
+        and evidence.currency == handoff.currency and evidence.service_minor == observation.service_minor
+        and payment is not None and payment.customer_id == crm["customer_id"]
+        and payment.engagement_id == crm["engagement_id"] and payment.source_deal_id == crm["deal_id"]
+        and payment.business_line_id == crm["business_line_id"] and payment.product_id == crm["product_id"]
+        and payment.currency == handoff.currency and minor(payment.amount_paid) == minor(handoff.amount)
+        and payment.payment_method == "stripe" and payment.payment_mode == "subscription_auto"
+        and payment.income_type in {"management_fee", "website_fee", "ordering_fee", "other_income"})
+    return {"kind": "sales_handoff", "handoff_id": handoff.id, "request_id": request.id,
+        "observation_id": observation.id, "session_id": observation.session_id,
+        "stripe_subscription_id": sub_id, "invoice_id": observation.invoice_id,
+        "payment_intent_id": observation.payment_intent_id, "receipt_evidence_id": evidence.id,
+        "payment_id": payment.id, "customer_id": crm["customer_id"],
+        "crm_subscription_id": crm["crm_subscription_id"], "engagement_id": crm["engagement_id"],
+        "deal_id": crm["deal_id"], "product_plan_id": crm["product_plan_id"], "income_type": payment.income_type}
 
 
 def subscription_data(raw):
@@ -183,7 +260,9 @@ def invalidate_pilot(row):
 
 def binding_data(row):
     evidence = row.pilot_evidence or {}
+    origin = row.price_snapshot.get("_crm_origin")
     return {"id": row.id, "customer_id": row.customer_id, "customer_name": row.crm_snapshot["customer_name"],
+        "binding_source": "sales_handoff" if origin else "history", "source_handoff_id": origin.get("handoff_id") if isinstance(origin, dict) else None,
         "crm_subscription_id": row.crm_subscription_id, "package_name": row.crm_snapshot["package_name"],
         "stripe_subscription_id": row.stripe_subscription_id, "stripe_customer_id": row.stripe_customer_id,
         "currency": row.price_snapshot["currency"], "amount": row.price_snapshot["amount"],
@@ -199,11 +278,16 @@ async def preview_binding(db, payload, user):
     if payload.sync_from > today() or payload.sync_from < date(2020, 1, 1):
         raise HTTPException(400, "请选择 2020 年至今天之间的明确历史扫描起点")
     crm = await crm_snapshot(db, payload.crm_subscription_id)
+    origin = await sales_handoff_origin(db, crm, payload.source_handoff_id, payload.stripe_subscription_id) if payload.source_handoff_id else None
+    if origin and payload.income_type != origin["income_type"]:
+        raise HTTPException(409, "新成交绑定须沿用首笔已核款收入分类，请核对原收款；不能通过绑定改类")
     remote = subscription_data(await provider.reader().subscription(payload.stripe_subscription_id))
     if not remote["valid"]:
         raise HTTPException(409, "第一版仅支持单一、数量为一且周期明确的现有订阅，不会猜测多项目拆分")
-    if await db.scalar(select(SalesStripeObservation.id).where(SalesStripeObservation.subscription_id == remote["subscription_id"]).limit(1)):
+    if not origin and await db.scalar(select(SalesStripeObservation.id).where(SalesStripeObservation.subscription_id == remote["subscription_id"]).limit(1)):
         raise HTTPException(409, "该订阅已由新成交付款流程管理，不能重复历史绑定")
+    if origin and (minor(crm["amount"]) != remote["amount_minor"] or crm["billing_cycle"] != remote["billing_cycle"] or crm["currency"] != remote["currency"]):
+        raise HTTPException(409, "新成交的冻结套餐与 Stripe 订阅价格、币种或周期不同，请先核对原套餐；不会覆盖旧价格")
     if await db.scalar(select(StripeHistoryBinding.id).where(or_(StripeHistoryBinding.stripe_subscription_id == remote["subscription_id"],
             StripeHistoryBinding.crm_subscription_id == crm["crm_subscription_id"])).limit(1)):
         raise HTTPException(409, "该 Stripe 订阅或 CRM 服务已有绑定，请查看原绑定，不能重复映射")
@@ -222,11 +306,12 @@ async def preview_binding(db, payload, user):
     can_confirm = state["bulk_enabled"] or state["enabled_bindings"] < PILOT_LIMIT
     token, expires = secrets.token_urlsafe(32), now() + timedelta(minutes=15)
     db.add(StripeHistoryPreview(token=token, actor_id=int(user.id), expires_at=expires,
-        snapshot={"crm_service": crm, "stripe_subscription": remote, "warnings": warnings,
-            "sync_from": payload.sync_from.isoformat(), "income_type": payload.income_type}))
+        snapshot={"kind": "subscription_binding_preview", "crm_service": crm, "stripe_subscription": remote, "warnings": warnings,
+            "sync_from": payload.sync_from.isoformat(), "income_type": payload.income_type, "source_origin": origin}))
     await db.flush()
     return {"token": token, "expires_at": expires, "crm_service": crm, "stripe_subscription": remote,
-        "warnings": warnings, "can_confirm": can_confirm, "pilot": state, "note": NOTE}
+        "warnings": warnings, "can_confirm": can_confirm, "pilot": state, "note": NOTE,
+        "binding_source": "sales_handoff" if origin else "history", "source_handoff_id": origin["handoff_id"] if origin else None}
 
 
 async def confirm_binding(db, payload, user):
@@ -235,6 +320,29 @@ async def confirm_binding(db, payload, user):
     if not preview or preview.actor_id != int(user.id) or utc(preview.expires_at) < now():
         raise HTTPException(409, "绑定预览已失效，请重新预览；未建立绑定")
     selected = preview.snapshot
+    # The preview table also holds other owner workflows. Only complete binding
+    # previews (including compatible pre-kind tokens) may reach the provider.
+    if (not isinstance(selected, dict) or selected.get("kind") not in (None, "subscription_binding_preview")
+            or not isinstance(selected.get("crm_service"), dict)
+            or type(selected["crm_service"].get("crm_subscription_id")) is not int
+            or selected["crm_service"]["crm_subscription_id"] <= 0
+            or not isinstance(selected.get("stripe_subscription"), dict)
+            or not isinstance(selected["stripe_subscription"].get("subscription_id"), str)
+            or not selected["stripe_subscription"]["subscription_id"].startswith("sub_")
+            or not isinstance(selected.get("warnings"), list)
+            or any(not isinstance(item, dict) or not isinstance(item.get("code"), str) for item in selected["warnings"])
+            or not isinstance(selected.get("sync_from"), str)
+            or not isinstance(selected.get("income_type"), str)
+            or selected["income_type"] not in {"management_fee", "website_fee", "ordering_fee", "other_income"}
+            or (selected.get("source_origin") is not None and (not isinstance(selected["source_origin"], dict)
+                or selected["source_origin"].get("kind") != "sales_handoff"
+                or type(selected["source_origin"].get("handoff_id")) is not int
+                or selected["source_origin"]["handoff_id"] <= 0))):
+        raise HTTPException(409, "该预览不适用于订阅绑定，请重新打开绑定预览；未建立绑定")
+    try:
+        date.fromisoformat(selected["sync_from"])
+    except ValueError:
+        raise HTTPException(409, "绑定预览内容已失效，请重新预览；未建立绑定")
     remote = subscription_data(await provider.reader().subscription(selected["stripe_subscription"]["subscription_id"]))
     await lock_sales_workflow(db, employee_ids=[int(user.id)])
     preview = await db.get(StripeHistoryPreview, payload.token, populate_existing=True)
@@ -248,11 +356,16 @@ async def confirm_binding(db, payload, user):
     state = await pilot(db)
     if not state["bulk_enabled"] and state["enabled_bindings"] >= PILOT_LIMIT:
         raise HTTPException(409, "当前为最多五个绑定的试点；需完成至少三个试点核验后由老板明确启用批量")
-    if await db.scalar(select(SalesStripeObservation.id).where(SalesStripeObservation.subscription_id == remote["subscription_id"]).limit(1)):
+    origin = selected.get("source_origin")
+    if origin:
+        current_origin = await sales_handoff_origin(db, current, origin["handoff_id"], remote["subscription_id"])
+        if digest(origin) != digest(current_origin) or selected["income_type"] != current_origin["income_type"]:
+            raise HTTPException(409, "新成交来源在预览后发生变化，请重新核对；未建立绑定")
+    if not origin and await db.scalar(select(SalesStripeObservation.id).where(SalesStripeObservation.subscription_id == remote["subscription_id"]).limit(1)):
         raise HTTPException(409, "该订阅已由新成交管理，不能重复历史绑定")
     row = StripeHistoryBinding(account_id=STRIPE_ACCOUNT_ID, livemode=True, stripe_subscription_id=remote["subscription_id"],
         stripe_customer_id=remote["customer_id"], crm_subscription_id=current["crm_subscription_id"], customer_id=current["customer_id"],
-        crm_snapshot=current, price_snapshot=remote, income_type=selected["income_type"], sync_from=selected["sync_from"], status="active",
+        crm_snapshot=current, price_snapshot={**remote, **({"_crm_origin": origin} if origin else {})}, income_type=selected["income_type"], sync_from=selected["sync_from"], status="active",
         revision=1, needs_refresh=True, pilot_evidence={}, pilot_validated=False, verified_by_id=int(user.id), verified_by_name=user.name)
     db.add(row)
     await db.flush()
@@ -404,7 +517,16 @@ def invoice_snapshot(raw, binding):
 async def binding_context_matches(db, binding):
     try:
         current = await crm_snapshot(db, binding.crm_subscription_id, effective=False)
-        return digest(current) == digest(binding.crm_snapshot)
+        if digest(current) != digest(binding.crm_snapshot):
+            return False
+        origin = binding.price_snapshot.get("_crm_origin")
+        if origin is not None:
+            if not isinstance(origin, dict) or origin.get("kind") != "sales_handoff":
+                return False
+            if binding.income_type != origin.get("income_type"):
+                return False
+            return digest(await sales_handoff_origin(db, current, origin.get("handoff_id"), binding.stripe_subscription_id)) == digest(origin)
+        return True
     except HTTPException:
         return False
 
@@ -575,22 +697,32 @@ def review_summary(row, binding):
 
 
 def accounting_payload(binding, snapshot, user):
-    from services.deal_payment_sync import _calculate_stripe_fee, _derive_income_split
-    amount = snapshot["service_minor"] / 100
-    fee = _calculate_stripe_fee(amount, "stripe", "subscription_auto")
-    management, ads = _derive_income_split(binding.income_type, amount)
+    from services.deal_payment_sync import _derive_income_split
+    amounts = {name: _minor(snapshot.get(name + "_minor")) for name in ("service", "tax", "gross", "fee", "net")}
+    if (snapshot.get("issues") or any(value is None for value in amounts.values())
+            or amounts["gross"] != amounts["service"] + amounts["tax"]
+            or amounts["fee"] > amounts["gross"] or amounts["net"] != amounts["gross"] - amounts["fee"]):
+        raise HTTPException(409, "实际服务费、税、手续费或平台净额凭据不完整，未生成收款")
+    amount, fee, net = (amounts[name] / 100 for name in ("service", "fee", "net"))
+    # This binding is revalidated against the CRM before preview/posting. An
+    # unclassified receipt without a complete project scope keeps its old split.
+    service_revenue = all(type(binding.crm_snapshot.get(field)) is int and binding.crm_snapshot[field] > 0
+        for field in ("engagement_id", "business_line_id", "product_id"))
+    management, ads = _derive_income_split(binding.income_type, amount, service_revenue=service_revenue)
     moment = lambda value: datetime.combine(day(value), datetime.min.time(), timezone.utc)
     return {"customer_id": binding.customer_id, "customer_name": binding.crm_snapshot["customer_name"],
         "source_deal_id": None, "engagement_id": binding.crm_snapshot["engagement_id"],
         "business_line_id": binding.crm_snapshot["business_line_id"], "product_id": binding.crm_snapshot["product_id"],
         "income_type": binding.income_type, "product_name": binding.crm_snapshot["package_name"],
         "amount_due": amount, "amount_paid": amount, "management_amount": management, "ads_recharge_amount": ads,
-        "stripe_fee_amount": fee, "net_amount": max(amount - fee, 0.0), "currency": snapshot["currency"],
+        # amount_paid is tax-exclusive service revenue; net is the separately
+        # verified Stripe balance net (including collected tax), not bank payout.
+        "stripe_fee_amount": fee, "net_amount": net, "currency": snapshot["currency"],
         "payment_date": moment(snapshot["payment_date"]), "payment_mode": "subscription_auto", "payment_method": "stripe",
         "transaction_reference": snapshot["stripe_invoice_id"], "billing_cycle": binding.price_snapshot["billing_cycle"],
         "coverage_start": moment(snapshot["coverage_start"]), "coverage_end": moment(snapshot["coverage_end"]), "has_invoice": True,
         "outstanding_amount": 0.0, "expense_month": snapshot["payment_date"][:7], "recorded_by": user.name,
-        "notes": "老板核对历史 Stripe 账单；税及实际手续费保存在独立核款依据，未改原财务公式", "created_at": now(), "user_id": str(user.id)}
+        "notes": "老板核对 Stripe 账单；服务收入不含税，手续费采用已核验实际值；净额为含代收税的 Stripe 平台净额，非银行到账", "created_at": now(), "user_id": str(user.id)}
 
 
 def reference_matches(value, identities):
@@ -772,7 +904,7 @@ async def apply_verified_invoice(db, row, binding, fresh, *, revision, action, e
     ledger = accounting_payload(binding, fresh, user)
     if source == "system_auto":
         ledger["recorded_by"] = "系统自动入账（授权：" + user.name + "）"
-        ledger["notes"] = "已授权订阅的新账单由系统核验实际扣款后自动入账；税及实际手续费独立留存，沿用原财务公式"
+        ledger["notes"] = "已授权订阅的新账单核验后自动入账；服务收入不含税，手续费采用已核验实际值；净额为含代收税的 Stripe 平台净额，非银行到账"
     await ensure_payment_writes_open(db, [ledger], action="确认历史 Stripe 收款")
     if action == "create_payment":
         if existing_payment_id is not None:

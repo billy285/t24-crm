@@ -325,7 +325,7 @@ def evidence_data(evidence):
         "currency": evidence.currency, "payment_date": evidence.payment_date,
         "verified_by_name": evidence.verified_by_name, "created_at": evidence.created_at,
         "accounting_amount": evidence.service_minor / 100,
-        "accounting_note": "原财务仅按服务费基价记账；税费、实际手续费和到账净额仅作独立核款凭据，未改财务公式。"}
+        "accounting_note": "服务费按税前金额记账；实际手续费与Stripe平台净额以核款依据为准，历史账以原记账结果为准。平台净额不代表银行到账。"}
 
 
 async def observations(db, handoff_id, user):
