@@ -7,7 +7,7 @@ export type BankStatementPreview = { token: string; expires_at: string; account_
 export type BankMatchPreview = { token: string; payout: BankPayout; bank_row: BankStatementRow; account_label: string; transaction_count: number; writes_ledger: false; requires_owner_confirmation: true };
 export type BankMatch = { id: number; payout_id: string; amount_minor: number; currency: 'USD'; account_label: string; bank_date: string; bank_reference: string; payment_ids: number[]; review_ids: number[]; status: 'statement_manually_matched'; confirmed_at?: string; confirmed_by?: string; note: string };
 export type BankOverview = { items: BankMatch[]; total: number; currency: 'USD'; bank_connection: 'statement_upload'; provider_writes: false; ledger_writes: false };
-export type BankPayoutPage = { items: BankPayout[]; has_more: boolean; next_cursor: string | null; read_only: true; bank_deposit_proven: false };
+export type BankPayoutPage = { items: BankPayout[]; has_more: boolean; next_cursor: string | null; read_only: true; bank_deposit_proven: false; excluded_noncredit_count?: number };
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const date = (value: unknown): value is string => {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -26,8 +26,11 @@ export function readBankOverview(value: unknown): BankOverview {
   return value as BankOverview;
 }
 export function readBankPayoutPage(value: unknown): BankPayoutPage {
-  if (!object(value) || value.read_only !== true || value.bank_deposit_proven !== false || !Array.isArray(value.items) || !value.items.every(validPayout) || typeof value.has_more !== 'boolean' || (value.has_more && !payoutId(value.next_cursor))) return invalid();
+  if (!object(value) || value.read_only !== true || value.bank_deposit_proven !== false || !Array.isArray(value.items) || !value.items.every(validPayout) || typeof value.has_more !== 'boolean' || (value.has_more && !payoutId(value.next_cursor)) || (Object.prototype.hasOwnProperty.call(value, 'excluded_noncredit_count') && (!Number.isSafeInteger(value.excluded_noncredit_count) || value.excluded_noncredit_count < 0))) return invalid();
   return value as BankPayoutPage;
+}
+export function bankPayoutExclusionNotice(count?: number): string | null {
+  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? `本页省略 ${count} 笔零额或负数结算；这里只核对银行入账。` : null;
 }
 export function readBankInspection(value: unknown): BankInspection {
   if (!object(value) || value.currency !== 'USD' || value.writes_ledger !== false || !Array.isArray(value.headers) || value.headers.length < 2 || value.headers.length > 40 || !value.headers.every((name: unknown) => typeof name === 'string' && name.trim() && name.length <= 80) || new Set(value.headers).size !== value.headers.length || !positive(value.row_count) || value.row_count > 1000 || !Array.isArray(value.sample) || !value.sample.every((row: unknown) => Array.isArray(row) && (row.length === 0 || row.length === value.headers.length) && row.every(cell => typeof cell === 'string'))) return invalid();

@@ -124,3 +124,32 @@ test('actual confirmation sends only the server token, owner acknowledgment and 
   assert.equal(calls.length, 1); assert.equal(calls[0][0], '/bank/matches/confirm'); assert.deepEqual(plain(calls[0][2]), { token, owner_verified: true, note: '公司流水核对完成' });
   calls.length = 0; context.verified = false; context.exports.confirm(); assert.equal(calls.length, 0);
 });
+
+test('payout pages preserve reported noncredit exclusions without inventing a zero for old responses', () => {
+  const page = { items: [payout], has_more: true, next_cursor: 'po_noncredit_last', read_only: true, bank_deposit_proven: false };
+  assert.equal(Object.hasOwn(bank.readBankPayoutPage(page), 'excluded_noncredit_count'), false);
+  for (const count of [0, 1, 10, Number.MAX_SAFE_INTEGER]) assert.equal(bank.readBankPayoutPage({ ...page, excluded_noncredit_count: count }).excluded_noncredit_count, count);
+  for (const count of [undefined, null, -1, 0.5, '1', true, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => bank.readBankPayoutPage({ ...page, excluded_noncredit_count: count }));
+  assert.throws(() => bank.readBankPayoutPage({ ...page, items: [{ ...payout, amount_minor: -100 }], excluded_noncredit_count: 1 }));
+  assert.equal(bank.readBankPayoutPage({ ...page, items: [], excluded_noncredit_count: 10 }).next_cursor, 'po_noncredit_last');
+});
+
+test('only an explicit positive safe exclusion count produces a page-scoped notice, never a bank receipt claim', () => {
+  const notice = bank.bankPayoutExclusionNotice(1);
+  assert.match(notice, /本页.*1.*零额或负数/); assert.match(notice, /这里只核对银行入账/); assert.doesNotMatch(notice, /已经到账|已匹配|累计/);
+  for (const value of [undefined, null, 0, -1, 0.5, '1', NaN, Infinity]) assert.equal(bank.bankPayoutExclusionNotice(value), null);
+});
+
+test('actual manual payout reader preserves the provider cursor and uses the latest page exclusion count rather than summing pages', async () => {
+  const calls = [], counts = [], pages = [
+    { items: Array.from({ length: 9 }, (_, index) => ({ ...payout, id: `po_credit${index}` })), has_more: true, next_cursor: 'po_noncredit_last', excluded_noncredit_count: 1, read_only: true, bank_deposit_proven: false },
+    { items: [], has_more: false, next_cursor: null, excluded_noncredit_count: 2, read_only: true, bank_deposit_proven: false },
+    { items: [payout], has_more: false, next_cursor: null, read_only: true, bank_deposit_proven: false },
+  ];
+  let pending, retained = [];
+  const context = { exports: {}, overview, overviewError: false, denied: false, uncertain: false, payoutFresh: false, cursor: null, readBankPayoutPage: bank.readBankPayoutPage, setPayouts: update => { retained = update(retained); }, setExcludedNoncreditCount: value => counts.push(value), setPayoutFresh: value => { context.payoutFresh = value; }, setPayoutMore() {}, setCursor: value => { context.cursor = value; }, setPayoutId() {}, clearConfirmation() {}, api: async path => { calls.push(path); return pages.shift(); }, execute: (kind, action) => { assert.equal(kind, 'payouts'); pending = action(() => true); } };
+  vm.runInNewContext(compile(`exports.read = ${variables.get('loadPayouts')};`), context);
+  context.exports.read(); await pending; assert.equal(retained.length, 9); assert.equal(counts[0], 1); assert.equal(context.cursor, 'po_noncredit_last');
+  context.exports.read(true); await pending; assert.equal(calls[1], '/bank/payouts?starting_after=po_noncredit_last'); assert.equal(retained.length, 9); assert.equal(counts[1], 2);
+  context.exports.read(); await pending; assert.equal(retained.length, 1); assert.equal(counts[2], undefined); assert.equal(bank.bankPayoutExclusionNotice(counts[2]), null);
+});

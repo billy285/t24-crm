@@ -135,8 +135,8 @@ async def preview_record(db, user, token, kind):
     return copy.deepcopy(record.snapshot)
 
 
-def payout_summary(raw):
-    if raw.get("object") != "payout" or raw.get("livemode") is not True or not re.fullmatch(r"po_[A-Za-z0-9_]{1,220}", str(raw.get("id", ""))) or type(raw.get("amount")) is not int or raw["amount"] <= 0 or raw.get("currency") != "usd" or type(raw.get("arrival_date")) is not int:
+def payout_summary(raw, *, allow_noncredit=False):
+    if raw.get("object") != "payout" or raw.get("livemode") is not True or not re.fullmatch(r"po_[A-Za-z0-9_]{1,220}", str(raw.get("id", ""))) or type(raw.get("amount")) is not int or (raw["amount"] <= 0 and not allow_noncredit) or raw.get("currency") != "usd" or type(raw.get("arrival_date")) is not int:
         reject("当前仅支持正式账户的美元银行结算，请保留其他币种人工核对")
     try:
         arrival = datetime.fromtimestamp(raw["arrival_date"], timezone.utc).date().isoformat()
@@ -145,7 +145,7 @@ def payout_summary(raw):
     return {"id": raw["id"], "amount_minor": raw["amount"], "currency": "USD", "arrival_date": arrival,
         "status": raw.get("status"), "automatic": raw.get("automatic") is True,
         "bank_destination": raw.get("destination") if isinstance(raw.get("destination"), str) else None,
-        "eligible": raw.get("status") == "paid" and raw.get("automatic") is True and raw.get("type") == "bank_account" and raw.get("reconciliation_status") == "completed"}
+        "eligible": raw["amount"] > 0 and raw.get("status") == "paid" and raw.get("automatic") is True and raw.get("type") == "bank_account" and raw.get("reconciliation_status") == "completed"}
 
 
 async def payouts(db, user, starting_after=None):
@@ -155,11 +155,16 @@ async def payouts(db, user, starting_after=None):
     except asyncio.TimeoutError:
         raise HTTPException(503, "Stripe 读取暂时超时，请稍后重试；未写入到账匹配或财务账本")
     items = []
+    excluded_noncredit_count = 0
     for raw in rows:
         if raw.get("currency") == "usd":
-            items.append(payout_summary(raw))
+            item = payout_summary(raw, allow_noncredit=True)
+            if item["amount_minor"] <= 0:
+                excluded_noncredit_count += 1
+            else:
+                items.append(item)
     return {"items": items, "has_more": more, "next_cursor": rows[-1]["id"] if more and rows else None,
-        "read_only": True, "bank_deposit_proven": False}
+        "excluded_noncredit_count": excluded_noncredit_count, "read_only": True, "bank_deposit_proven": False}
 
 
 async def payout_evidence(payout_id):

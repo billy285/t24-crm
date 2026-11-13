@@ -8,7 +8,7 @@ import { useRole } from '@/lib/role-context';
 import { AUTH_SESSION_EPOCH_KEY, AUTH_SESSION_INVALIDATED_EVENT, getAuthSessionEpoch } from '@/lib/auth-storage';
 import { autoPostingTime } from '@/lib/stripe-auto-posting';
 import { stripeReconciliationApi as api, stripeReconciliationError } from '@/lib/stripe-history-reconciliation';
-import { BANK_CSV_MAX_BYTES, BankRequestGuard, bankColumnsError, bankMatchConfirmReady, bankMatchReady, bankMoney, bankPayoutEligible, decodeBankCsv, readBankInspection, readBankMatchPreview, readBankOverview, readBankPayoutPage, readBankStatement, type BankColumns, type BankInspection, type BankMatch, type BankMatchPreview, type BankOverview, type BankPayout, type BankStatementPreview } from '@/lib/stripe-bank-reconciliation';
+import { BANK_CSV_MAX_BYTES, BankRequestGuard, bankColumnsError, bankMatchConfirmReady, bankMatchReady, bankMoney, bankPayoutExclusionNotice, bankPayoutEligible, decodeBankCsv, readBankInspection, readBankMatchPreview, readBankOverview, readBankPayoutPage, readBankStatement, type BankColumns, type BankInspection, type BankMatch, type BankMatchPreview, type BankOverview, type BankPayout, type BankStatementPreview } from '@/lib/stripe-bank-reconciliation';
 import './stripe-bank-reconciliation.css';
 
 type LiveScope = MutableRefObject<{ key: string; allowed: boolean }>;
@@ -39,13 +39,14 @@ function BankWorkspace({ scope, session, liveScope }: { scope: string; session: 
   const [busy, setBusy] = useState<Operation | null>(null), [error, setError] = useState(''), [message, setMessage] = useState('');
   const [uncertain, setUncertain] = useState(false), [denied, setDenied] = useState(false);
   const [payouts, setPayouts] = useState<BankPayout[]>([]), [payoutFresh, setPayoutFresh] = useState(false), [payoutMore, setPayoutMore] = useState(false), [cursor, setCursor] = useState<string | null>(null);
+  const [excludedNoncreditCount, setExcludedNoncreditCount] = useState<number | undefined>(undefined);
   const [csv, setCsv] = useState(''), [fileName, setFileName] = useState(''), [inspection, setInspection] = useState<BankInspection | null>(null), [columns, setColumns] = useState<BankColumns>({ ...emptyColumns });
   const [statement, setStatement] = useState<BankStatementPreview | null>(null), [rowIndex, setRowIndex] = useState(0), [payoutId, setPayoutId] = useState('');
   const [preview, setPreview] = useState<BankMatchPreview | null>(null), [verified, setVerified] = useState(false), [note, setNote] = useState('');
   const [voidTarget, setVoidTarget] = useState<BankMatch | null>(null), [voidVerified, setVoidVerified] = useState(false), [voidNote, setVoidNote] = useState('');
   const fileId = useId();
   const clearConfirmation = () => { setPreview(null); setVerified(false); setNote(''); };
-  const clearWorkflow = useCallback(() => { setPayouts([]); setPayoutFresh(false); setPayoutMore(false); setCursor(null); setCsv(''); setFileName(''); setInspection(null); setColumns({ ...emptyColumns }); setStatement(null); setRowIndex(0); setPayoutId(''); setPreview(null); setVerified(false); setNote(''); setVoidTarget(null); setVoidVerified(false); setVoidNote(''); }, []);
+  const clearWorkflow = useCallback(() => { setPayouts([]); setExcludedNoncreditCount(undefined); setPayoutFresh(false); setPayoutMore(false); setCursor(null); setCsv(''); setFileName(''); setInspection(null); setColumns({ ...emptyColumns }); setStatement(null); setRowIndex(0); setPayoutId(''); setPreview(null); setVerified(false); setNote(''); setVoidTarget(null); setVoidVerified(false); setVoidNote(''); }, []);
   const execute = useCallback(async (kind: Operation, action: (current: () => boolean) => Promise<void>, mutation = false) => {
     if (inFlight.current || !liveScope.current.allowed || liveScope.current.key !== scope || getAuthSessionEpoch() !== session || (operationBlocked.current && kind !== 'overview')) return;
     const request = guard.current.begin(scope, session);
@@ -77,6 +78,7 @@ function BankWorkspace({ scope, session, liveScope }: { scope: string; session: 
       const page = readBankPayoutPage(await api(`/bank/payouts${append ? `?starting_after=${encodeURIComponent(cursor!)}` : ''}`));
       if (!current()) return;
       setPayouts(previous => append ? [...previous, ...page.items.filter(item => !previous.some(old => old.id === item.id))] : page.items);
+      setExcludedNoncreditCount(Object.prototype.hasOwnProperty.call(page, 'excluded_noncredit_count') ? page.excluded_noncredit_count : undefined);
       setPayoutFresh(true); setPayoutMore(page.has_more); setCursor(page.next_cursor || null); if (!append) { setPayoutId(''); clearConfirmation(); }
     });
   };
@@ -135,6 +137,7 @@ function BankWorkspace({ scope, session, liveScope }: { scope: string; session: 
       setVoidTarget(null); setVoidVerified(false); setVoidNote(''); setMessage('人工匹配已撤回并保留操作记录；原收入与收款没有改动。');
     }, true);
   };
+  const exclusionNotice = payoutFresh ? bankPayoutExclusionNotice(excludedNoncreditCount) : null;
   const locked = Boolean(busy) || denied || uncertain || !overview || overviewError;
   const selectColumn = (key: 'date_column' | 'amount_column' | 'description_column' | 'reference_column', label: string, optional = false) => <label>{label}<select aria-label={label} value={columns[key] || ''} onChange={event => updateColumns({ [key]: event.target.value })}><option value="">{optional ? '不使用独立编号列' : '请选择列'}</option>{inspection?.headers.map(header => <option key={header} value={header}>{header}</option>)}</select></label>;
   return <section className="sbk-page" aria-label="公司银行流水核对" aria-busy={Boolean(busy)}>
@@ -152,8 +155,9 @@ function BankWorkspace({ scope, session, liveScope }: { scope: string; session: 
         </fieldset>}
       </section>
       <section className="shr-panel sbk-step"><div className="sbk-step-title"><span>2</span><h4>读取 Stripe 结算</h4></div><p className="shr-note">点击后只读 Stripe 结算；仅 paid、自动转入银行的美元结算可核对。不会发起付款或改 Stripe。</p><Button size="sm" variant="outline" disabled={locked} onClick={() => loadPayouts()}>{busy === 'payouts' ? '正在读取…' : '从 Stripe 读取结算'}</Button>
+        {exclusionNotice && <p className="shr-note" role="note">{exclusionNotice}</p>}
         {!payoutFresh && payouts.length > 0 && <p className="shr-warning">以下为上次结果，请重新读取 Stripe 后再预览匹配。</p>}
-        {payouts.length > 0 ? <div className="sbk-options" role="group" aria-label="选择 Stripe 结算">{payouts.map(item => <label key={item.id} className="sbk-option"><input type="radio" name={`${fileId}-payout`} aria-label={`选择结算 ${item.id}`} value={item.id} checked={payoutId === item.id} disabled={locked || !payoutFresh || !bankPayoutEligible(item)} onChange={() => { setPayoutId(item.id); clearConfirmation(); }} /><span><strong>{bankMoney(item.amount_minor)}</strong><small>{item.arrival_date} · {item.status}{!bankPayoutEligible(item) && ' · 暂不可核对'}</small><small>{item.id}</small></span></label>)}</div> : payoutFresh && <p className="shr-note">本次读取页暂无美元结算；不能据此判断银行到账情况。</p>}
+        {payouts.length > 0 ? <div className="sbk-options" role="group" aria-label="选择 Stripe 结算">{payouts.map(item => <label key={item.id} className="sbk-option"><input type="radio" name={`${fileId}-payout`} aria-label={`选择结算 ${item.id}`} value={item.id} checked={payoutId === item.id} disabled={locked || !payoutFresh || !bankPayoutEligible(item)} onChange={() => { setPayoutId(item.id); clearConfirmation(); }} /><span><strong>{bankMoney(item.amount_minor)}</strong><small>{item.arrival_date} · {item.status}{!bankPayoutEligible(item) && ' · 暂不可核对'}</small><small>{item.id}</small></span></label>)}</div> : payoutFresh && <p className="shr-note">本次读取页暂无可核对的美元入账结算；不能据此判断银行到账情况。</p>}
         {payoutMore && <Button size="sm" variant="ghost" disabled={locked || !payoutFresh} onClick={() => loadPayouts(true)}>继续读取下一页</Button>}
       </section>
     </div>

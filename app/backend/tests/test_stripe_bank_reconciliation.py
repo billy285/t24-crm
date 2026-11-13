@@ -509,3 +509,103 @@ async def test_changed_or_noncharge_review_never_marks_old_payment_as_bank_match
     assert response.status_code == 200, response.text
     assert response.json()["item"]["review_ids"] == response.json()["item"]["payment_ids"] == []
     assert await state(sessions) == before
+
+
+@pytest.mark.asyncio
+async def test_payout_list_excludes_valid_noncredit_rows_without_losing_raw_page_cursor(bank_api, monkeypatch):
+    client, sessions, fake = bank_api
+    before = await state(sessions)
+    rows = [payout("po_credit_first"), payout("po_zero", amount=0),
+        payout("po_foreign", amount=-100, currency="eur"),
+        payout("po_credit_second", amount=12883), payout("po_negative", amount=-100)]
+
+    async def listed(starting_after=None):
+        fake.calls.append(("payouts", starting_after))
+        return copy.deepcopy(rows), True
+
+    monkeypatch.setattr(fake, "payouts", listed)
+    response = await client.get(API + "/payouts", headers=headers(1))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [row["id"] for row in body["items"]] == ["po_credit_first", "po_credit_second"]
+    assert [row["amount_minor"] for row in body["items"]] == [20883, 12883]
+    assert body["excluded_noncredit_count"] == 2
+    assert body["has_more"] is True and body["next_cursor"] == "po_negative"
+    assert body["read_only"] is True and body["bank_deposit_proven"] is False
+    assert fake.calls == [("payouts", None)]
+    assert await state(sessions) == before
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Preview)) == 0
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+
+
+@pytest.mark.asyncio
+async def test_all_noncredit_page_still_advances_to_next_raw_payout_page(bank_api, monkeypatch):
+    client, sessions, fake = bank_api
+    pages = {None: ([payout("po_zero", amount=0), payout("po_negative", amount=-100)], True),
+        "po_negative": ([payout("po_positive_next")], False)}
+
+    async def listed(starting_after=None):
+        fake.calls.append(("payouts", starting_after))
+        return copy.deepcopy(pages[starting_after])
+
+    monkeypatch.setattr(fake, "payouts", listed)
+    first = await client.get(API + "/payouts", headers=headers(1))
+    assert first.status_code == 200, first.text
+    assert first.json()["items"] == [] and first.json()["excluded_noncredit_count"] == 2
+    assert first.json()["has_more"] is True and first.json()["next_cursor"] == "po_negative"
+    second = await client.get(API + "/payouts", headers=headers(1),
+        params={"starting_after": first.json()["next_cursor"]})
+    assert second.status_code == 200, second.text
+    assert [row["id"] for row in second.json()["items"]] == ["po_positive_next"]
+    assert second.json()["excluded_noncredit_count"] == 0
+    assert second.json()["has_more"] is False and second.json()["next_cursor"] is None
+    assert fake.calls == [("payouts", None), ("payouts", "po_negative")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("amount", [0, -100])
+async def test_noncredit_payout_is_never_a_match_candidate_or_preview_proof(bank_api, amount):
+    client, sessions, fake = bank_api
+    fake.payout_rows = {"po_synthetic": payout(amount=amount)}
+    uploaded = await statement(client)
+    before = await state(sessions)
+    listing = await client.get(API + "/payouts", headers=headers(1))
+    assert listing.status_code == 200, listing.text
+    assert listing.json()["items"] == [] and listing.json()["excluded_noncredit_count"] == 1
+    response = await client.post(API + "/matches/preview", headers=headers(1),
+        json={"statement_token": uploaded["token"], "row_index": 2, "payout_id": "po_synthetic"})
+    assert response.status_code == 409, response.text
+    assert not any(call[0] == "transactions" for call in fake.calls)
+    assert await state(sessions) == before
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Preview)) == 1
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [{"amount": "-100"}, {"amount": "0"}, {"amount": False},
+    {"amount": -100.0}, {"amount": None}, {"amount": -100, "object": "charge"},
+    {"amount": -100, "id": "not_a_payout"}, {"amount": -100, "livemode": False},
+    {"amount": -100, "arrival_date": "2026-11-12"}, {"amount": -100, "arrival_date": None},
+    {"amount": -100, "arrival_date": 10 ** 18}])
+async def test_payout_list_does_not_hide_invalid_shapes_as_noncredit_exclusions(bank_api, changes):
+    client, sessions, fake = bank_api
+    before = await state(sessions)
+    fake.payout_rows = {"po_synthetic": payout(**changes)}
+    response = await client.get(API + "/payouts", headers=headers(1))
+    assert response.status_code == 409, response.text
+    assert fake.calls == [("payouts", None)]
+    assert await state(sessions) == before
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Preview)) == 0
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+
+
+@pytest.mark.parametrize("amount", [0, -100])
+def test_noncredit_display_summary_cannot_become_eligible(amount):
+    summary = bank.payout_summary(payout(amount=amount), allow_noncredit=True)
+    assert summary["amount_minor"] == amount and summary["eligible"] is False
+    with pytest.raises(HTTPException) as caught:
+        bank.payout_summary(payout(amount=amount))
+    assert caught.value.status_code == 409
