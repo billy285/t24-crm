@@ -32,7 +32,7 @@ function runtime(extra = {}) {
   return { context, events };
 }
 
-test('only the selected unambiguous positive bank row and an eligible paid automatic USD payout can preview', () => {
+test('only a selected unambiguous positive bank row and explicitly eligible payout can preview', () => {
   assert.equal(bank.bankMatchReady(statement, row, payout), true);
   for (const candidate of [undefined, { ...row }, { ...row, ambiguous: true }, { ...row, amount_minor: 0 }]) assert.equal(bank.bankMatchReady(statement, candidate, payout), false);
   for (const patch of [{ amount_minor: 9652 }, { eligible: false }, { status: 'pending' }, { automatic: false }, { currency: 'CAD' }]) assert.equal(bank.bankMatchReady(statement, row, { ...payout, ...patch }), false);
@@ -118,7 +118,7 @@ test('StrictMode remount or a newer operation cannot be unlocked by an old late 
 
 test('actual confirmation sends only the server token, owner acknowledgment and note; never an income write', async () => {
   let pending; const calls = [];
-  const context = { exports: {}, preview, denied: false, uncertain: false, payoutFresh: true, verified: true, note: '公司流水核对完成', bankMatchConfirmReady: bank.bankMatchConfirmReady, readBankOverview: bank.readBankOverview, setOverview() {}, clearWorkflow() {}, setMessage() {}, api: async (...args) => { calls.push(args); return { item: { id: 9, payout_id: payout.id, amount_minor: 9651, currency: 'USD', account_label: '公司运营', bank_date: row.date, bank_reference: 'bank-123', payment_ids: [], review_ids: [], status: 'statement_manually_matched', note: '核对完成' }, ledger_writes: false }; } };
+  const context = { exports: {}, preview, denied: false, uncertain: false, payoutFresh: true, verified: true, note: '公司流水核对完成', bankMatchConfirmReady: bank.bankMatchConfirmReady, bankEvidenceScope: bank.bankEvidenceScope, readBankOverview: bank.readBankOverview, setOverview() {}, clearWorkflow() {}, setMessage() {}, api: async (...args) => { calls.push(args); return { item: { id: 9, payout_id: payout.id, amount_minor: 9651, currency: 'USD', account_label: '公司运营', bank_date: row.date, bank_reference: 'bank-123', payment_ids: [], review_ids: [], status: 'statement_manually_matched', note: '核对完成' }, ledger_writes: false }; } };
   context.execute = (kind, fn) => { assert.equal(kind, 'confirm'); pending = fn(() => true); };
   vm.runInNewContext(compile(`exports.confirm = ${variables.get('confirm')};`), context); context.exports.confirm(); await pending;
   assert.equal(calls.length, 1); assert.equal(calls[0][0], '/bank/matches/confirm'); assert.deepEqual(plain(calls[0][2]), { token, owner_verified: true, note: '公司流水核对完成' });
@@ -140,7 +140,7 @@ test('only an explicit positive safe exclusion count produces a page-scoped noti
   for (const value of [undefined, null, 0, -1, 0.5, '1', NaN, Infinity]) assert.equal(bank.bankPayoutExclusionNotice(value), null);
 });
 
-test('actual manual payout reader preserves the provider cursor and uses the latest page exclusion count rather than summing pages', async () => {
+test('actual owner-triggered payout reader preserves the provider cursor and uses the latest page exclusion count rather than summing pages', async () => {
   const calls = [], counts = [], pages = [
     { items: Array.from({ length: 9 }, (_, index) => ({ ...payout, id: `po_credit${index}` })), has_more: true, next_cursor: 'po_noncredit_last', excluded_noncredit_count: 1, read_only: true, bank_deposit_proven: false },
     { items: [], has_more: false, next_cursor: null, excluded_noncredit_count: 2, read_only: true, bank_deposit_proven: false },
@@ -152,4 +152,59 @@ test('actual manual payout reader preserves the provider cursor and uses the lat
   context.exports.read(); await pending; assert.equal(retained.length, 9); assert.equal(counts[0], 1); assert.equal(context.cursor, 'po_noncredit_last');
   context.exports.read(true); await pending; assert.equal(calls[1], '/bank/payouts?starting_after=po_noncredit_last'); assert.equal(retained.length, 9); assert.equal(counts[1], 2);
   context.exports.read(); await pending; assert.equal(retained.length, 1); assert.equal(counts[2], undefined); assert.equal(bank.bankPayoutExclusionNotice(counts[2]), null);
+});
+
+test('manual payouts require explicit payout-only scope while automatic complete scope stays separate', () => {
+  const manual = { ...payout, automatic: false, evidence_scope: 'payout_only' };
+  const automatic = { ...payout, evidence_scope: 'complete_transactions' };
+  const page = items => ({ items, has_more: false, next_cursor: null, read_only: true, bank_deposit_proven: false, excluded_noncredit_count: 0 });
+  assert.equal(bank.readBankPayoutPage(page([manual, automatic])).items.length, 2);
+  assert.equal(bank.bankPayoutEligible(manual), true); assert.equal(bank.bankMatchReady(statement, row, manual), true);
+  for (const candidate of [{ ...manual, evidence_scope: undefined }, { ...manual, evidence_scope: 'complete_transactions' }, { ...automatic, evidence_scope: 'payout_only' }, { ...automatic, evidence_scope: 'unknown' }, { ...automatic, evidence_scope: 'bad' }, { ...manual, eligible: false }]) {
+    assert.equal(bank.bankPayoutEligible(candidate), false); assert.throws(() => bank.readBankPayoutPage(page([candidate])));
+  }
+  const missing = { ...payout, automatic: false }; assert.equal(bank.bankPayoutEligible(missing), false); assert.throws(() => bank.readBankPayoutPage(page([missing])));
+  assert.equal(bank.bankPayoutEligible(payout), true); assert.equal(bank.bankEvidenceScope(payout), 'unknown');
+});
+
+test('preview scope cannot be downgraded or fabricated: manual has zero transactions and no payment links; auto has positive complete detail', () => {
+  const manual = { ...preview, payout: { ...payout, automatic: false, evidence_scope: 'payout_only' }, evidence_scope: 'payout_only', transaction_count: 0 };
+  const automatic = { ...preview, payout: { ...payout, evidence_scope: 'complete_transactions' }, evidence_scope: 'complete_transactions' };
+  assert.equal(bank.readBankMatchPreview(manual).transaction_count, 0); assert.equal(bank.bankMatchConfirmReady(manual, true, '核对银行整笔'), true);
+  assert.equal(bank.readBankMatchPreview(automatic).transaction_count, 3);
+  for (const candidate of [{ ...manual, transaction_count: 1 }, { ...manual, transaction_count: null }, { ...manual, transaction_count: '0' }, { ...manual, payment_ids: [7] }, { ...manual, review_ids: [8] }, { ...manual, payout: { ...manual.payout, automatic: true } }, { ...manual, evidence_scope: 'complete_transactions' }, { ...manual, evidence_scope: undefined }, { ...automatic, transaction_count: 0 }, { ...automatic, evidence_scope: 'payout_only' }, { ...automatic, payout }, { ...preview, evidence_scope: 'unknown' }]) assert.throws(() => bank.readBankMatchPreview(candidate));
+  assert.equal(bank.readBankMatchPreview(preview).transaction_count, 3); assert.equal(bank.bankEvidenceScope(preview), 'unknown');
+  assert.throws(() => bank.readBankMatchPreview({ ...preview, transaction_count: 0 }));
+});
+
+test('saved manual bank evidence can never carry customer payment/review associations; legacy scope stays unknown', () => {
+  const saved = { id: 9, payout_id: payout.id, amount_minor: 9651, currency: 'USD', account_label: '公司运营', bank_date: row.date, bank_reference: 'bank-123', payment_ids: [], review_ids: [], status: 'statement_manually_matched', note: '只核对整笔金额', evidence_scope: 'payout_only' };
+  const read = value => bank.readBankOverview({ ...overview, items: [value], total: 1 });
+  assert.equal(read(saved).items[0].evidence_scope, 'payout_only');
+  for (const patch of [{ payment_ids: [7] }, { review_ids: [8] }, { evidence_scope: null }, { evidence_scope: 'unsupported' }]) assert.throws(() => read({ ...saved, ...patch }));
+  const legacy = { ...saved }; delete legacy.evidence_scope;
+  assert.equal(bank.bankEvidenceScope(read(legacy).items[0]), 'unknown');
+  assert.equal(bank.bankEvidenceScope(read({ ...legacy, evidence_scope: 'unknown', payment_ids: [7] }).items[0]), 'unknown');
+  assert.match(bank.bankSavedEvidenceLabel(legacy), /未记录/); assert.doesNotMatch(bank.bankSavedEvidenceLabel(legacy), /完整.*已核验/);
+});
+
+test('manual and historical copy never claim per-customer receipt verification or zero verified transactions', () => {
+  const manual = { ...preview, payout: { ...payout, automatic: false, evidence_scope: 'payout_only' }, evidence_scope: 'payout_only', transaction_count: 0 };
+  assert.match(bank.bankPayoutEvidenceLabel(manual.payout), /手动结算.*仅核对银行整笔金额.*未核验所含客户收款/);
+  assert.match(bank.bankMatchEvidenceLabel(manual), /未核验所含客户收款/); assert.doesNotMatch(bank.bankMatchEvidenceLabel(manual), /已核验 0/);
+  assert.match(bank.bankOwnerConfirmation(manual), /整笔金额.*不代表已核验客户收款.*不关联或新增收入/);
+  assert.match(bank.bankMatchEvidenceLabel(preview), /范围未记录/); assert.doesNotMatch(bank.bankMatchEvidenceLabel(preview), /已核验 3/);
+  assert.match(bank.bankOwnerConfirmation(preview), /历史预览未记录/);
+});
+
+test('actual manual confirmation still submits token only and rejects a result that adds any payment link or changes scope', async () => {
+  const manual = { ...preview, payout: { ...payout, automatic: false, evidence_scope: 'payout_only' }, evidence_scope: 'payout_only', transaction_count: 0 };
+  const saved = { id: 9, payout_id: payout.id, amount_minor: 9651, currency: 'USD', account_label: '公司运营', bank_date: row.date, bank_reference: 'bank-123', payment_ids: [], review_ids: [], status: 'statement_manually_matched', note: '核对整笔', evidence_scope: 'payout_only' };
+  for (const patch of [{}, { payment_ids: [99] }, { review_ids: [98] }, { evidence_scope: 'complete_transactions' }, { evidence_scope: 'unknown' }]) {
+    let pending, changed = false; const calls = [];
+    const context = { exports: {}, preview: manual, denied: false, uncertain: false, payoutFresh: true, verified: true, note: '只核对整笔金额', bankMatchConfirmReady: bank.bankMatchConfirmReady, bankEvidenceScope: bank.bankEvidenceScope, readBankOverview: bank.readBankOverview, setOverview() { changed = true; }, clearWorkflow() {}, setMessage() {}, api: async (...args) => { calls.push(args); return { item: { ...saved, ...patch }, ledger_writes: false }; }, execute: (kind, fn) => { assert.equal(kind, 'confirm'); pending = fn(() => true); } };
+    vm.runInNewContext(compile(`exports.confirm = ${variables.get('confirm')};`), context); context.exports.confirm();
+    if (Object.keys(patch).length) { await assert.rejects(pending); assert.equal(changed, false); } else { await pending; assert.equal(changed, true); }
+    assert.equal(calls[0][0], '/bank/matches/confirm'); assert.deepEqual(plain(calls[0][2]), { token, owner_verified: true, note: '只核对整笔金额' }); assert.equal('evidence_scope' in calls[0][2], false);
+  }
 });

@@ -207,11 +207,11 @@ async def test_statement_columns_currency_dates_and_money_fail_closed(bank_api, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changes", [{"status": "failed"}, {"status": "pending"}, {"automatic": False},
+@pytest.mark.parametrize("changes", [{"status": "failed"}, {"status": "pending"}, {"automatic": None},
     {"type": "card"}, {"currency": "eur"}, {"livemode": False}, {"amount": 20884},
     {"arrival_date": int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())},
     {"reconciliation_status": "in_progress"}, {"reconciliation_status": "not_applicable"}, {"reconciliation_status": None}])
-async def test_failed_manual_foreign_or_mismatching_payout_never_matches(bank_api, changes):
+async def test_failed_unknown_automatic_foreign_or_mismatching_payout_never_matches(bank_api, changes):
     client, sessions, fake = bank_api
     uploaded = await statement(client)
     fake.payout_rows["po_synthetic"].update(changes)
@@ -609,3 +609,220 @@ def test_noncredit_display_summary_cannot_become_eligible(amount):
     with pytest.raises(HTTPException) as caught:
         bank.payout_summary(payout(amount=amount))
     assert caught.value.status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["standard", "instant"])
+async def test_manual_bank_payout_matches_whole_batch_only_without_transaction_or_income_links(bank_api, monkeypatch, method):
+    from sqlalchemy import event
+
+    client, sessions, fake = bank_api
+    await seed_posted_invoice(sessions)
+    for raw in fake.payout_rows.values():
+        raw.update(automatic=False, reconciliation_status="not_applicable", method=method)
+
+    async def no_transactions(*args, **kwargs):
+        raise AssertionError("Manual payout-only matching must not read balance transactions")
+
+    monkeypatch.setattr(fake, "payout_transactions", no_transactions)
+    before = await state(sessions)
+    listing = await client.get(API + "/payouts", headers=headers(1))
+    assert listing.status_code == 200, listing.text
+    assert all(row["eligible"] is True and row["evidence_scope"] == "payout_only" for row in listing.json()["items"])
+    uploaded = await statement(client)
+    preview = await match_preview(client, uploaded["token"])
+    assert preview["evidence_scope"] == preview["payout"]["evidence_scope"] == "payout_only"
+    assert preview["transaction_count"] == 0 and preview["requires_owner_confirmation"] is True
+    assert preview["writes_ledger"] is False
+    async with sessions() as db:
+        stored = await db.get(Preview, preview["token"])
+        assert stored.snapshot["evidence"]["transactions"] == []
+    sql = []
+
+    def observe_sql(connection, cursor, statement_text, parameters, context, executemany):
+        sql.append(statement_text.lower())
+
+    engine = sessions.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", observe_sql)
+    try:
+        response = await confirm(client, preview["token"])
+    finally:
+        event.remove(engine, "before_cursor_execute", observe_sql)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ledger_writes"] is False and body["idempotent_replay"] is False
+    assert body["item"]["evidence_scope"] == "payout_only"
+    assert body["item"]["payment_ids"] == body["item"]["review_ids"] == []
+    assert not any(Review.__tablename__.lower() in query or Posting.__tablename__.lower() in query for query in sql)
+    async with sessions() as db:
+        audit = await db.get(Audit, body["item"]["id"])
+        assert audit.details["evidence_scope"] == "payout_only" and audit.details["transaction_ids"] == []
+        assert audit.details["payment_ids"] == audit.details["review_ids"] == []
+    assert (await confirm(client, preview["token"])).json()["idempotent_replay"] is True
+    assert (await confirm(client, preview["token"], auth=second_owner())).status_code == 409
+    overview = await client.get(API + "/overview", headers=headers(1))
+    assert overview.json()["items"][0]["evidence_scope"] == "payout_only"
+    void = await client.post(API + f"/matches/{body['item']['id']}/void", headers=headers(1),
+        json={"owner_verified": True, "note": "Synthetic manual batch correction"})
+    assert void.status_code == 200 and void.json()["ledger_writes"] is False
+    assert (await client.get(API + "/overview", headers=headers(1))).json()["total"] == 0
+    assert (await confirm(client, preview["token"])).status_code == 409
+    assert not any(call[0] == "transactions" for call in fake.calls)
+    assert await state(sessions) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changes", [{"status": "failed"}, {"status": "pending"}, {"type": "card"},
+    {"amount": 0}, {"amount": -100}, {"currency": "eur"},
+    {"arrival_date": int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())}])
+async def test_manual_batch_requires_paid_positive_usd_bank_and_matching_bank_date(bank_api, changes):
+    client, sessions, fake = bank_api
+    fake.payout_rows["po_synthetic"].update(automatic=False, reconciliation_status="not_applicable", **changes)
+    uploaded = await statement(client)
+    before = await state(sessions)
+    response = await client.post(API + "/matches/preview", headers=headers(1),
+        json={"statement_token": uploaded["token"], "row_index": 2, "payout_id": "po_synthetic"})
+    assert response.status_code == 409, response.text
+    assert not any(call[0] == "transactions" for call in fake.calls)
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+        assert await db.scalar(select(func.count()).select_from(Preview)) == 1
+    assert await state(sessions) == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("automatic", ["missing", None, "false", "true", 0, 1, 0.0, [], {}])
+async def test_missing_or_malformed_automatic_never_becomes_manual_payout_only(bank_api, automatic):
+    client, sessions, fake = bank_api
+    raw = fake.payout_rows["po_synthetic"]
+    raw["reconciliation_status"] = "not_applicable"
+    if automatic == "missing":
+        raw.pop("automatic")
+    else:
+        raw["automatic"] = automatic
+    fake.payout_rows = {"po_synthetic": raw}
+    listing = await client.get(API + "/payouts", headers=headers(1))
+    assert listing.status_code in {200, 409}, listing.text
+    if listing.status_code == 200:
+        assert len(listing.json()["items"]) == 1
+        assert listing.json()["items"][0]["eligible"] is False
+        assert "evidence_scope" not in listing.json()["items"][0]
+    uploaded = await statement(client)
+    response = await client.post(API + "/matches/preview", headers=headers(1),
+        json={"statement_token": uploaded["token"], "row_index": 2, "payout_id": "po_synthetic"})
+    assert response.status_code == 409, response.text
+    assert not any(call[0] == "transactions" for call in fake.calls)
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"automatic": True, "reconciliation_status": "completed"},
+    {"amount": 20884}, {"status": "failed"}])
+async def test_manual_preview_requires_stable_second_payout_read(bank_api, change):
+    client, sessions, fake = bank_api
+    fake.payout_rows["po_synthetic"].update(automatic=False, reconciliation_status="not_applicable")
+    reads = [0]
+
+    def change_second_read(identity):
+        reads[0] += 1
+        if reads[0] == 2:
+            fake.payout_rows[identity].update(change)
+
+    fake.on_payout = change_second_read
+    uploaded = await statement(client)
+    response = await client.post(API + "/matches/preview", headers=headers(1),
+        json={"statement_token": uploaded["token"], "row_index": 2, "payout_id": "po_synthetic"})
+    assert response.status_code == 409, response.text
+    assert reads[0] == 2 and not any(call[0] == "transactions" for call in fake.calls)
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Preview)) == 1
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [{"automatic": True, "reconciliation_status": "completed"},
+    {"amount": 20884}, {"status": "failed"}])
+async def test_manual_confirm_rejects_changed_mode_amount_or_status_without_creating_links(bank_api, change):
+    client, sessions, fake = bank_api
+    await seed_posted_invoice(sessions)
+    fake.payout_rows["po_synthetic"].update(automatic=False, reconciliation_status="not_applicable")
+    uploaded = await statement(client)
+    preview = await match_preview(client, uploaded["token"])
+    assert preview["evidence_scope"] == "payout_only" and preview["transaction_count"] == 0
+    fake.payout_rows["po_synthetic"].update(change)
+    before = await state(sessions)
+    response = await confirm(client, preview["token"])
+    assert response.status_code == 409, response.text
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Audit)) == 0
+    assert await state(sessions) == before
+
+
+@pytest.mark.asyncio
+async def test_manual_batch_keeps_payout_and_bank_row_duplicate_protection(bank_api):
+    client, sessions, fake = bank_api
+    for raw in fake.payout_rows.values():
+        raw.update(automatic=False, reconciliation_status="not_applicable")
+    first = await statement(client)
+    preview = await match_preview(client, first["token"])
+    assert (await confirm(client, preview["token"])).status_code == 200
+    second = await statement(client, csv_text=CSV + "2026-11-11,-1,Other Cost,OTHER\n")
+    duplicate_row = await match_preview(client, second["token"], identity="po_second")
+    assert (await confirm(client, duplicate_row["token"])).status_code == 409
+    other = await statement(client, csv_text=CSV.replace("BANK-SYNTHETIC-001", "BANK-SYNTHETIC-002"))
+    duplicate_payout = await match_preview(client, other["token"])
+    assert (await confirm(client, duplicate_payout["token"])).status_code == 409
+    assert not any(call[0] == "transactions" for call in fake.calls)
+
+
+@pytest.mark.asyncio
+async def test_manual_batch_file_sqlite_concurrent_confirms_keep_one_audit(bank_api, monkeypatch):
+    client, sessions, fake = bank_api
+    for raw in fake.payout_rows.values():
+        raw.update(automatic=False, reconciliation_status="not_applicable")
+    first = await statement(client)
+    second = await statement(client, csv_text=CSV.replace("BANK-SYNTHETIC-001", "BANK-SYNTHETIC-002"))
+    previews = [await match_preview(client, item["token"]) for item in (first, second)]
+    engine = sessions.kw["bind"]
+    assert engine.url.database and engine.url.database.endswith("sale.db") and engine.url.database != ":memory:"
+    original_owner = bank.owner
+    gate, arrivals, connections = asyncio.Event(), [0], set()
+
+    async def concurrent_owner(db, user):
+        await original_owner(db, user)
+        if arrivals[0] < 2:
+            connection = await db.connection()
+            connections.add(id(connection.sync_connection.connection.dbapi_connection))
+            arrivals[0] += 1
+            if arrivals[0] == 2:
+                gate.set()
+            await asyncio.wait_for(gate.wait(), timeout=5)
+
+    monkeypatch.setattr(bank, "owner", concurrent_owner)
+    before = await state(sessions)
+    responses = await asyncio.gather(*(confirm(client, item["token"]) for item in previews))
+    assert sorted(response.status_code for response in responses) == [200, 409], [response.text for response in responses]
+    assert len(connections) == 2
+    async with sessions() as db:
+        assert await db.scalar(select(func.count()).select_from(Audit).where(Audit.action == "bank_match_confirmed")) == 1
+    assert await state(sessions) == before
+    assert not any(call[0] == "transactions" for call in fake.calls)
+
+
+@pytest.mark.asyncio
+async def test_legacy_bank_match_without_scope_remains_unknown_and_is_not_rewritten(bank_api):
+    client, sessions, fake = bank_api
+    first = await statement(client)
+    preview = await match_preview(client, first["token"])
+    confirmed = await confirm(client, preview["token"])
+    assert confirmed.status_code == 200, confirmed.text
+    match_id = confirmed.json()["item"]["id"]
+    async with sessions() as db:
+        audit = await db.get(Audit, match_id)
+        audit.details = {key: value for key, value in audit.details.items() if key != "evidence_scope"}
+        await db.commit()
+    overview = await client.get(API + "/overview", headers=headers(1))
+    assert overview.status_code == 200 and overview.json()["items"][0]["evidence_scope"] == "unknown"
+    async with sessions() as db:
+        assert "evidence_scope" not in (await db.get(Audit, match_id)).details

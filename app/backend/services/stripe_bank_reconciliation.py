@@ -142,10 +142,19 @@ def payout_summary(raw, *, allow_noncredit=False):
         arrival = datetime.fromtimestamp(raw["arrival_date"], timezone.utc).date().isoformat()
     except (ValueError, OverflowError, OSError):
         reject("Stripe 结算日期无法核验")
-    return {"id": raw["id"], "amount_minor": raw["amount"], "currency": "USD", "arrival_date": arrival,
+    evidence_scope = None
+    if raw["amount"] > 0 and raw.get("status") == "paid" and raw.get("type") == "bank_account":
+        if raw.get("automatic") is True and raw.get("reconciliation_status") == "completed":
+            evidence_scope = "complete_transactions"
+        elif raw.get("automatic") is False:
+            evidence_scope = "payout_only"
+    result = {"id": raw["id"], "amount_minor": raw["amount"], "currency": "USD", "arrival_date": arrival,
         "status": raw.get("status"), "automatic": raw.get("automatic") is True,
         "bank_destination": raw.get("destination") if isinstance(raw.get("destination"), str) else None,
-        "eligible": raw["amount"] > 0 and raw.get("status") == "paid" and raw.get("automatic") is True and raw.get("type") == "bank_account" and raw.get("reconciliation_status") == "completed"}
+        "eligible": evidence_scope is not None}
+    if evidence_scope is not None:
+        result["evidence_scope"] = evidence_scope
+    return result
 
 
 async def payouts(db, user, starting_after=None):
@@ -172,7 +181,13 @@ async def payout_evidence(payout_id):
     raw = await reader.payout(payout_id)
     summary = payout_summary(raw)
     if not summary["eligible"]:
-        reject("仅已汇出且明细核对完成的自动银行结算可匹配；待处理、失败、手动或明细未完成的结算请人工核对")
+        reject("仅已汇出的正数银行结算可匹配；自动结算还需明细核对完成，其他结算请人工核对")
+    if summary["evidence_scope"] == "payout_only":
+        # Stripe cannot attribute Balance Transactions to a manual payout.
+        # Match only the bank batch amount; never infer or link its receipts.
+        if payout_summary(await reader.payout(payout_id)) != summary:
+            reject("读取期间 Stripe 结算状态发生变化，请重新核对")
+        return {"account_id": STRIPE_ACCOUNT_ID, "payout": summary, "evidence_scope": "payout_only", "transactions": []}
     transactions = []
     seen = set()
     cursor = None
@@ -197,7 +212,7 @@ async def payout_evidence(payout_id):
     # A second read catches status/amount changes while reading paginated details.
     if payout_summary(await reader.payout(payout_id)) != summary:
         reject("读取期间 Stripe 结算状态发生变化，请重新核对")
-    return {"account_id": STRIPE_ACCOUNT_ID, "payout": summary, "transactions": sorted(transactions, key=lambda row: row["id"])}
+    return {"account_id": STRIPE_ACCOUNT_ID, "payout": summary, "evidence_scope": "complete_transactions", "transactions": sorted(transactions, key=lambda row: row["id"])}
 
 
 async def read_evidence(payout_id):
@@ -222,7 +237,8 @@ def match_data(row):
         "currency": "USD", "account_label": value["account_label"], "bank_date": value["bank_row"]["date"],
         "bank_reference": value["bank_row"]["reference"], "review_ids": value.get("review_ids", []),
         "payment_ids": value.get("payment_ids", []), "confirmed_at": row.created_at, "confirmed_by": row.actor_name,
-        "status": "statement_manually_matched", "note": value["note"], "file_sha256": value["file_sha256"]}
+        "status": "statement_manually_matched", "evidence_scope": value.get("evidence_scope", "unknown"),
+        "note": value["note"], "file_sha256": value["file_sha256"]}
 
 
 async def overview(db, user):
@@ -253,7 +269,8 @@ async def preview_match(db, user, value):
     db.add(Preview(token=token, actor_id=int(user.id), snapshot=snapshot, expires_at=now() + timedelta(minutes=10)))
     await db.commit()
     return {"token": token, "payout": payout, "bank_row": bank_row, "transaction_count": len(evidence["transactions"]),
-        "account_label": statement["account_label"], "writes_ledger": False, "requires_owner_confirmation": True}
+        "evidence_scope": evidence["evidence_scope"], "account_label": statement["account_label"],
+        "writes_ledger": False, "requires_owner_confirmation": True}
 
 
 async def confirm_match(db, user, value):
@@ -288,20 +305,22 @@ async def confirm_match(db, user, value):
         if details["payout"]["id"] == evidence["payout"]["id"] or same_line or details["bank_row"]["fingerprint"] == snapshot["bank_row"]["fingerprint"]:
             reject("此结算批次或银行流水已有匹配记录，请核对原记录")
     balances = {row["id"] for row in evidence["transactions"]}
-    posted = (await db.execute(select(Review, Posting).join(Posting, Posting.review_id == Review.id).where(
-        Review.account_id == STRIPE_ACCOUNT_ID, Review.livemode.is_(True)))).all()
-    by_balance = {item["id"]: item for item in evidence["transactions"]}
     linked = []
-    for review, posting in posted:
-        transaction = by_balance.get(review.snapshot.get("balance_transaction_id"))
-        if (transaction and not review.needs_refresh and not review.snapshot.get("issues")
-                and review.fingerprint == posting.fingerprint
-                and review.snapshot.get("stripe_charge_id") == posting.stripe_charge_id == transaction["source"]
-                and transaction["type"] in {"charge", "payment"} and transaction["net_minor"] > 0
-                and review.snapshot.get("net_minor") == transaction["net_minor"]):
-            linked.append((review.id, posting.payment_id))
+    if evidence["evidence_scope"] == "complete_transactions":
+        posted = (await db.execute(select(Review, Posting).join(Posting, Posting.review_id == Review.id).where(
+            Review.account_id == STRIPE_ACCOUNT_ID, Review.livemode.is_(True)))).all()
+        by_balance = {item["id"]: item for item in evidence["transactions"]}
+        for review, posting in posted:
+            transaction = by_balance.get(review.snapshot.get("balance_transaction_id"))
+            if (transaction and not review.needs_refresh and not review.snapshot.get("issues")
+                    and review.fingerprint == posting.fingerprint
+                    and review.snapshot.get("stripe_charge_id") == posting.stripe_charge_id == transaction["source"]
+                    and transaction["type"] in {"charge", "payment"} and transaction["net_minor"] > 0
+                    and review.snapshot.get("net_minor") == transaction["net_minor"]):
+                linked.append((review.id, posting.payment_id))
     details = {"preview_token": value.token, "account_id": STRIPE_ACCOUNT_ID, "payout": evidence["payout"],
-        "evidence_fingerprint": digest(evidence), "transaction_ids": sorted(balances), "account_label": snapshot["account_label"],
+        "evidence_fingerprint": digest(evidence), "evidence_scope": evidence["evidence_scope"],
+        "transaction_ids": sorted(balances), "account_label": snapshot["account_label"],
         "file_sha256": snapshot["file_sha256"], "bank_row": snapshot["bank_row"], "note": value.note,
         "review_ids": sorted(review for review, _ in linked), "payment_ids": sorted(payment for _, payment in linked)}
     audit = Audit(actor_id=int(user.id), actor_name=user.name, action="bank_match_confirmed", details=details)
