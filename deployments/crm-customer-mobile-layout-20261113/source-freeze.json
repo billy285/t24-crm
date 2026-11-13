@@ -1,0 +1,15 @@
+{
+  "baseline_git_commit": "3e6f782150a7a560e23692912b92beeefafdc080",
+  "baseline_source_sha": "73959dcf57911de940f8ee4ba724231d1a81a74c",
+  "build_receipt_sha256": "105911c52ae78bc717346dcaa723a81a3a5f425c5a840757dfa329d33ddeaa3e",
+  "changed_source_files": {
+    "app/frontend/src/components/customer-operations.css": "a30aede8e218ab4f9e5a69113afb7f0f0d37961e356c237297755c9d8e57c0ed"
+  },
+  "dist_inventory_sha256": "8b45896de0147cd220d1ce99a06bf055fdc6408cb3a51c18f9a2a54be2a63e38",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "d72e6f52dc1b",
+  "source_commit_bytes_verified": true,
+  "source_sha": "c8fcbdf92047a0c0eba2cc7332465daddf760fe5",
+  "stage": "CRM_CUSTOMER_MOBILE_LAYOUT_SOURCE_FREEZE"
+}
