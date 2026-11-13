@@ -1,9 +1,12 @@
 import './crm-customer-delivery-compact.css';
 import '@/components/customer-form-progressive.css';
+import '@/components/customer-detail-navigation.css';
 import CustomerFormSection from '@/components/CustomerFormSection';
 import { visibleCustomerColumns, currentPagePreview, customerAddressLines } from '@/lib/customer-directory-presentation';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
-import { confirmDiscardAllChanges } from '@/lib/use-unsaved-changes';
+import { confirmDiscardAllChanges, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
+import { getAuthSessionEpoch } from '@/lib/auth-storage';
+import { customerBasicFingerprint, customerPermissionReduced, customerReadDenied, customerReadMatches } from '@/lib/customer-detail-refresh';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
@@ -51,6 +54,8 @@ import CustomerFinanceSummary from '@/components/CustomerFinanceSummary';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
 import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
+import CustomerFollowUpStatusManager from '@/components/CustomerFollowUpStatusManager';
+import { getCustomerFollowUpStatusOptions, getCustomerFollowUpStatusLabel, getDefaultCustomerFollowUpStatus } from '@/lib/customer-followup-statuses';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
 import { saveRemoteAppConfig } from '../lib/app-config';
 import {
@@ -705,6 +710,11 @@ export default function Customers() {
   const navigate = useNavigate();
   const { role, employee, hasPermission, isAdmin, systemRole } = useRole();
   const isOwner = systemRole === 'super_admin';
+  const customerActor = `${employee?.id || ''}:${role}:${systemRole || ''}:${getAuthSessionEpoch()}`;
+  const customerActorRef = useRef(customerActor); customerActorRef.current = customerActor;
+  const [resolvedCustomerActor, setResolvedCustomerActor] = useState(customerActor);
+  const customerListSequence = useRef(0);
+  const customerMountedRef = useRef(true);
   const isMobile = useIsMobile();
   const businessToday = businessDateKey();
   const dictConfig = useDictConfig();
@@ -713,7 +723,6 @@ export default function Customers() {
   const statusLabels = businessDicts.statuses;
   const levelLabels = businessDicts.levels;
   const sourceLabels = businessDicts.sources;
-  const stageLabels = businessDicts.followUpStages;
   const productLabels = businessDicts.products;
   const incomeTypeLabels = businessDicts.incomeTypes;
   const customerPackageLabels = businessDicts.customerPackages;
@@ -724,6 +733,7 @@ export default function Customers() {
   const subStatusLabels = businessDicts.subscriptionStatuses;
   const methodLabels = businessDicts.followUpMethods;
   const canManageDict = isAdmin || hasPermission('settings_edit');
+  const canManageFollowStatuses = systemRole === 'admin' || systemRole === 'super_admin';
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -793,6 +803,14 @@ export default function Customers() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
   const [detailLoadedAt, setDetailLoadedAt] = useState<string | null>(null);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
+  const [detailUpdateAvailable, setDetailUpdateAvailable] = useState(false);
+  const [detailAccessError, setDetailAccessError] = useState<string | null>(null);
+  const detailSnapshotScopeRef = useRef<string | null>(null);
+  const detailRefreshFlightRef = useRef<object | null>(null);
+  const detailAccessSequenceRef = useRef(0);
+  const selectedCustomerRef = useRef(selectedCustomer); selectedCustomerRef.current = selectedCustomer;
+  const detailWriteBlocked = detailLoading || detailRefreshing || Boolean(detailLoadError) || Boolean(detailAccessError);
   const [financeStatus, setFinanceStatus] = useState<{payment_count: number; last_payment_date: string | null; has_outstanding: boolean} | null>(null);
   const effective = customerPermissions(selectedCustomer);
   const canViewFinance = effective.finance_access === 'profit';
@@ -823,12 +841,16 @@ export default function Customers() {
   const [showColPicker, setShowColPicker] = useState(false);
   const [inlineEditMode, setInlineEditMode] = useState(false);
   const [showFollowForm, setShowFollowForm] = useState(false);
+  const [showFollowStatusManager, setShowFollowStatusManager] = useState(false);
   const [savingFollow, setSavingFollow] = useState(false);
   const [editingFollowId, setEditingFollowId] = useState<number | null>(null);
   const [deleteFollowTarget, setDeleteFollowTarget] = useState<any>(null);
   const [deletingFollow, setDeletingFollow] = useState(false);
-  const emptyFollowForm = { contact_method: 'phone', content: '', customer_needs: '', customer_pain_points: '', has_quoted: false, quote_plan: '', close_probability: 30, stage: 'communicating', next_follow_date: '' };
+  const emptyFollowForm = { contact_method: 'phone', content: '', customer_needs: '', customer_pain_points: '', has_quoted: false, quote_plan: '', close_probability: 30, stage: getDefaultCustomerFollowUpStatus(dictConfig), next_follow_date: '' };
   const [followForm, setFollowForm] = useState(emptyFollowForm);
+  const editingFollowRecord = editingFollowId == null ? undefined : followUps.find(item => String(item.id) === String(editingFollowId));
+  const linkedFollowOpportunityId = editingFollowRecord?.opportunity_id;
+  const followStageOptions = getCustomerFollowUpStatusOptions(dictConfig, editingFollowId == null ? undefined : followForm.stage, linkedFollowOpportunityId);
 
   // Owner contacts state
   const [contacts, setContacts] = useState<any[]>([]);
@@ -842,6 +864,12 @@ export default function Customers() {
   const customerDraft = useDialogDraft(showForm && !customerProjectsLoading, [form, customerProjectForms, commissionPartnerId, commissionEffectiveFrom]);
   const followDraft = useDialogDraft(showFollowForm, followForm);
   const contactDraft = useDialogDraft(showContactForm, contactForm);
+  const detailEditorKey = [showForm ? `customer:${editingId}` : '', showFollowForm ? `follow:${editingFollowId}` : '', showContactForm ? `contact:${editingContactId}` : ''].filter(Boolean).join('|');
+  const detailEditorRef = useRef({ key: detailEditorKey, generation: 0 });
+  if (detailEditorKey && detailEditorKey !== detailEditorRef.current.key) detailEditorRef.current.generation += 1;
+  detailEditorRef.current.key = detailEditorKey;
+  const detailEditActive = Boolean(detailEditorKey) || saving || savingFollow || savingContact || deletingFollow || deletingContact;
+  const detailEditActiveRef = useRef(detailEditActive); detailEditActiveRef.current = detailEditActive;
   const firstCustomerFilterRender = useRef(true);
   useListScroll('customers', !loading && !selectedCustomer);
   const leaveInlineForms = () => {
@@ -1186,6 +1214,11 @@ export default function Customers() {
   };
 
   const clearCustomerDetailAssociations = () => {
+    detailSnapshotScopeRef.current = null;
+    detailRefreshFlightRef.current = null;
+    setDetailRefreshing(false);
+    setDetailUpdateAvailable(false);
+    setDetailAccessError(null);
     setFollowUps([]);
     setDeals([]);
     setPayments([]);
@@ -1215,9 +1248,13 @@ export default function Customers() {
   const invalidateCustomerDetailRequests = () => {
     detailRequestSeqRef.current += 1;
     activeDetailCustomerIdRef.current = null;
+    detailAccessSequenceRef.current += 1;
+    detailRefreshFlightRef.current = null;
   };
 
+  const requestedDetailRouteRef = useRef('');
   useEffect(() => {
+    if (resolvedCustomerActor !== customerActor) return;
     const sp = searchParams.get('status');
     if (sp && statusLabels[sp]) setFilterStatus(sp);
     // Handle deep link from Sales page
@@ -1226,13 +1263,17 @@ export default function Customers() {
     if (detailId && customers.length > 0) {
       const target = customers.find(c => c.id === Number(detailId));
       if (target) {
-        setSelectedCustomerTab(nextTab);
+        const routeKey = `${customerActor}:${detailId}:${searchParams.get('tab') || ''}`;
         if (selectedCustomer?.id !== target.id) {
-          openDetail(target, nextTab);
+          requestedDetailRouteRef.current = routeKey;
+          void openDetail(target, nextTab);
+        } else if (requestedDetailRouteRef.current !== routeKey) {
+          requestedDetailRouteRef.current = routeKey;
+          setSelectedCustomerTab(nextTab);
         }
       }
     }
-  }, [searchParams, customers, selectedCustomer?.id, statusLabels, canViewFinance]);
+  }, [searchParams, customers, selectedCustomer?.id, statusLabels, canViewFinance, customerActor, resolvedCustomerActor]);
 
   const toggleCol = (key: string) => {
     const nc = visibleCustomerColumns(visibleCols.includes(key) ? visibleCols.filter(c => c !== key) : [...visibleCols, key], allColumns.map(col => col.key), preferredDefaultColumns);
@@ -1241,42 +1282,73 @@ export default function Customers() {
   };
 
   const reloadFollowUps = async (cid: number) => {
+    const actor = customerActor, session = getAuthSessionEpoch();
+    if (customerActorRef.current !== actor || activeDetailCustomerIdRef.current !== cid) return [];
     const r = await client.entities.follow_ups.query({ query: { customer_id: cid }, sort: '-created_at', limit: 1000 });
     const items = r?.data?.items || [];
-    if (activeDetailCustomerIdRef.current === cid) setFollowUps(items);
+    if (customerMountedRef.current && customerActorRef.current === actor && getAuthSessionEpoch() === session && activeDetailCustomerIdRef.current === cid) setFollowUps(items);
     return items;
   };
 
   const reloadContacts = async (cid: number) => {
+    const actor = customerActor, session = getAuthSessionEpoch();
+    const current = () => customerMountedRef.current && customerActorRef.current === actor && getAuthSessionEpoch() === session && activeDetailCustomerIdRef.current === cid;
+    if (!current()) return;
     try {
       const r = await client.entities.customer_contacts.queryAll({ query: { customer_id: cid }, sort: '-created_at', limit: 50 });
-      if (activeDetailCustomerIdRef.current === cid) setContacts(r?.data?.items || []);
+      if (current()) setContacts(r?.data?.items || []);
     } catch (err) {
       console.error('Load contacts error:', err);
-      if (activeDetailCustomerIdRef.current === cid) setContacts([]);
+      if (current()) { if (customerReadDenied(err)) withdrawCustomerDetail(cid); else setContacts([]); }
     }
   };
 
-  const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any) => {
-    const requestSeq = ++detailRequestSeqRef.current;
-    activeDetailCustomerIdRef.current = customerId;
-    const isCurrentRequest = () => (
-      detailRequestSeqRef.current === requestSeq
-      && activeDetailCustomerIdRef.current === customerId
-    );
+  const withdrawCustomerDetail = (customerId: number) => {
+    invalidateCustomerDetailRequests();
     clearCustomerDetailAssociations();
-    setDetailLoading(true);
+    setSelectedCustomer(null);
+    setCustomers(rows => rows.filter(row => row.id !== customerId));
+    setSelectedCustomerTab('overview');
+  };
+
+  const loadCustomerDetail = async (customerId: number, fallbackCustomer?: any, options: { hard?: boolean; manual?: boolean } = {}) => {
+    const actor = customerActor, session = getAuthSessionEpoch();
+    if (!customerMountedRef.current || customerActorRef.current !== actor || activeDetailCustomerIdRef.current !== customerId) return;
+    if (options.manual && (detailEditActiveRef.current || hasUnsavedChanges())) return;
+    const generation = ++detailRequestSeqRef.current;
+    detailAccessSequenceRef.current += 1;
+    const ticket = { actor, session, customerId, generation };
+    const isCurrentRequest = () => customerMountedRef.current && customerReadMatches(ticket, {
+      actor: customerActorRef.current, session: getAuthSessionEpoch(),
+      customerId: activeDetailCustomerIdRef.current || 0, generation: detailRequestSeqRef.current,
+    });
+    const snapshotScope = `${actor}:${customerId}`;
+    let preserving = !options.hard && detailSnapshotScopeRef.current === snapshotScope;
+    const editorGeneration = detailEditorRef.current.generation;
+    const flight = {};
+    if (!preserving) clearCustomerDetailAssociations();
+    detailRefreshFlightRef.current = flight;
+    setDetailLoading(!preserving);
+    setDetailRefreshing(preserving);
     setDetailLoadError(null);
     try {
       const verifiedCustomer = await client.entities.customers.query({query: {id: customerId}, limit: 1});
       if (!isCurrentRequest()) return;
       const verified = verifiedCustomer?.data?.items?.[0];
       if (!verified || customerPermissions(verified).access_level === 'none') {
-        setSelectedCustomer(null); setCustomers(rows => rows.filter(row => row.id !== customerId));
-        throw new Error('当前账号已无权查看这位客户');
+        withdrawCustomerDetail(customerId);
+        toast.error('当前账号已无权查看这位客户');
+        return;
       }
-      setSelectedCustomer(displayCustomerStatus(verified));
       const permission = customerPermissions(verified);
+      if (preserving && customerPermissionReduced(customerPermissions(selectedCustomerRef.current), permission)) {
+        // Revoked modules are purged immediately, before any authorized re-read.
+        clearCustomerDetailAssociations();
+        preserving = false;
+        detailRefreshFlightRef.current = flight;
+        setDetailLoading(true);
+        setSelectedCustomer(displayCustomerStatus(verified));
+      } else if (!preserving) setSelectedCustomer(displayCustomerStatus(verified));
       setSelectedCustomerTab(tab => customerCanReadTab(verified,tab) ? tab : customerDefaultTab(verified));
       const permitted = (key: CustomerModule) => permission.modules[key].read;
       const empty = () => Promise.resolve({data:{items:[]}});
@@ -1299,7 +1371,7 @@ export default function Customers() {
         !isOwner
           ? Promise.resolve({ data: { business_lines: [], products: [], plans: [] } })
           : invokeWithAuth({ url: '/api/v1/product-plans', method: 'GET' }).catch(() => ({ data: { business_lines: [], products: [], plans: [] } })),
-        permitted('contacts') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }).catch(() => ({ data: { items: [] } })) : empty(),
+        permitted('contacts') ? client.entities.customer_contacts.queryAll({ query: { customer_id: customerId }, sort: '-created_at', limit: 50 }) : empty(),
         permitted('renewals') ? invokeWithAuth({url:'/api/v1/entities/subscriptions',method:'GET',data:{query:JSON.stringify({customer_id:customerId}),sort:'-created_at',limit:1000,access_module:'renewals'}}) : empty(),
       ]);
       // Permission verification still precedes every associated read. A finance
@@ -1307,6 +1379,14 @@ export default function Customers() {
       const [financeResponse, settledResults] = await Promise.all([financeRequest, detailRequests]);
 
       if (!isCurrentRequest()) return;
+      const failedSection = settledResults.find(result => result.status === 'rejected');
+      if (failedSection?.status === 'rejected') throw failedSection.reason;
+      // A newly opened editor owns its current snapshot. A late refresh may not
+      // replace it or close it; security withdrawal above remains immediate.
+      if (preserving && (detailEditorRef.current.generation !== editorGeneration || (options.manual && hasUnsavedChanges()))) {
+        setDetailUpdateAvailable(true);
+        return;
+      }
       const readSettled = (result: PromiseSettledResult<any>, fallback: any, label: string) => {
         if (result.status === 'fulfilled') return result.value;
         console.warn(`Load customer detail section failed: ${label}`, result.reason);
@@ -1354,36 +1434,94 @@ export default function Customers() {
       setCustomerProjects(projectRes?.data?.items || []);
       setProductCatalog(catalogRes?.data || { business_lines: [], products: [], plans: [] });
       setContacts(contactRes?.data?.items || []);
+      detailSnapshotScopeRef.current = snapshotScope;
       setDetailLoadedAt(new Date().toISOString());
+      setDetailUpdateAvailable(false);
+      setDetailAccessError(null);
     } catch (err) {
       console.error(err);
-      if (isCurrentRequest()) setDetailLoadError(getLoadErrorMessage(err));
+      if (isCurrentRequest()) {
+        if (customerReadDenied(err)) {
+          withdrawCustomerDetail(customerId);
+          toast.error('客户访问权限已变化，请重新选择可访问客户');
+        } else if (preserving && detailEditorRef.current.generation !== editorGeneration) {
+          setDetailUpdateAvailable(true);
+        } else setDetailLoadError(getLoadErrorMessage(err));
+      }
     } finally {
-      if (isCurrentRequest()) setDetailLoading(false);
+      if (isCurrentRequest()) { setDetailLoading(false); setDetailRefreshing(false); }
+      if (detailRefreshFlightRef.current === flight) detailRefreshFlightRef.current = null;
+    }
+  };
+
+  const checkCustomerDetailAccess = async () => {
+    const customerId = activeDetailCustomerIdRef.current;
+    if (!customerId || detailRefreshFlightRef.current) return;
+    const actor = customerActor, session = getAuthSessionEpoch();
+    if (!customerMountedRef.current || customerActorRef.current !== actor) return;
+    const generation = ++detailAccessSequenceRef.current;
+    const current = () => customerMountedRef.current && customerActorRef.current === actor
+      && getAuthSessionEpoch() === session && activeDetailCustomerIdRef.current === customerId
+      && detailAccessSequenceRef.current === generation;
+    try {
+      const response = await client.entities.customers.query({ query: { id: customerId }, limit: 1 });
+      if (!current()) return;
+      const verified = response?.data?.items?.[0];
+      const permission = customerPermissions(verified);
+      if (!verified || permission.access_level === 'none') {
+        withdrawCustomerDetail(customerId);
+        toast.error('当前账号已无权查看这位客户');
+        return;
+      }
+      const previous = selectedCustomerRef.current;
+      if (customerPermissionReduced(customerPermissions(previous), permission)) {
+        detailRequestSeqRef.current += 1;
+        clearCustomerDetailAssociations();
+        setSelectedCustomer(displayCustomerStatus(verified));
+        setSelectedCustomerTab(tab => customerCanReadTab(verified, tab) ? tab : customerDefaultTab(verified));
+        await loadCustomerDetail(customerId, verified, { hard: true });
+        return;
+      }
+      // Keep the accepted business snapshot and its existing grants. Expanded
+      // access is adopted only with a fresh full load, while reductions above
+      // withdraw data immediately.
+      if (previous && (customerBasicFingerprint(previous) !== customerBasicFingerprint(displayCustomerStatus(verified))
+        || JSON.stringify(previous.effective_permissions) !== JSON.stringify(verified.effective_permissions))) setDetailUpdateAvailable(true);
+      setDetailAccessError(null);
+    } catch (error) {
+      if (!current()) return;
+      if (customerReadDenied(error)) {
+        withdrawCustomerDetail(customerId);
+        toast.error('客户访问权限已变化，请重新选择可访问客户');
+      } else setDetailAccessError('暂时无法核对客户访问范围，已保留阅读内容；更新前请重试。');
     }
   };
 
   const openEditFollow = (f: any) => {
     if (!canEditFollowUp) return;
-    setFollowForm({ contact_method: f.contact_method || 'phone', content: f.content || '', customer_needs: f.customer_needs || '', customer_pain_points: f.customer_pain_points || '', has_quoted: f.has_quoted || false, quote_plan: f.quote_plan || '', close_probability: f.close_probability ?? 30, stage: f.stage || 'communicating', next_follow_date: f.next_follow_date ? f.next_follow_date.slice(0, 10) : '' });
+    setFollowForm({ contact_method: f.contact_method || 'phone', content: f.content || '', customer_needs: f.customer_needs || '', customer_pain_points: f.customer_pain_points || '', has_quoted: f.has_quoted || false, quote_plan: f.quote_plan || '', close_probability: f.close_probability ?? 30, stage: f.stage ?? '', next_follow_date: f.next_follow_date ? f.next_follow_date.slice(0, 10) : '' });
     setEditingFollowId(f.id);
     setShowFollowForm(true);
   };
 
   const handleSaveFollow = async () => {
-    if (savingFollow) return;
+    if (savingFollow || detailWriteBlocked) return;
     if (editingFollowId ? !canEditFollowUp : !canCreateFollowUp) {
       toast.error('当前账号没有保存跟进记录的权限');
       return;
     }
     if (!followForm.content.trim()) { toast.error('请填写跟进内容'); return; }
     if (!selectedCustomer) return;
+    if (editingFollowId && !editingFollowRecord) { toast.error('当前跟进记录尚未核实，请重新读取后再编辑'); return; }
+    const originalStage = editingFollowRecord?.stage ?? '';
+    if (linkedFollowOpportunityId == null && (!editingFollowId || followForm.stage !== originalStage) && !getCustomerFollowUpStatusOptions(dictConfig).some(option => option.value === followForm.stage)) { toast.error('请选择当前启用的客户服务阶段'); return; }
+    const followStageUpdate = linkedFollowOpportunityId != null || editingFollowId && !followForm.stage && !originalStage ? {} : { stage: followForm.stage };
     setSavingFollow(true);
     try {
       const now = new Date().toISOString();
       const op = employee?.name || '管理员';
       if (editingFollowId) {
-        await client.entities.follow_ups.update({ id: String(editingFollowId), data: { contact_method: followForm.contact_method, content: followForm.content, customer_needs: followForm.customer_needs, customer_pain_points: followForm.customer_pain_points, has_quoted: followForm.has_quoted, quote_plan: followForm.quote_plan, close_probability: followForm.close_probability, stage: followForm.stage, next_follow_date: followForm.next_follow_date || null, updated_at: now } });
+        await client.entities.follow_ups.update({ id: String(editingFollowId), data: { contact_method: followForm.contact_method, content: followForm.content, customer_needs: followForm.customer_needs, customer_pain_points: followForm.customer_pain_points, has_quoted: followForm.has_quoted, quote_plan: followForm.quote_plan, close_probability: followForm.close_probability, ...followStageUpdate, next_follow_date: followForm.next_follow_date || null, updated_at: now } });
         toast.success('跟进记录已更新');
         logOperation({ customerId: selectedCustomer.id, actionType: 'edit_follow_up', actionDetail: '编辑跟进记录', operatorName: op });
       } else {
@@ -1418,7 +1556,7 @@ export default function Customers() {
   };
 
   const handleDeleteFollow = async () => {
-    if (!deleteFollowTarget || !selectedCustomer || !canDeleteFollowUp) return;
+    if (!deleteFollowTarget || !selectedCustomer || !canDeleteFollowUp || detailWriteBlocked) return;
     setDeletingFollow(true);
     try {
       await client.entities.follow_ups.delete({ id: String(deleteFollowTarget.id) });
@@ -1431,7 +1569,7 @@ export default function Customers() {
 
   // Contact CRUD
   const handleSaveContact = async () => {
-    if (savingContact) return;
+    if (savingContact || detailWriteBlocked) return;
     if (!canManageContacts) {
       toast.error('当前账号没有修改联系人的权限');
       return;
@@ -1458,7 +1596,7 @@ export default function Customers() {
   };
 
   const handleDeleteContact = async () => {
-    if (!deleteContactTarget || !selectedCustomer || !canDeleteContacts) return;
+    if (!deleteContactTarget || !selectedCustomer || !canDeleteContacts || detailWriteBlocked) return;
     setDeletingContact(true);
     try {
       await client.entities.customer_contacts.delete({ id: String(deleteContactTarget.id) });
@@ -1478,53 +1616,69 @@ export default function Customers() {
   }, [showForm, editingId, isOwner]);
 
   const loadEmployees = async () => {
+    const actor = customerActor, session = getAuthSessionEpoch();
     try {
       const res = await invokeWithAuth({
         url: '/api/v1/entities/employees/directory',
         method: 'GET',
         data: { query: JSON.stringify({ status: 'active' }), limit: 100 },
       });
-      setEmployeesList(res?.data?.items || []);
+      if (customerMountedRef.current && customerActorRef.current === actor && getAuthSessionEpoch() === session) setEmployeesList(res?.data?.items || []);
     } catch (err) { console.error('Load employees error:', err); }
   };
 
   const loadCustomers = async () => {
+    const actor = customerActor, session = getAuthSessionEpoch(), sequence = ++customerListSequence.current;
+    const current = () => customerMountedRef.current && customerActorRef.current === actor
+      && getAuthSessionEpoch() === session && customerListSequence.current === sequence;
     try {
       const res = await loadWithRetry(
         () => client.entities.customers.query(CUSTOMER_SHELL_LIST_QUERY),
       );
+      if (!current()) return;
       const items = (res?.data?.items || []).map(displayCustomerStatus);
       setCustomers(items);
       setLoadError(null);
       setCustomersLoadedAt(new Date().toISOString());
     } catch (err) {
       console.error(err);
-      setLoadError(getLoadErrorMessage(err));
+      if (current()) setLoadError(getLoadErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   };
 
   useEffect(() => {
+    customerMountedRef.current = true;
+    invalidateCustomerDetailRequests(); clearCustomerDetailAssociations();
+    setSelectedCustomer(null); setSelectedCustomerTab('overview');
+    setCustomers([]); setEmployeesList([]); setLoadError(null); setCustomersLoadedAt(null);
+    setSelectedCustomerIds([]); setPreviewCustomerId(null); setDeleteTarget(null);
+    setShowForm(false); setEditingId(null); setForm(emptyForm); setCustomerProjectForms([]);
+    setFollowForm(emptyFollowForm); setContactForm(emptyContactForm);
+    setShowAssignDialog(false); setAssignTarget(null); setAssignEmployeeId('');
+    setShowAccessDialog(false); setAccessTarget(null); setFinanceAccessTarget(null); setBulkAccessMode(false);
+    requestedDetailRouteRef.current = '';
+    setResolvedCustomerActor(customerActor);
     setLoading(true);
-    void loadCustomers();
-    void loadEmployees();
-  }, [employee?.id, employee?.name]);
+    void loadCustomers(); void loadEmployees();
+    return () => {
+      customerMountedRef.current = false;
+      customerListSequence.current += 1;
+      invalidateCustomerDetailRequests();
+    };
+  }, [customerActor]);
 
   useAutoRefresh(async () => {
+    if (activeDetailCustomerIdRef.current) { await checkCustomerDetailAccess(); return; }
     await Promise.all([loadCustomers(), loadEmployees()]);
-    const detailCustomerId = activeDetailCustomerIdRef.current;
-    if (detailCustomerId) {
-      const fallbackCustomer = selectedCustomer?.id === detailCustomerId ? selectedCustomer : undefined;
-      await loadCustomerDetail(detailCustomerId, fallbackCustomer);
-    }
   }, {
     intervalMs: 30000,
-    enabled: !showForm && !showFollowForm && !showContactForm,
+    enabled: Boolean(selectedCustomer) || (!showForm && !showFollowForm && !showContactForm),
   });
 
   const reconcileSelectedCustomerClosure = async () => {
-    if (!isOwner || !selectedCustomer?.id) return;
+    if (!isOwner || !selectedCustomer?.id || detailWriteBlocked) return;
     setClosureSyncing(true);
     try {
       const response = await invokeWithAuth({
@@ -1724,6 +1878,8 @@ export default function Customers() {
         sales_employee_id: form.sales_employee_id === '' ? null : Number(form.sales_employee_id),
         monthly_orders: String(form.monthly_orders ?? '').trim() === '' ? null : Number(form.monthly_orders || 0),
       };
+      // This form no longer edits WeChat/WhatsApp; omission preserves stored history.
+      delete payload.wechat;
       const projects = customerProjectForms.map(row => ({
         ...row,
         owner_employee_id: row.owner_employee_id ? Number(row.owner_employee_id) : null,
@@ -1914,7 +2070,7 @@ export default function Customers() {
     setSelectedCustomerTab(normalizeCustomerDetailTab(nextTab, c));
     clearCustomerDetailAssociations();
     setSelectedCustomer(c);
-    await loadCustomerDetail(c.id, c);
+    await loadCustomerDetail(c.id, c, { hard: true });
   };
 
   const closeDetail = () => {
@@ -2010,6 +2166,11 @@ export default function Customers() {
           </div>);
   const sharedCustomerDialogs = (
     <>
+      {canManageFollowStatuses && <CustomerFollowUpStatusManager open={showFollowStatusManager} onOpenChange={setShowFollowStatusManager} onSaved={fields => {
+        if (editingFollowId != null) return;
+        const nextConfig = { ...dictConfig, ...fields };
+        setFollowForm(current => getCustomerFollowUpStatusOptions(nextConfig).some(option => option.value === current.stage) ? current : { ...current, stage: getDefaultCustomerFollowUpStatus(nextConfig) });
+      }} />}
       <ConfirmDialog open={!!deleteTarget} onOpenChange={v => { if (!v) setDeleteTarget(null); }} title="确认删除客户" description={`确定要删除「${deleteTarget?.business_name}」吗？`} onConfirm={handleDelete} loading={deleting} />
       {canDeleteFollowUp && <ConfirmDialog open={!!deleteFollowTarget} onOpenChange={v => { if (!v) setDeleteFollowTarget(null); }} title="确认删除跟进记录" description="确定要删除这条跟进记录吗？" onConfirm={handleDeleteFollow} loading={deletingFollow} />}
       {canDeleteContacts && <ConfirmDialog open={!!deleteContactTarget} onOpenChange={v => { if (!v) setDeleteContactTarget(null); }} title="确认删除联系人" description={`确定要删除联系人「${deleteContactTarget?.contact_name}」吗？`} onConfirm={handleDeleteContact} loading={deletingContact} />}
@@ -2060,7 +2221,7 @@ export default function Customers() {
 <div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
 <div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={[{ value: '', label: '待确认国家/地区' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} /></div>
 </div>
-  <CustomerFormSection id="customer-form-contacts" title="更多联系资料" description="客户编号、微信 / WhatsApp 与邮箱" filled={Boolean(form.customer_code || form.wechat || form.email)} defaultOpen={Boolean(editingId && Boolean(form.customer_code || form.wechat || form.email))}>
+  <CustomerFormSection id="customer-form-contacts" title="更多联系资料" description="客户编号与邮箱" filled={Boolean(form.customer_code || form.email)} defaultOpen={Boolean(editingId && Boolean(form.customer_code || form.email))}>
 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 <div className="sm:col-span-2">
               <Label>客户编号</Label>
@@ -2069,8 +2230,7 @@ export default function Customers() {
                 {!editingId && <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs" onClick={() => setForm({ ...form, customer_code: getNextAutoCode(form.industry) })}>自动生成</Button>}
               </div>
             </div>
-<div><Label>微信/WhatsApp</Label><Input value={form.wechat} onChange={e => setForm({ ...form, wechat: e.target.value })} /></div>
-<div><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+<div className="sm:col-span-2"><Label>邮箱</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
 </div>
 </CustomerFormSection>
 </section>
@@ -2511,6 +2671,7 @@ export default function Customers() {
   };
 
   // ========== DETAIL VIEW ==========
+  if (resolvedCustomerActor !== customerActor) return <PageLoadState loading message="正在切换客户访问范围…" />;
   if (loading && customers.length === 0) {
     return <PageLoadState loading message="正在读取客户资料…" />;
   }
@@ -2528,6 +2689,7 @@ export default function Customers() {
 
   if (selectedCustomer) {
     const c = selectedCustomer;
+    const hasDetailSnapshot = detailSnapshotScopeRef.current === `${customerActor}:${c.id}`;
     const addressLines = customerAddressLines(c, c.country && c.state ? getStateLabel(c.country, c.state) : c.state || '', c.country ? getCountryLabel(c.country) : '');
     const totalDealAmount = deals.reduce((sum, item) => sum + Number(item.deal_amount || 0), 0);
     const totalAmountDue = payments.reduce((sum, item) => sum + Number(item.amount_due || 0), 0);
@@ -2591,7 +2753,15 @@ export default function Customers() {
         : activeReminder
           ? 'followups'
           : '';
+    const primaryDetailTabs = [
+      { value: 'overview', label: isMobile ? '概览' : '客户360' },
+      { value: 'timeline', label: isMobile ? '动态' : '时间线' },
+      ...(customerCanReadTab(c, 'subscriptions') ? [{ value: 'subscriptions', label: isMobile ? '服务' : '服务信息' }] : []),
+      ...(canViewFinanceStatus ? [{ value: 'payments', label: isMobile ? '财务' : '财务信息' }] : []),
+    ];
     const secondaryDetailTabs = [
+      { value: 'opportunities', label: '客户商机' },
+      { value: 'renewals', label: `续费信息 (${renewalRows.length})` },
       { value: 'info', label: '基础信息' },
       { value: 'contacts', label: `联系人 (${contacts.length})` },
       { value: 'followups', label: `跟进记录 (${followUps.length})` },
@@ -2602,12 +2772,7 @@ export default function Customers() {
       { value: 'logs', label: '操作日志' },
     ].filter(item => customerCanReadTab(c, item.value));
     const secondaryDetailTabValues = new Set(secondaryDetailTabs.map(item => item.value));
-    const mobileSecondaryDetailTabs = [
-      { value: 'opportunities', label: '客户商机' },
-      ...(canViewFinance ? [{ value: 'renewals', label: `续费信息 (${renewalRows.length})` }] : []),
-      ...secondaryDetailTabs,
-    ].filter(item => customerCanReadTab(c, item.value));
-    const mobileSecondaryDetailTabValues = new Set(mobileSecondaryDetailTabs.map(item => item.value));
+    const activeSecondaryDetailTab = secondaryDetailTabs.find(item => item.value === selectedCustomerTab);
     const customer360Actions: Array<{
       key: string;
       title: string;
@@ -2657,29 +2822,29 @@ export default function Customers() {
               <Badge className={statusColors[c.status]}>{statusLabels[c.status]}</Badge>
               <Badge className={getLevelColorClass(c.level)}>{levelLabels[c.level]}</Badge>
             </div>
-            <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'} · 数据更新 {formatCustomerTimestamp(detailLoadedAt)}</p>
+            <p className="mt-1 text-xs text-slate-500">编号 {c.customer_code || '-'} · 负责人 {c.sales_person || '-'}<span className="block min-h-5" role="status" aria-live="polite" title={detailAccessError || undefined}>{detailRefreshing ? '正在更新，阅读内容已保留…' : detailAccessError ? '访问核对暂不可用，内容已保留；请刷新。' : detailUpdateAvailable ? '资料可能有更新，可通过“刷新数据”载入。' : `数据更新 ${formatCustomerTimestamp(detailLoadedAt)}`}</span></p>
           </div>
           </div>
           <div className={`customer-detail-actions flex w-full items-center gap-2 md:w-auto md:justify-end ${!c.phone && !canCreateFollowUp ? 'has-no-primary' : ''}`}>
             {(c.phone || canCreateFollowUp) && <div className={`customer-detail-primary-actions ${!c.phone || !canCreateFollowUp ? 'has-single-action' : ''}`}>
               {c.phone && <CustomerPhoneDial phone={c.phone} country={c.country} label="网页拨号" className="min-w-0" buttonClassName="px-3" />}
-              {canCreateFollowUp && <Button size="sm" className="min-h-11 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
+              {canCreateFollowUp && <Button size="sm" disabled={detailWriteBlocked} className="min-h-11 bg-blue-600 hover:bg-blue-700 md:min-h-0" onClick={() => { if (detailWriteBlocked) return; handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}><MessageSquarePlus className="mr-1 h-3.5 w-3.5" /> 新增跟进</Button>}
             </div>}
             <div className="customer-detail-desktop-tools">
-              {canManageCustomerAccess(c) && <><Button variant="outline" size="sm" onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 协作成员</Button><Button variant="outline" size="sm" onClick={() => setFinanceAccessTarget(c)}>财务授权</Button></>}
-              <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-8 px-3" onClick={() => loadCustomerDetail(c.id, c)} disabled={detailLoading}>
-                <RefreshCw className={`mr-1 h-3.5 w-3.5 ${detailLoading ? 'animate-spin' : ''}`} /> 刷新数据
+              {canManageCustomerAccess(c) && <><Button variant="outline" size="sm" disabled={detailWriteBlocked} onClick={() => void openAccessManager(c)}><Users className="mr-1 h-3.5 w-3.5" /> 协作成员</Button><Button variant="outline" size="sm" disabled={detailWriteBlocked} onClick={() => setFinanceAccessTarget(c)}>财务授权</Button></>}
+              <Button aria-label="刷新客户数据" variant="outline" size="sm" className="h-8 px-3" onClick={() => void loadCustomerDetail(c.id, c, { manual: true })} disabled={detailLoading || detailRefreshing || detailEditActive}>
+                <RefreshCw className={`mr-1 h-3.5 w-3.5 ${detailLoading || detailRefreshing ? 'animate-spin' : ''}`} /> 刷新数据
               </Button>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button aria-label="更多客户操作" title="更多客户操作" variant="outline" size="sm" className="customer-detail-mobile-tools"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
                 {canManageCustomerAccess(c) && <>
-                  <DropdownMenuItem onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />协作成员</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setFinanceAccessTarget(c)}><ShieldCheck className="mr-2 h-4 w-4" />财务授权</DropdownMenuItem>
+                  <DropdownMenuItem disabled={detailWriteBlocked} onSelect={() => { void openAccessManager(c); }}><Users className="mr-2 h-4 w-4" />协作成员</DropdownMenuItem>
+                  <DropdownMenuItem disabled={detailWriteBlocked} onSelect={() => setFinanceAccessTarget(c)}><ShieldCheck className="mr-2 h-4 w-4" />财务授权</DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>}
-                <DropdownMenuItem disabled={detailLoading} onSelect={() => { void loadCustomerDetail(c.id, c); }}><RefreshCw className={`mr-2 h-4 w-4 ${detailLoading ? 'animate-spin' : ''}`} />刷新数据</DropdownMenuItem>
+                <DropdownMenuItem disabled={detailLoading || detailRefreshing || detailEditActive} onSelect={() => { void loadCustomerDetail(c.id, c, { manual: true }); }}><RefreshCw className={`mr-2 h-4 w-4 ${detailLoading || detailRefreshing ? 'animate-spin' : ''}`} />刷新数据</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -2694,60 +2859,38 @@ export default function Customers() {
         )}
         {detailLoadError && (
           <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
-            <span>客户关联数据加载失败：{detailLoadError}</span>
-            <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" onClick={() => loadCustomerDetail(c.id, c)}>重新加载</Button>
+            <span>{hasDetailSnapshot ? '更新失败，当前保留上次读取的内容：' : '客户关联数据加载失败：'}{detailLoadError}</span>
+            <Button size="sm" variant="outline" className="border-red-200 bg-white text-red-700 hover:bg-red-100" disabled={detailLoading || detailRefreshing || detailEditActive} onClick={() => void loadCustomerDetail(c.id, c, { manual: true })}>重新加载</Button>
           </div>
         )}
         <div className="flex flex-wrap gap-2 text-xs text-slate-500"><span>{effective.access_level === 'read_write' ? '按授权范围协作' : '只读查看'}</span>{(isOwner || canViewFinanceStatus) && <span>财务：{customerFinanceLabels[effective.finance_access]}</span>}<span>{effective.sources.map(item => item.label).join(' · ')}</span></div>
         {hasClosureMismatch && (
           <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="font-semibold">客户已停止，但仍有项目或续费显示合作中</p><p className="mt-1 text-xs text-red-600">同步只关闭未来合作与扣款，不会删除成交、收款或历史服务。</p></div>
-            {isOwner && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
+            {isOwner && <Button size="sm" className="shrink-0 bg-red-600 hover:bg-red-700" disabled={closureSyncing || detailWriteBlocked} onClick={() => void reconcileSelectedCustomerClosure()}>{closureSyncing ? '同步中…' : '一键同步闭环'}</Button>}
           </div>
         )}
-        {(effective.modules.delivery.read || effective.modules.deals.read || effective.modules.contacts.read || effective.modules.followups.read || canViewFinanceStatus) && <CustomerSalesHandoff key={`${employee?.id}:${c.id}`} customerId={c.id} refreshKey={detailLoadedAt} onChanged={() => loadCustomerDetail(c.id, c)} />}
+        {(effective.modules.delivery.read || effective.modules.deals.read || effective.modules.contacts.read || effective.modules.followups.read || canViewFinanceStatus) && <fieldset disabled={detailWriteBlocked} className="contents min-w-0 border-0 p-0"><CustomerSalesHandoff key={`${customerActor}:${c.id}:${JSON.stringify(effective)}`} customerId={c.id} refreshKey={detailLoadedAt} onChanged={() => loadCustomerDetail(c.id, c)} /></fieldset>}
         <Tabs value={selectedCustomerTab} onValueChange={handleDetailTabChange} className="w-full">
-          {isOwner ? <>          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-          <div className="md:hidden">
-            <TabsList aria-label="客户手机主导航" className="grid h-auto w-full grid-cols-4 gap-1 bg-slate-100 p-1">
-              <TabsTrigger value="overview" className="min-h-11 min-w-0 px-1 text-sm">概览</TabsTrigger>
-              <TabsTrigger value="timeline" className="min-h-11 min-w-0 px-1 text-sm">动态</TabsTrigger>
-              {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="min-h-11 min-w-0 px-1 text-sm">服务</TabsTrigger>}
-              {canViewFinanceStatus
-                ? <TabsTrigger value="payments" className="min-h-11 min-w-0 px-1 text-sm">财务</TabsTrigger>
-                : customerCanReadTab(c, 'renewals') ? <TabsTrigger value="renewals" className="min-h-11 min-w-0 px-1 text-sm">续费</TabsTrigger> : null}
+          {isOwner ? <div className="customer-detail-navigation" aria-label="客户详情导航">
+            <TabsList aria-label="客户主导航" className="customer-detail-primary-tabs" style={{ gridTemplateColumns: `repeat(${primaryDetailTabs.length}, minmax(0, 1fr))` }}>
+              {primaryDetailTabs.map(item => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
             </TabsList>
-          </div>
-          <label className="md:hidden">
-            <span className="sr-only">更多资料与工具</span>
-            <NativeSelect
-              value={mobileSecondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
-              onChange={value => { if (value) handleDetailTabChange(value); }}
-              options={[{ value: '', label: '更多资料与工具' }, ...mobileSecondaryDetailTabs]}
-              className="w-full"
-            />
-          </label>
-          <TabsList className="hidden h-auto max-w-full flex-wrap justify-start gap-1 bg-slate-100 p-1 md:flex">
-            <TabsTrigger value="overview" className="shrink-0 text-xs">客户 360</TabsTrigger>
-            <TabsTrigger value="timeline" className="shrink-0 text-xs">时间线 ({detailLoading ? '…' : timelineEvents.length})</TabsTrigger>
-            {customerCanReadTab(c, 'opportunities') && <TabsTrigger value="opportunities" className="shrink-0 text-xs">客户商机</TabsTrigger>}
-            {customerCanReadTab(c, 'subscriptions') && <TabsTrigger value="subscriptions" className="shrink-0 text-xs">服务信息 ({detailLoading ? '…' : currentServiceRows.length + pendingServiceRows.length})</TabsTrigger>}
-            {canViewFinanceStatus && <TabsTrigger value="payments" className="shrink-0 text-xs">财务信息 ({detailLoading ? '…' : customerFinanceRecordCount})</TabsTrigger>}
-            {customerCanReadTab(c, 'renewals') && <TabsTrigger value="renewals" className="shrink-0 text-xs">续费信息 ({detailLoading ? '…' : renewalRows.length})</TabsTrigger>}
-          </TabsList>
-          <NativeSelect
-            value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
-            onChange={value => { if (value) handleDetailTabChange(value); }}
-            options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
-            className="hidden h-9 w-full md:block lg:w-48"
-          />
-          </div>
+            <label className="customer-detail-more" data-active={activeSecondaryDetailTab ? 'true' : undefined}>
+              <span className="sr-only">{activeSecondaryDetailTab ? `当前：${activeSecondaryDetailTab.label}` : '更多资料与工具'}</span>
+              <NativeSelect
+                aria-label={activeSecondaryDetailTab ? `当前：${activeSecondaryDetailTab.label}，切换更多资料与工具` : '更多资料与工具'}
+                value={secondaryDetailTabValues.has(selectedCustomerTab) ? selectedCustomerTab : ''}
+                onChange={value => { if (value) handleDetailTabChange(value); }}
+                options={[{ value: '', label: '更多资料与工具' }, ...secondaryDetailTabs]}
+                className="w-full"
+              />
+            </label>
+          </div> : <CustomerCollaborationTabs customer={c} />}
 
-</> : <CustomerCollaborationTabs customer={c} />}
-
-          {detailLoading || detailLoadError ? <TabsContent value={selectedCustomerTab}><div role={detailLoading ? 'status' : 'alert'} aria-live="polite" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm leading-6 text-slate-600">{detailLoading ? '正在读取已授权的客户资料，完成后会显示记录。' : '客户关联资料尚未读取完整，请点击上方“重新加载”后查看。'}</div></TabsContent> : <>
+          {detailLoading || (detailLoadError && !hasDetailSnapshot) ? <TabsContent value={selectedCustomerTab}><div role={detailLoading ? 'status' : 'alert'} aria-live="polite" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm leading-6 text-slate-600">{detailLoading ? '正在读取已授权的客户资料，完成后会显示记录。' : '客户关联资料尚未读取完整，请点击上方“重新加载”后查看。'}</div></TabsContent> : <fieldset disabled={detailWriteBlocked && !detailEditorKey} className="contents min-w-0 border-0 p-0" aria-busy={detailRefreshing}>
           {customerCanReadTab(c, 'overview') && <TabsContent value="overview">
-            {detailLoading || detailLoadError ? <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">{detailLoading ? '正在核对客户的服务、收款与待办，完成后显示完整概览…' : '客户关联数据未完成核对，请重新加载后查看概览。'}</div> : <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            {detailLoading || (detailLoadError && !hasDetailSnapshot) ? <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">{detailLoading ? '正在核对客户的服务、收款与待办，完成后显示完整概览…' : '客户关联数据未完成核对，请重新加载后查看概览。'}</div> : <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-4">
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="mt-1 text-xs text-slate-500">提醒已转换成可直接处理的动作，不再需要先去别的页面找记录。</p></div><Badge className={customer360Actions.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}>{customer360Actions.length ? `${customer360Actions.length} 项待处理` : '当前无风险事项'}</Badge></div>
@@ -2871,7 +3014,7 @@ export default function Customers() {
                   </div>
                   <div className="customer-detail-inline-form-actions flex justify-end gap-2">
                     <Button variant="outline" size="sm" disabled={savingContact} onClick={() => { if (contactDraft.confirmDiscard()) { setShowContactForm(false); setEditingContactId(null); } }}>取消</Button>
-                    <Button size="sm" onClick={handleSaveContact} disabled={savingContact} className="bg-blue-600 hover:bg-blue-700">{savingContact ? '保存中...' : '保存'}</Button>
+                    <Button size="sm" onClick={handleSaveContact} disabled={savingContact || detailWriteBlocked} className="bg-blue-600 hover:bg-blue-700">{savingContact ? '保存中...' : '保存'}</Button>
                   </div>
                 </div>
               )}
@@ -2915,8 +3058,8 @@ export default function Customers() {
                 <div className="customer-detail-inline-form mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingFollowId ? '编辑跟进' : '新增跟进'}</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div><Label className="text-xs">方式</Label><NativeSelect value={followForm.contact_method} onChange={v => setFollowForm({ ...followForm, contact_method: v })} options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-                    <div><Label className="text-xs">阶段</Label><NativeSelect value={followForm.stage} onChange={v => setFollowForm({ ...followForm, stage: v })} options={Object.entries(stageLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+                    <div><div className="flex min-h-11 items-center"><Label className="text-xs">方式</Label></div><NativeSelect value={followForm.contact_method} onChange={v => setFollowForm({ ...followForm, contact_method: v })} options={Object.entries(methodLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
+                    <div><div className="flex min-h-11 items-center justify-between gap-2"><Label className="text-xs">{linkedFollowOpportunityId != null ? '商机阶段（原记录）' : '客户服务阶段'}</Label>{canManageFollowStatuses && linkedFollowOpportunityId == null && <Button type="button" size="sm" variant="ghost" className="min-h-11" disabled={detailWriteBlocked || savingFollow} onClick={() => setShowFollowStatusManager(true)}>管理阶段</Button>}</div><NativeSelect value={followForm.stage} disabled={linkedFollowOpportunityId != null || detailWriteBlocked || savingFollow} onChange={v => { if (linkedFollowOpportunityId == null) setFollowForm({ ...followForm, stage: v }); }} options={followStageOptions} />{linkedFollowOpportunityId != null && <p className="mt-1 text-xs text-slate-500">商机阶段保留原值，请在客户商机中调整；这里可编辑跟进正文。</p>}</div>
                   </div>
                   <div><Label className="text-xs">内容 *</Label><Textarea value={followForm.content} onChange={e => setFollowForm({ ...followForm, content: e.target.value })} rows={3} placeholder="跟进详情..." /></div>
                   <div><Label className="text-xs">下次跟进日期 · 北京时间</Label><Input type="date" value={followForm.next_follow_date} onChange={e => setFollowForm({ ...followForm, next_follow_date: e.target.value })} /></div>
@@ -2935,7 +3078,7 @@ export default function Customers() {
 </div></details>
                   <div className="customer-detail-inline-form-actions flex justify-end gap-2">
                     <Button variant="outline" size="sm" disabled={savingFollow} onClick={() => { if (followDraft.confirmDiscard()) { setShowFollowForm(false); setEditingFollowId(null); } }}>取消</Button>
-                    <Button size="sm" onClick={handleSaveFollow} disabled={savingFollow} className="bg-blue-600 hover:bg-blue-700">{savingFollow ? '保存中...' : '保存'}</Button>
+                    <Button size="sm" onClick={handleSaveFollow} disabled={savingFollow || detailWriteBlocked} className="bg-blue-600 hover:bg-blue-700">{savingFollow ? '保存中...' : '保存'}</Button>
                   </div>
                 </div>
               )}
@@ -2945,7 +3088,7 @@ export default function Customers() {
                     <div key={f.id} className="customer-followup-record border-l-2 border-blue-300 pl-4 py-2 group">
                       <div className="customer-followup-record-heading flex items-center gap-2 mb-1">
                         <span className="text-xs text-slate-500">{formatCustomerTimestamp(f.created_at)} · 北京时间</span>
-                        <Badge variant="secondary" className="text-xs">{stageLabels[f.stage] || f.stage}</Badge>
+                        <Badge variant="secondary" className="text-xs">{getCustomerFollowUpStatusLabel(dictConfig, f.stage, f.opportunity_id)}</Badge>
                         <span className="text-xs text-slate-400">{f.employee_name} · {methodLabels[f.contact_method] || f.contact_method}</span>
                         {(canEditFollowUp || canDeleteFollowUp) && <div className="ml-auto flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
                           {canEditFollowUp && <Button aria-label="编辑跟进记录" size="sm" variant="ghost" className="h-11 w-11 p-0 text-slate-500 hover:text-blue-600 md:h-6 md:w-6" onClick={() => openEditFollow(f)}><Edit className="w-3.5 h-3.5" /></Button>}
@@ -3273,7 +3416,7 @@ export default function Customers() {
             <Card className="border-slate-200"><CardContent className="p-5"><CustomerRecordHistory customerId={c.id} /><OperationLogsTab customerId={c.id} /></CardContent></Card>
           </TabsContent>
           )}
-          </>}
+          </fieldset>}
         </Tabs>
         {sharedCustomerDialogs}
       </div>

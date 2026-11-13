@@ -27,6 +27,7 @@ import { type BusinessDictConfig, defaultBusinessDictConfig, normalizeDictConfig
 import { settingsApi, type AiSettings, type EnvConfig } from '../api/settings';
 import ProductPlanSettings from '@/components/ProductPlanSettings';
 import SettingsDictionaryEditor from '@/components/SettingsDictionaryEditor';
+import CustomerFollowUpStatusManager from '@/components/CustomerFollowUpStatusManager';
 import { trackSettingsSave, type SettingsSaveFeedback } from '@/lib/settings-save-feedback';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -73,7 +74,7 @@ const defaultAiSettings: AiSettings = {
   updated_at: null,
 };
 
-const settingsDictionaryLabels: Record<string, string> = { customerStatuses:'客户状态', customerLevels:'客户等级', sources:'客户来源', industries:'行业', products:'产品类型', platforms:'平台', serviceTypes:'服务类型', paymentMethods:'支付方式', paymentModes:'支付模式', callbackTypes:'回访类型', callbackStatuses:'回访状态', callbackResults:'回访结果', taskTypes:'任务类型', taskPriorities:'任务优先级', taskStatuses:'任务状态', statuses:'客户状态', levels:'客户等级', incomeTypes:'收入类型', customerPackages:'客户套餐', customerPackagePlatforms:'套餐平台', countries:'国家', billingCycles:'收费周期', customerExpenseTypes:'客户支出类型', companyExpenseTypes:'运营支出类型', subscriptionStatuses:'续费状态', followUpStages:'跟进阶段', followUpMethods:'跟进方式' };
+const settingsDictionaryLabels: Record<string, string> = { customerStatuses:'客户状态', customerLevels:'客户等级', sources:'客户来源', industries:'行业', products:'产品类型', platforms:'平台', serviceTypes:'服务类型', paymentMethods:'支付方式', paymentModes:'支付模式', callbackTypes:'回访类型', callbackStatuses:'回访状态', callbackResults:'回访结果', taskTypes:'任务类型', taskPriorities:'任务优先级', taskStatuses:'任务状态', statuses:'客户状态', levels:'客户等级', incomeTypes:'收入类型', customerPackages:'客户套餐', customerPackagePlatforms:'套餐平台', countries:'国家', billingCycles:'收费周期', customerExpenseTypes:'客户支出类型', companyExpenseTypes:'运营支出类型', subscriptionStatuses:'续费状态', followUpStages:'销售跟进阶段', customerFollowUpStatuses:'客户服务阶段', customerFollowUpStatusArchive:'已停用客户服务阶段', followUpMethods:'跟进方式' };
 
 export default function Settings() {
   const { systemRole } = useRole();
@@ -81,6 +82,8 @@ export default function Settings() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const canEditSettings = isAdmin;
+  const canManageFollowStatuses = systemRole === 'admin' || systemRole === 'super_admin';
+  const [showFollowStatusManager, setShowFollowStatusManager] = useState(false);
 
   // Customer code settings
   const [codeSettings, setCodeSettings] = useState<CustomerCodeSettings>(defaultSettings);
@@ -450,6 +453,13 @@ export default function Settings() {
     }
   };
 
+  const serviceStageManager = <CustomerFollowUpStatusManager open={showFollowStatusManager} onOpenChange={setShowFollowStatusManager} onSaved={fields => setDictConfig(current => ({ ...current, ...fields }))} />;
+  const serviceStageSettings = <Card><CardHeader className="pb-3"><CardTitle className="text-base">客户服务阶段</CardTitle><CardDescription>用于客户详情的服务跟进；销售跟进阶段单独管理。可新增、改名、排序、停用和恢复。</CardDescription></CardHeader><CardContent><Button className="min-h-11" variant="outline" onClick={() => setShowFollowStatusManager(true)}>管理客户服务阶段</Button></CardContent></Card>;
+
+  if (!canEditSettings && canManageFollowStatuses) {
+    return <div className="crm-order-customer-org crm-order-settings app-page space-y-4"><h2 className="app-page-heading">服务跟进设置</h2>{serviceStageSettings}{serviceStageManager}</div>;
+  }
+
   if (!canEditSettings) {
     return <div className="flex items-center justify-center h-64"><p className="text-slate-400">仅管理员可访问系统设置</p></div>;
   }
@@ -465,12 +475,13 @@ export default function Settings() {
     const missingCompanyFields = companyFields.filter(([, value]) => !String(value || '').trim()).length;
     const companySummary = String(company.name || '').trim() || `${missingCompanyFields} 项待补齐`;
     return <div className="crm-order-customer-org crm-order-readonly crm-order-settings crm-org-polish app-page space-y-4" data-testid="mobile-settings-summary">
-      <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">系统设置</h2><Badge variant="secondary">只读摘要</Badge></div>
+      <div className="flex items-center justify-between gap-3"><h2 className="app-page-heading">系统设置</h2><Badge variant="secondary">规则摘要</Badge></div>
       {settingsLoadError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">当前为缓存摘要，尚未核实最新配置。<Button variant="outline" className="mt-2" onClick={() => setSettingsReload(value => value + 1)}>重新读取</Button></div>}
-      <p className="text-sm text-slate-500">手机可查看业务规则；全局配置在电脑端调整。</p>
+      <p className="text-sm text-slate-500">手机可查看业务规则、管理客户服务阶段；其他全局配置在电脑端调整。</p>
       {changedCategories.length > 0 && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">有未保存的修改，草稿已保留。请回到电脑布局继续保存。</p>}
       <Card><CardHeader><CardTitle className="text-base">提醒规则</CardTitle></CardHeader><CardContent><dl className="space-y-3 text-sm">{[['跟进提醒', booleanText(reminderConfig.enableFollowUpReminder)], ['到期提醒', reminderConfig.enableExpiryReminder == null ? '未设置' : reminderConfig.enableExpiryReminder ? `提前 ${reminderConfig.expiryDaysBefore ?? '-'} 天` : '未开启'], ['长期未跟进', reminderConfig.enableNoFollowReminder == null ? '未设置' : reminderConfig.enableNoFollowReminder ? `${reminderConfig.noFollowDays ?? '-'} 天后提醒` : '未开启'], ['欠费提醒', booleanText(reminderConfig.enableOverduePayment)], ['任务延期', booleanText(reminderConfig.enableDelayedTask)]].map(([label, value]) => <div key={label} className="flex justify-between gap-3 border-b border-dashed border-slate-100 pb-2"><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>)}</dl></CardContent></Card>
       <Card><CardHeader><CardTitle className="text-base">通知与导出</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p>浏览器通知：{booleanText(notifConfig.enableBrowserNotif)}</p><p>邮件通知：{booleanText(notifConfig.enableEmailNotif)}</p><p>默认导出：{typeof exportConfig.defaultFormat === 'string' ? exportConfig.defaultFormat.toUpperCase() : '未设置'}</p><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">可导出的角色</summary><p className="leading-7">{exportRoles.map(role => systemRoleLabels[role as keyof typeof systemRoleLabels] || role).join('、') || '未设置'}</p></details></CardContent></Card>
+      {serviceStageSettings}
       <details className="sap-disclosure sap-setting-disclosure">
         <summary><strong>公司资料</strong><span title={companySummary}>{companySummary}</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
         <div className="sap-disclosure-body"><dl className="sap-company-fields space-y-3 text-sm">{companyFields.map(([label, value]) => <div key={label} className="grid grid-cols-[4rem_1fr] gap-3"><dt className="text-slate-500">{label}</dt><dd className="break-words text-slate-900">{value || '未设置'}</dd></div>)}</dl></div>
@@ -480,9 +491,10 @@ export default function Settings() {
         <div className="sap-disclosure-body space-y-3 text-sm"><p>按行业区分前缀：{booleanText(codeSettings.useIndustryPrefix)}</p><div className="sap-code-preview rounded-lg bg-slate-50 p-3 font-mono">{codePreview}</div><details><summary className="min-h-11 cursor-pointer py-3 text-slate-600">查看行业前缀</summary><dl className="space-y-2">{prefixRows.map(item => <div key={item.industry} className="flex justify-between gap-3"><dt>{item.label || industryLabels[item.industry] || item.industry}</dt><dd>{item.prefix}</dd></div>)}</dl></details></div>
       </details>
       <details className="sap-disclosure sap-setting-disclosure">
-        <summary><strong>业务字典</strong><span>{Object.keys(dictConfig).length} 组</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
-        <div className="sap-disclosure-body space-y-2">{Object.entries(dictConfig).map(([key, value]) => <details key={key} className="rounded-lg border border-slate-100 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">{settingsDictionaryLabels[key] || '其他业务选项'}</summary><p className="break-words whitespace-pre-wrap pb-3 text-sm leading-6 text-slate-500">{String(value || '未设置')}</p></details>)}</div>
+        <summary><strong>业务字典</strong><span>{Object.keys(dictConfig).filter(key => !['customerFollowUpStatuses', 'customerFollowUpStatusArchive'].includes(key)).length} 组</span><ChevronDown aria-hidden="true" className="h-4 w-4" /></summary>
+        <div className="sap-disclosure-body space-y-2">{Object.entries(dictConfig).filter(([key]) => !['customerFollowUpStatuses', 'customerFollowUpStatusArchive'].includes(key)).map(([key, value]) => <details key={key} className="rounded-lg border border-slate-100 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">{settingsDictionaryLabels[key] || '其他业务选项'}</summary><p className="break-words whitespace-pre-wrap pb-3 text-sm leading-6 text-slate-500">{String(value || '未设置')}</p></details>)}</div>
       </details>
+      {serviceStageManager}
     </div>;
   }
 
@@ -739,6 +751,7 @@ export default function Settings() {
 
         {/* Dictionary Config */}
         <TabsContent value="dict">
+          <div className="mb-3">{serviceStageSettings}</div>
           <Card className="border-slate-200"><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="w-4 h-4 text-blue-600" /> 下拉选项管理</CardTitle><CardDescription>按类别管理显示名称，展开需要调整的一组；修改后统一保存。</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             {[
@@ -754,7 +767,7 @@ export default function Settings() {
               { key: 'paymentMethods' as const, label: '收款方式' },
               { key: 'companyExpenseTypes' as const, label: '公司支出类型' },
               { key: 'subscriptionStatuses' as const, label: '套餐状态' },
-              { key: 'followUpStages' as const, label: '跟进阶段' },
+              { key: 'followUpStages' as const, label: '销售跟进阶段' },
               { key: 'followUpMethods' as const, label: '跟进方式' },
               { key: 'callbackTypes' as const, label: '回访类型' },
               { key: 'callbackStatuses' as const, label: '回访状态' },
@@ -936,6 +949,7 @@ export default function Settings() {
     
 
 </div>
+      {serviceStageManager}
     </>
   );
 }

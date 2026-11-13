@@ -1,0 +1,56 @@
+/* Customer-detail navigation only. Narrow rows deliberately stack More below. */
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--crm-border, #dfe5ee);
+  border-radius: 10px;
+  background: var(--crm-surface-subtle, #f8fafc);
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-primary-tabs[role="tablist"] {
+  display: grid;
+  flex: 100 1 340px;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-primary-tabs [role="tab"] {
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  padding-inline: 8px;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-more {
+  --t24-control-height: 44px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-more[data-active="true"] select.t24-native-select {
+  border-color: var(--crm-accent, #2563eb) !important;
+  background: var(--crm-accent-soft, #eff6ff) !important;
+  color: var(--crm-accent, #2563eb) !important;
+  font-weight: 600;
+}
+
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-primary-tabs[role="tablist"],
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-detail-navigation .customer-detail-more {
+    flex-basis: 100%;
+  }
+}
