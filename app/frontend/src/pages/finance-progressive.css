@@ -26,7 +26,7 @@
 }
 .financial-workspace--finance .finance-ledger-key-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-top: 4px; padding: 12px 0; border-block: 1px solid #e5ebf3; }
 .financial-workspace--finance .finance-ledger-key-metrics > div { min-width: 0; padding: 0 18px; border-left: 1px solid #e5ebf3; }
-.financial-workspace--finance .finance-ledger-key-metrics > div:first-child { padding-left: 0; border: 0; }
+.financial-workspace--finance .finance-ledger-key-metrics > div:first-child { border-left: 0; }
 .financial-workspace--finance .finance-ledger-key-metrics span { display: block; color: #64748b; font-size: 12px; line-height: 18px; }
 .financial-workspace--finance .finance-ledger-key-metrics strong { display: block; margin-top: 3px; color: #243c5b; font-size: 22px; line-height: 30px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .financial-workspace--finance .finance-inline-guide { margin-bottom: 14px; font-size: 13px; color: #64748b; }
@@ -83,7 +83,6 @@
 @media (min-width: 1024px) {
   .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics { margin-top: 4px; padding-block: 10px; }
   .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics > div { padding-inline: 18px; }
-  .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-ledger-key-metrics > div:first-child { padding-left: 0; }
   .t24-system.app-shell .crm-desktop-main .financial-workspace--finance .finance-snapshot-tools > .t24-button { min-height: 32px; }
 }
 @media (max-width: 767px) {
