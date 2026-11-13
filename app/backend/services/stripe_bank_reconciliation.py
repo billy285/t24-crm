@@ -145,7 +145,7 @@ def payout_summary(raw):
     return {"id": raw["id"], "amount_minor": raw["amount"], "currency": "USD", "arrival_date": arrival,
         "status": raw.get("status"), "automatic": raw.get("automatic") is True,
         "bank_destination": raw.get("destination") if isinstance(raw.get("destination"), str) else None,
-        "eligible": raw.get("status") == "paid" and raw.get("automatic") is True and raw.get("type") == "bank_account"}
+        "eligible": raw.get("status") == "paid" and raw.get("automatic") is True and raw.get("type") == "bank_account" and raw.get("reconciliation_status") == "completed"}
 
 
 async def payouts(db, user, starting_after=None):
@@ -167,7 +167,7 @@ async def payout_evidence(payout_id):
     raw = await reader.payout(payout_id)
     summary = payout_summary(raw)
     if not summary["eligible"]:
-        reject("仅已汇出的自动银行结算可匹配，待处理、失败或手动结算请人工核对")
+        reject("仅已汇出且明细核对完成的自动银行结算可匹配；待处理、失败、手动或明细未完成的结算请人工核对")
     transactions = []
     seen = set()
     cursor = None

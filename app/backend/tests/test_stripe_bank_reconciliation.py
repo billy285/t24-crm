@@ -34,7 +34,7 @@ def second_owner():
 def payout(identity="po_synthetic", **changes):
     return {"id": identity, "object": "payout", "livemode": True, "amount": 20883, "currency": "usd",
         "arrival_date": int(datetime(2026, 11, 12, tzinfo=timezone.utc).timestamp()), "status": "paid",
-        "automatic": True, "type": "bank_account", "destination": "ba_SYNTHETIC_ONLY", **changes}
+        "automatic": True, "type": "bank_account", "reconciliation_status": "completed", "destination": "ba_SYNTHETIC_ONLY", **changes}
 
 
 def transaction(identity="txn_synthetic", net=20883, **changes):
@@ -209,7 +209,8 @@ async def test_statement_columns_currency_dates_and_money_fail_closed(bank_api, 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("changes", [{"status": "failed"}, {"status": "pending"}, {"automatic": False},
     {"type": "card"}, {"currency": "eur"}, {"livemode": False}, {"amount": 20884},
-    {"arrival_date": int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())}])
+    {"arrival_date": int(datetime(2026, 10, 1, tzinfo=timezone.utc).timestamp())},
+    {"reconciliation_status": "in_progress"}, {"reconciliation_status": "not_applicable"}, {"reconciliation_status": None}])
 async def test_failed_manual_foreign_or_mismatching_payout_never_matches(bank_api, changes):
     client, sessions, fake = bank_api
     uploaded = await statement(client)
@@ -219,6 +220,9 @@ async def test_failed_manual_foreign_or_mismatching_payout_never_matches(bank_ap
     response = await client.post(API + "/matches/preview", headers=headers(1),
         json={"statement_token": uploaded["token"], "row_index": 2, "payout_id": "po_synthetic"})
     assert response.status_code == 409, response.text
+    if "reconciliation_status" in changes:
+        # Even an accidentally balanced partial page is not completeness proof.
+        assert not any(call[0] == "transactions" for call in fake.calls)
     async with sessions() as db:
         assert await db.scalar(select(func.count()).select_from(Audit)) == 0
 
