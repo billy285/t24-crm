@@ -1,0 +1,18 @@
+[
+  "app/backend/routers/sales_leads.py",
+  "app/backend/services/business_intelligence.py",
+  "app/backend/services/customer_codes.py",
+  "app/backend/services/customers.py",
+  "app/backend/services/management_decision_preview.py",
+  "app/backend/services/management_decision_workflow.py",
+  "app/backend/services/sales_deal_handoffs.py",
+  "app/frontend/src/components/ImportCustomers.tsx",
+  "app/frontend/src/components/ManagementActionDesk.tsx",
+  "app/frontend/src/components/MobileOwnerDashboard.tsx",
+  "app/frontend/src/components/ServiceFollowThrough.tsx",
+  "app/frontend/src/components/crm-final-home-tasks.css",
+  "app/frontend/src/lib/business-date.ts",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/Dashboard.tsx",
+  "app/frontend/src/pages/ManagementDecisions.tsx"
+]

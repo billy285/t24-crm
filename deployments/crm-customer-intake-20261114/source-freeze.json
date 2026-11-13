@@ -1,0 +1,43 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "c51f9fab710b649cc0d6bfa7e79b000b420d95f4",
+  "baseline_source_sha": "12b2b3ad6b0cff129a976d41152057cffd432df8",
+  "build_receipt_sha256": "261a837056c5a52e7a4adf5fa90344d13fbf7a33473acbe7135b89fe632430fb",
+  "changed_source_files": {
+    "app/backend/routers/sales_leads.py": "2d246dab6df4f4f1d2f29da91c6eadebecbf52f113cd4627e74ecac8bf6a64dc",
+    "app/backend/services/business_intelligence.py": "66458d1848d9fe33ec8a45d65a595f10c84ae8add872e5607915f395be5899bb",
+    "app/backend/services/customer_codes.py": "e413a7981c98aa16421cbef881c542d5fc29973071419b47d525b3994c651823",
+    "app/backend/services/customers.py": "90aa546f526902539983171f890e8310d86e88dccb05a152457bed2c196dc122",
+    "app/backend/services/management_decision_preview.py": "329240f38d3d5bacf0dc295709fe31d46509e435fcb96b4cf1c7ff29d80a5982",
+    "app/backend/services/management_decision_workflow.py": "1694a0c2cca2bf0dde19365866d60bb66c3e402b82046a5b92f3621c35572ecf",
+    "app/backend/services/sales_deal_handoffs.py": "817a458de36e65447463047e9caf84d7141e293413139001d4de8235e2cc6f44",
+    "app/frontend/src/components/ImportCustomers.tsx": "c2ae0c4e088d25cb7b9dc7c73aa38707cec0ce4eb27957b42cd89afad9b33812",
+    "app/frontend/src/components/ManagementActionDesk.tsx": "db5be42d8dfae76284edfa0881e102b2c531109de7900570b574323d78088b89",
+    "app/frontend/src/components/MobileOwnerDashboard.tsx": "b185acec7e1b0194333cbcd5418388b7cfdb25647a681ca3aa1f78a71581826a",
+    "app/frontend/src/components/ServiceFollowThrough.tsx": "19e7977ee156d08ccfb73f35ae9790f5d84c5bf7be9e5bbca486d6a49432b919",
+    "app/frontend/src/components/crm-final-home-tasks.css": "573e339ca6525c13605c262ecce863d4bdbd8a8f7777c52f44a248b1cb6d6dc5",
+    "app/frontend/src/lib/business-date.ts": "953c3a2499980230cf1174d5aa0f4caa3d8bf132d24f08ccb2a5a7ac6c18b8fb",
+    "app/frontend/src/pages/Customers.tsx": "812938862f7cec531821362ce99caf16ecfecde95f653f902a847904288a602b",
+    "app/frontend/src/pages/Dashboard.tsx": "53cd367a5282b062a7b93722b0fee7c94b3bfb351f2c8825f56fe278742555cb",
+    "app/frontend/src/pages/ManagementDecisions.tsx": "0bfb77fbeda4f68d82b0c883e8fb8bba150e4e6d1f7d204c790b7170ff3af67c"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_customer_codes.py": "d72f5a03e812e54a036473c9ac831985dceaf4125e9100897abb992de847d3cc",
+    "app/backend/tests/test_customer_health_project_scope.py": "50821c79075498ba2f417f7fc9086f7f5f588440fbf432c6f980dead76c7c8bc",
+    "app/backend/tests/test_management_decision_preview.py": "6087b9a307c0eef61a7d6fe9bcf267af2465643d594082b69a6c64cc26e49fd4",
+    "app/backend/tests/test_sales_catalog_handoffs.py": "10c0a6f5bc46bd8a7cb4bcc3f6894f7200b9e98804b1ed131d1cca9544ad5098",
+    "app/frontend/tests/business-date-timezone.spec.ts": "a98d83a09777bd8470d8ac7bd606f8d88b9eebe4fbeb09d01a400261d508f6b2",
+    "app/frontend/tests/customer-followup-integration.test.mjs": "f9920d02446fbd580f723f5e27869f5c1665d9289eb668a23fa43b702d32bab0",
+    "app/frontend/tests/customer-operations-integration.test.mjs": "4e52f6a2b8a24bb0ba622766a8baa9b21df01baad9f8f071eeb332acd4545572",
+    "app/frontend/tests/customers-dialog-close.spec.ts": "b1db9fe346868276e0fe5b384242a641a16af64124a48ab66b701f54351f9d07",
+    "app/frontend/tests/home-task-focus.test.mjs": "a1446bfe5b3118bad3c2b169810200c2c013a83c10bfa185823e8ca7b7130ed5",
+    "app/frontend/tests/service-follow-through.spec.ts": "395e76c22d3e39a75229ceeff6b6bedc24017342dbeb786d422c19302dcaa4fa"
+  },
+  "dist_inventory_sha256": "971abd4727564dcea9eacba085bdc2911f8203331b94c84cc2b37fc070b80b39",
+  "fresh_build_passed": true,
+  "frontend_version": "b9baf3657c46",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "f89c9d0d07b76be0771b9af2b42b21d9cb9606d7",
+  "stage": "CRM_CUSTOMER_INTAKE_SOURCE_FREEZE"
+}
