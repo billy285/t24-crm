@@ -1,8 +1,10 @@
 import './crm-customer-delivery-compact.css';
 import '@/components/customer-form-progressive.css';
 import '@/components/customer-detail-navigation.css';
+import '@/components/customer-operations.css';
 import CustomerFormSection from '@/components/CustomerFormSection';
 import { visibleCustomerColumns, currentPagePreview, customerAddressLines } from '@/lib/customer-directory-presentation';
+import { buildCustomerCooperationRows, getCustomerPrimaryContact } from '@/lib/customer-operations-presentation';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { confirmDiscardAllChanges, hasUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { getAuthSessionEpoch } from '@/lib/auth-storage';
@@ -54,6 +56,7 @@ import CustomerFinanceSummary from '@/components/CustomerFinanceSummary';
 import CustomerAiCopyTab from '@/components/CustomerAiCopyTab';
 import CustomerMaterialsTab from '@/components/CustomerMaterialsTab';
 import CustomerOpportunitiesTab from '@/components/CustomerOpportunitiesTab';
+import CustomerWorkQueue from '@/components/CustomerWorkQueue';
 import CustomerFollowUpStatusManager from '@/components/CustomerFollowUpStatusManager';
 import { getCustomerFollowUpStatusOptions, getCustomerFollowUpStatusLabel, getDefaultCustomerFollowUpStatus } from '@/lib/customer-followup-statuses';
 import { loadSettings, generateNextCode, type CustomerCodeSettings } from '../lib/customer-code-settings';
@@ -90,7 +93,20 @@ const displayCustomerStatus = (customer: any) => customer?.status === '已合作
 const statusColors: Record<string, string> = { new: 'bg-blue-100 text-blue-700', following: 'bg-amber-100 text-amber-700', closed: 'bg-green-100 text-green-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
 const levelColors: Record<string, string> = { high: 'bg-orange-100 text-orange-700', normal: 'bg-slate-100 text-slate-600', low: 'bg-gray-100 text-gray-500', vip: 'bg-purple-100 text-purple-700' };
 const subStatusColors: Record<string, string> = { active: 'bg-green-100 text-green-700', expiring_soon: 'bg-amber-100 text-amber-700', expired: 'bg-red-100 text-red-700', paused: 'bg-slate-100 text-slate-600', lost: 'bg-red-100 text-red-700' };
-const contactRoleLabels: Record<string, string> = { boss: '老板', manager: '经理', staff: '员工', other: '其他' };
+const contactRoleLabels: Record<string, string> = { boss: '老板', manager: '经理', staff: '员工', operations: '日常对接人', billing: '付款联系人', other: '其他' };
+
+function customerFormOptions(value: string, options: Array<{ value: string; label: string }>, emptyLabel: string) {
+  const known = options.filter(option => option.value !== '');
+  return [{ value: '', label: emptyLabel }, ...(value && !known.some(option => option.value === value) ? [{ value, label: `原资料：${value}（待核实）` }] : []), ...known];
+}
+
+function customerServiceTarget(customerId: number, progressId: number, taskId?: number) {
+  if (!Number.isSafeInteger(customerId) || customerId <= 0 || !Number.isSafeInteger(progressId) || progressId <= 0 || taskId != null && (!Number.isSafeInteger(taskId) || taskId <= 0)) return null;
+  const returnTo = `/customers?${new URLSearchParams({ detail: String(customerId), tab: 'subscriptions' })}`;
+  const params = new URLSearchParams({ progress_id: String(progressId), detail_tab: taskId == null ? 'overview' : 'tasks', returnTo });
+  if (taskId != null) params.set('task_id', String(taskId));
+  return `/service-board?${params}`;
+}
 const defaultLevelColorClass = 'bg-slate-100 text-slate-700';
 const MANAGEMENT_FEE_KEY = 'management_fee';
 const ADS_FEE_KEY = 'ads_fee';
@@ -196,7 +212,7 @@ function MobilePaginationControls({
 
 const emptyForm = {
   customer_code: '', business_name: '', contact_name: '', phone: '', wechat: '', email: '',
-  address: '', city: '', state: 'CA', country: 'US', industry: 'restaurant', website: '',
+  address: '', city: '', state: '', country: '', industry: '', website: '',
   google_business_link: '', facebook_link: '', instagram_link: '', yelp_link: '', tiktok_link: '',
   has_ordering_system: false, current_platform: '无', selected_platforms: [] as string[], interested_packages: [] as string[], monthly_orders: 0,
   interested_packages_snapshot: {} as Record<string, string>,
@@ -708,7 +724,7 @@ const archivedSubscriptionStatuses = new Set(['stopped', 'lost', 'paused', 'upgr
 
 export default function Customers() {
   const navigate = useNavigate();
-  const { role, employee, hasPermission, isAdmin, systemRole } = useRole();
+  const { role, employee, hasPermission, isAdmin, systemRole, canAccess } = useRole();
   const isOwner = systemRole === 'super_admin';
   const customerActor = `${employee?.id || ''}:${role}:${systemRole || ''}:${getAuthSessionEpoch()}`;
   const customerActorRef = useRef(customerActor); customerActorRef.current = customerActor;
@@ -736,6 +752,8 @@ export default function Customers() {
   const canManageFollowStatuses = systemRole === 'admin' || systemRole === 'super_admin';
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<any[]>([]);
+  const customerQueueScope = useMemo(() => customers.map(customer => `${customer.id}:${JSON.stringify(customerPermissions(customer))}`).sort().join('|'), [customers]);
+  const canReadCustomerHandoffs = canAccess('/sales-leads') && ['sales', 'admin', 'sales_manager', 'operations', 'operations_manager'].includes(String(employee?.role || ''));
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [customersLoadedAt, setCustomersLoadedAt] = useState<string | null>(null);
@@ -1790,7 +1808,7 @@ export default function Customers() {
     interestedPackages.forEach(key => {
       if (!snapshot[key]) snapshot[key] = customerPackageLabels[key] || key;
     });
-    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || 'CA', country: c.country || '', industry: c.industry || 'restaurant', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
+    setForm({ customer_code: c.customer_code || '', business_name: c.business_name || '', contact_name: c.contact_name || '', phone: c.phone || '', wechat: c.wechat || '', email: c.email || '', address: c.address || '', city: c.city || '', state: c.state || '', country: c.country || '', industry: c.industry || '', website: c.website || '', google_business_link: c.google_business_link || '', facebook_link: c.facebook_link || '', instagram_link: c.instagram_link || '', yelp_link: c.yelp_link || '', tiktok_link: c.tiktok_link || '', has_ordering_system: c.has_ordering_system || false, current_platform: c.current_platform || '无', selected_platforms: parseMultiValue(c.selected_platforms), interested_packages: interestedPackages, interested_packages_snapshot: snapshot, monthly_orders: c.monthly_orders || 0, source: c.source || 'phone', sales_person: c.sales_person || '', sales_employee_id: c.sales_employee_id || '', level: c.level || 'normal', status: c.status || 'new', notes: c.notes || '' });
     setManualCityInput(false);
     setEditingId(c.id); setDuplicateWarning(null); setShowForm(true);
     if (!isOwner) { setCustomerProjectForms([]); setCustomerProjectsLoading(false); return; }
@@ -1843,7 +1861,7 @@ export default function Customers() {
   };
 
   const getNextAutoCode = (industry?: string) => {
-    const ind = industry || form.industry || 'restaurant';
+    const ind = industry || form.industry || '';
     return generateNextCode(codeSettings, ind, customers.map(c => c.customer_code).filter(Boolean));
   };
 
@@ -2214,12 +2232,12 @@ export default function Customers() {
           {duplicateWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700"><AlertCircle className="w-4 h-4 flex-shrink-0" />{duplicateWarning}</div>}
           <div data-testid="customer-form-grid" className="space-y-4">
 <section id="customer-form-basic" className="crm-form-section">
-  <div className="crm-form-section-heading"><h3>基本信息</h3><p>先填 3 项必填资料，国家用于核对电话号码。</p></div>
+  <div className="crm-form-section-heading"><h3>先建立客户档案</h3><p>先填 3 项必填资料。地区未核实可暂留空；电话请含国家码，或核实国家后填写本地号码。</p></div>
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 <div><Label>商家名称 *</Label><Input value={form.business_name} onChange={e => { setForm({ ...form, business_name: e.target.value }); checkDuplicate(e.target.value, form.phone); }} /></div>
 <div><Label>联系人 *</Label><Input value={form.contact_name} onChange={e => setForm({ ...form, contact_name: e.target.value })} /></div>
 <div><Label htmlFor="customer-form-phone">电话 *</Label><Input id="customer-form-phone" placeholder="本地号码或 + 国家码" value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); checkDuplicate(form.business_name, e.target.value); }} /></div>
-<div><Label>国家</Label><NativeSelect value={form.country} onChange={v => { setManualCityInput(false); setForm({ ...form, country: v, state: getStatesForCountry(v)[0]?.code || '', city: '' }); }} options={[{ value: '', label: '待确认国家/地区' }, ...countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` }))]} /></div>
+<div><Label>国家（待核实可留空）</Label><NativeSelect value={form.country} onChange={v => { const keepState = getStatesForCountry(v).some(state => state.code === form.state); setManualCityInput(false); setForm({ ...form, country: v, state: keepState ? form.state : '', city: keepState ? form.city : '' }); }} options={customerFormOptions(form.country, countries.map(c => ({ value: c.code, label: `${c.labelCn} (${c.label})` })), '待核实国家/地区')} /></div>
 </div>
   <CustomerFormSection id="customer-form-contacts" title="更多联系资料" description="客户编号与邮箱" filled={Boolean(form.customer_code || form.email)} defaultOpen={Boolean(editingId && Boolean(form.customer_code || form.email))}>
 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2234,13 +2252,12 @@ export default function Customers() {
 </div>
 </CustomerFormSection>
 </section>
-<section id="customer-form-classification" className="crm-form-section">
-  <div className="crm-form-section-heading"><h3>地区与客户归类</h3><p>核对行业、来源、状态与负责人。</p></div>
+<CustomerFormSection id="customer-form-classification" title="接单前核对地区与归类" description="行业、地区、来源与负责销售；已有资料沿用，未知值保留待核实" filled={Boolean(form.industry || form.state || form.city || form.address)}>
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 <div>
               <Label>行业</Label>
               <div className="flex gap-1.5">
-                <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v }))} className="flex-1" />
+                <NativeSelect value={form.industry} onChange={v => setForm({ ...form, industry: v })} options={customerFormOptions(form.industry, Object.entries(industryLabels).map(([k, v]) => ({ value: k, label: v })), '待核实行业')} className="flex-1" />
                 <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 px-3 text-xs text-blue-600 hover:text-blue-700 sm:h-10 sm:min-h-0 sm:px-2" aria-label="添加行业分类" onClick={() => setShowAddIndustry(true)}><Plus className="w-3.5 h-3.5" /></Button>
               </div>
               {showAddIndustry && (
@@ -2318,7 +2335,7 @@ export default function Customers() {
 </div>
   <CustomerFormSection id="customer-form-address" title="详细地址" description="州 / 省、城市与地址" filled={Boolean(form.city || form.address)} defaultOpen={Boolean(editingId && Boolean(form.city || form.address))}>
 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-<div><Label>州/省</Label><NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={countryStates.length > 0 ? countryStates.map(s => ({ value: s.code, label: s.code })) : [{ value: '', label: '请先选择国家' }]} /></div>
+<div><Label>州/省（选填）</Label>{countryStates.length > 0 ? <NativeSelect value={form.state} onChange={v => { setManualCityInput(false); setForm({ ...form, state: v, city: '' }); }} options={customerFormOptions(form.state, countryStates.map(s => ({ value: s.code, label: s.code })), '待核实州/省')} /> : <Input value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} placeholder="按已有资料填写，待核实可留空" />}</div>
 <div>
               <Label>城市</Label>
               {formCities.length > 0 && (
@@ -2361,9 +2378,9 @@ export default function Customers() {
                 <div><Label className="text-xs">归属生效日期</Label><Input type="date" value={commissionEffectiveFrom} onChange={event => setCommissionEffectiveFrom(event.target.value)} /></div>
               </div>
             </div>}</div>
-</section>
+</CustomerFormSection>
 {canEditProjects && (
-<CustomerFormSection id="customer-form-projects" title="合作项目" description="尚未合作可暂不添加；已添加的项目保持展开，便于核对必填资料。" filled={customerProjectForms.length > 0} defaultOpen={Boolean(editingId && customerProjectForms.length)} forceOpen={customerProjectsLoading || customerProjectForms.length > 0} statusLabel={customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '未添加'}>
+<CustomerFormSection id="customer-form-projects" title="合作确认后登记项目" description="新需求先在客户商机确认；这里沿用已有项目，历史未关联资料先核对来源。" filled={customerProjectForms.length > 0} defaultOpen={Boolean(editingId && customerProjectForms.length)} forceOpen={customerProjectsLoading || customerProjectForms.length > 0} statusLabel={customerProjectsLoading ? '读取中' : customerProjectForms.length ? `已添加 ${customerProjectForms.length} 项` : '可稍后登记'}>
 <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -2711,6 +2728,43 @@ export default function Customers() {
         return aTime - bTime;
       });
     const serviceRows = subscriptions.map(item => ({...item, computed_status:computeSubscriptionState(item), days_left:getSubscriptionRemainingDays(item)}));
+    const primaryContact = getCustomerPrimaryContact(c, effective.modules.basic.read);
+    const cooperationRows = buildCustomerCooperationRows({ customerId: c.id, projects: effective.modules.delivery.read ? customerProjects : [], subscriptions: effective.modules.delivery.read ? serviceRows : [], deals: effective.modules.deals.read ? deals : [] });
+    const currentCooperationRows = cooperationRows.filter(row => row.statusKind !== 'ended');
+    const endedCooperationRows = cooperationRows.filter(row => row.statusKind === 'ended');
+    const previewCooperationRows = currentCooperationRows.length ? currentCooperationRows.slice(0, 2) : endedCooperationRows.slice(0, 1);
+    const serviceIssues = serviceProgresses.filter(item => Number(item.customer_id) === Number(c.id) && item.issue_status && item.issue_status !== 'none' && !item.issue_resolved);
+    const openServiceTasks = serviceTasks.filter(item => Number(item.customer_id) === Number(c.id) && !['completed', 'cancelled'].includes(item.status || '')).sort((a, b) => String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+    const progressTarget = (progress: (typeof serviceProgresses)[number], taskId?: number) => canAccess('/service-board') && Number(progress?.customer_id) === Number(c.id) ? customerServiceTarget(Number(c.id), Number(progress.id), taskId) : null;
+    const taskTarget = (task: (typeof serviceTasks)[number]) => {
+      const progress = serviceProgresses.find(item => Number(item.id) === Number(task.service_progress_id) && Number(item.customer_id) === Number(c.id));
+      return progress ? progressTarget(progress, Number(task.id)) : null;
+    };
+    const openServiceRecord = (target: string | null) => { if (target) navigate(target); else handleDetailTabChange('subscriptions'); };
+    const cooperationOwner = (row: (typeof cooperationRows)[number]) => row.ownerId ? employeesList.find(item => Number(item.id) === row.ownerId)?.name || '已指定负责人' : '服务负责人待确认';
+    const renderCooperationRow = (row: (typeof cooperationRows)[number], compact = false) => <article className="cops-cooperation-row" key={row.key}>
+      <div className="cops-cooperation-heading"><h4 title={row.title}>{row.title}</h4><Badge variant="outline" className={row.unlinked || row.statusKind === 'unknown' ? 'border-amber-200 text-amber-700' : ''}>{row.statusLabel}</Badge></div>
+      <p className={row.unlinked ? 'cops-source is-unlinked' : 'cops-source'}>{row.source === 'project' ? '已关联合作项目' : row.source === 'legacy_subscription' ? '历史套餐 · 合作项目待关联' : '历史成交 · 合作项目待关联'}</p>
+      <p className="cops-record-meta">{cooperationOwner(row)}{row.renewalOwner && ` · 续费负责：${row.renewalOwner}`}</p>
+      {(row.startDate || row.endDate) && <p className="cops-record-meta">{row.startDate?.slice(0, 10) || '开始待核实'} 至 {row.endDate?.slice(0, 10) || '结束待核实'}</p>}
+      {row.periodConflict && <p className="cops-source is-unlinked">服务区间或续费负责人存在多条不同记录，待核对。</p>}
+      {row.project?.business_line_code === 'one_time_project' && <p className="cops-record-meta">一次性项目 · 交付按项目记录核对</p>}
+      <div className="cops-row-actions">{compact ? <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>合作明细</Button> : row.dealIds.length > 0 && effective.modules.deals.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('deals')}>查看成交记录</Button>}</div>
+    </article>;
+    const renderServiceIssue = (progress: (typeof serviceProgresses)[number]) => <article className="cops-risk-row" key={`issue:${progress.id}`}><h4 title={progress.issue_description}>{progress.issue_description || '服务问题描述待补充'}</h4><p>{progress.issue_owner ? `处理人：${progress.issue_owner}` : '处理人待确认'}{progress.issue_found_date && ` · 发现：${String(progress.issue_found_date).slice(0, 10)}`}</p>{progressTarget(progress) ? <Button size="sm" variant="outline" onClick={() => openServiceRecord(progressTarget(progress))}>打开服务问题</Button> : <p className="cops-record-meta">当前页面保留问题原文，请联系上述处理人核对。</p>}</article>;
+    const renderServiceTask = (task: (typeof serviceTasks)[number]) => <article className="cops-risk-row" key={`task:${task.id}`}><h4 title={task.task_name}>{task.task_name || '服务任务名称待确认'}</h4><p>{task.assignee_name ? `负责人：${task.assignee_name}` : '负责人待确认'} · {task.due_date ? `期限：${String(task.due_date).slice(0, 10)}` : '期限待确认'} · {Object.prototype.hasOwnProperty.call(taskStatusLabels, task.status || '') ? taskStatusLabels[task.status] : '状态待核实'}</p>{taskTarget(task) ? <Button size="sm" variant="outline" onClick={() => openServiceRecord(taskTarget(task))}>打开这条任务</Button> : <p className="cops-record-meta">此任务未关联当前可访问的服务进度，请按上述负责人和期限核对。</p>}</article>;
+    const serviceWorkContent = <div className="customer-operations cops-service-work">
+      <section><div className="cops-section-title"><h3>合作记录与负责人</h3><span>{cooperationRows.length} 条已读取记录</span></div>
+        {currentCooperationRows.length ? <div className="cops-record-list">{currentCooperationRows.slice(0, 4).map(row => renderCooperationRow(row))}{currentCooperationRows.length > 4 && <details className="cops-disclosure"><summary>更多合作记录 · {currentCooperationRows.length - 4} 条</summary><div className="cops-record-list">{currentCooperationRows.slice(4).map(row => renderCooperationRow(row))}</div></details>}</div> : !endedCooperationRows.length ? <p className="cops-empty">当前授权资料中暂无合作记录。已有成交或套餐会在这里显示，不会自动建立项目。</p> : <div className="cops-record-list">{endedCooperationRows.slice(0, 1).map(row => renderCooperationRow(row))}</div>}
+        {endedCooperationRows.length > (currentCooperationRows.length ? 0 : 1) && <details className="cops-disclosure"><summary>历史合作记录 · {endedCooperationRows.length}</summary><div className="cops-record-list">{endedCooperationRows.slice(currentCooperationRows.length ? 0 : 1).map(row => renderCooperationRow(row))}</div></details>}
+      </section>
+      {(serviceIssues.length > 0 || openServiceTasks.length > 0) && <section><div className="cops-section-title"><h3>服务问题与待办</h3><span>{serviceIssues.length} 个问题 · {openServiceTasks.length} 个待办</span></div><div className="cops-record-list">
+        {serviceIssues.slice(0, 2).map(renderServiceIssue)}
+        {serviceIssues.length > 2 && <details className="cops-disclosure"><summary>其余服务问题 · {serviceIssues.length - 2} 个</summary><div className="cops-record-list">{serviceIssues.slice(2).map(renderServiceIssue)}</div></details>}
+        {openServiceTasks.slice(0, 3).map(renderServiceTask)}
+        {openServiceTasks.length > 3 && <details className="cops-disclosure"><summary>其余服务待办 · {openServiceTasks.length - 3} 个</summary><div className="cops-record-list">{openServiceTasks.slice(3).map(renderServiceTask)}</div></details>}
+      </div></section>}
+    </div>;
     const pendingServiceRows = serviceRows.filter(item => item.computed_status === 'pending');
     const currentServiceRows = serviceRows.filter(item => item.computed_status !== 'pending' && !archivedSubscriptionStatuses.has(item.computed_status));
     const historicalServiceRows = serviceRows.filter(item => archivedSubscriptionStatuses.has(item.computed_status));
@@ -2718,9 +2772,9 @@ export default function Customers() {
     const activeCustomerProjectCount = customerProjects.filter(item => activeCustomerProjectStatuses.has(item.status)).length;
     const currentLifecycleStatus = lifecycleDetail?.cycles?.[0]?.status;
     const hasClosureMismatch = currentLifecycleStatus === 'stopped' && (activeSubscriptionCount > 0 || activeCustomerProjectCount > 0);
-    const pendingServiceTasks = serviceTasks.filter(item => !['completed', 'cancelled'].includes(item.status || '')).length;
-    const overdueServiceTasks = serviceTasks.filter(item => item.due_date && item.due_date.slice(0, 10) < businessToday && !['completed', 'cancelled'].includes(item.status || '')).length;
-    const openServiceIssues = serviceProgresses.filter(item => item.issue_status && item.issue_status !== 'none' && !item.issue_resolved).length;
+    const pendingServiceTasks = openServiceTasks.length;
+    const overdueServiceTasks = openServiceTasks.filter(item => item.due_date && item.due_date.slice(0, 10) < businessToday).length;
+    const openServiceIssues = serviceIssues.length;
     const detailBusinessLineMap = Object.fromEntries((productCatalog.business_lines || []).map((item: any) => [item.id, item]));
     const detailProductMap = Object.fromEntries((productCatalog.products || []).map((item: any) => [item.id, item]));
     const detailPlanMap = Object.fromEntries((productCatalog.plans || []).map((item: any) => [item.id, item]));
@@ -2794,14 +2848,14 @@ export default function Customers() {
     if (overdueServiceTasks > 0) customer360Actions.push({
       key: 'overdue-task', title: `${overdueServiceTasks} 个服务任务已逾期`,
       description: '先确认卡点和负责人，再更新服务进度或完成结果。', button: '处理服务',
-      tone: 'border-rose-200 bg-rose-50', onClick: () => handleDetailTabChange('subscriptions'),
+      tone: 'border-rose-200 bg-rose-50', onClick: () => openServiceRecord(taskTarget(openServiceTasks.find(task => task.due_date && task.due_date.slice(0, 10) < businessToday) || {})),
     });
     if (openServiceIssues > 0) customer360Actions.push({
       key: 'service-issue', title: `${openServiceIssues} 个服务问题未解决`,
       description: '进入服务信息核对问题描述、处理人和结果。', button: '解决问题',
-      tone: 'border-violet-200 bg-violet-50', onClick: () => handleDetailTabChange('subscriptions'),
+      tone: 'border-violet-200 bg-violet-50', onClick: () => openServiceRecord(progressTarget(serviceIssues[0])),
     });
-    if (canManageContacts && contacts.length === 0) customer360Actions.push({
+    if (canManageContacts && contacts.length === 0 && !primaryContact) customer360Actions.push({
       key: 'contact', title: '补充关键联系人', description: '至少记录老板或主要对接人，避免后续交付找不到人。', button: '添加联系人',
       tone: 'border-slate-200 bg-slate-50', onClick: () => { handleDetailTabChange('contacts'); setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); },
     });
@@ -2892,14 +2946,19 @@ export default function Customers() {
           {customerCanReadTab(c, 'overview') && <TabsContent value="overview">
             {detailLoading || (detailLoadError && !hasDetailSnapshot) ? <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">{detailLoading ? '正在核对客户的服务、收款与待办，完成后显示完整概览…' : '客户关联数据未完成核对，请重新加载后查看概览。'}</div> : <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-4">
-                <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">下一步动作</h3><p className="mt-1 text-xs text-slate-500">提醒已转换成可直接处理的动作，不再需要先去别的页面找记录。</p></div><Badge className={customer360Actions.length ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}>{customer360Actions.length ? `${customer360Actions.length} 项待处理` : '当前无风险事项'}</Badge></div>
-                  {customer360Actions.length === 0 ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-800">当前已授权资料中没有需要立即处理的事项。</div> : <div className="mt-4 space-y-2">{customer360Actions.slice(0, 6).map(action => <div key={action.key} className={`flex items-center gap-3 rounded-xl border p-3 ${action.tone}`}><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{action.title}</p><p className="mt-1 line-clamp-2 text-xs text-slate-600">{action.description}</p></div><Button size="sm" variant="outline" className="shrink-0 bg-white" onClick={action.onClick}>{action.button}</Button></div>)}</div>}
+                <Card className="border-slate-200"><CardContent className="customer-operations p-4 md:p-5">
+                  <div className="cops-section-title"><div><h3>下一步</h3><p>先处理最需要继续推进的一件事。</p></div><Badge variant="outline">{customer360Actions.length} 项待处理</Badge></div>
+                  {(overdueServiceTasks > 0 || openServiceIssues > 0 || upcomingRenewalCount > 0) && <p className="cops-risk-summary" role="status">{[overdueServiceTasks > 0 ? `逾期任务 ${overdueServiceTasks}` : '', openServiceIssues > 0 ? `未解决问题 ${openServiceIssues}` : '', upcomingRenewalCount > 0 ? `即将到期 ${upcomingRenewalCount}` : ''].filter(Boolean).join(' · ')}</p>}
+                  {customer360Actions.length === 0 ? <p className="cops-empty">当前已读取的授权资料中暂无待处理事项。</p> : <>
+                    <div className={`cops-next-action ${customer360Actions[0].tone}`}><div><h4>{customer360Actions[0].title}</h4><p>{customer360Actions[0].description}</p></div><Button size="sm" variant="outline" onClick={customer360Actions[0].onClick}>{customer360Actions[0].button}</Button></div>
+                    {customer360Actions.length > 1 && <details className="cops-disclosure"><summary>其他待处理 · {customer360Actions.length - 1} 项</summary><div className="cops-record-list">{customer360Actions.slice(1).map(action => <div key={action.key} className={`cops-next-action ${action.tone}`}><div><h4>{action.title}</h4><p>{action.description}</p></div><Button size="sm" variant="outline" onClick={action.onClick}>{action.button}</Button></div>)}</div></details>}
+                  </>}
                 </CardContent></Card>
 
-                {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-base font-semibold text-slate-900">当前合作与交付</h3><p className="mt-1 text-xs text-slate-500">项目、套餐和服务任务统一查看。</p></div><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>查看服务明细</Button></div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 md:gap-3"><div className="rounded-xl bg-blue-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-blue-700 md:text-xs">合作项目</p><p className="mt-1 text-xl font-semibold text-blue-900">{activeCustomerProjectCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">在服套餐</p><p className="mt-1 text-xl font-semibold text-slate-900">{activeSubscriptionCount}</p></div><div className="rounded-xl bg-slate-50 p-2.5 md:p-3"><p className="text-[11px] leading-4 text-slate-500 md:text-xs">待办任务</p><p className="mt-1 text-xl font-semibold text-slate-900">{pendingServiceTasks}</p></div></div>
+                {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="customer-operations p-4 md:p-5">
+                  <div className="cops-section-title"><div><h3>合作与交付</h3><p>沿用项目、套餐和成交原记录；未关联资料明确待核对。</p></div><Button size="sm" variant="outline" onClick={() => handleDetailTabChange('subscriptions')}>查看全部</Button></div>
+                  {previewCooperationRows.length ? <div className="cops-record-list">{previewCooperationRows.map(row => renderCooperationRow(row, true))}</div> : <p className="cops-empty">当前授权资料中暂无合作记录。</p>}
+                  {cooperationRows.some(row => row.unlinked) && <p className="cops-source is-unlinked">{cooperationRows.filter(row => row.unlinked).length} 条历史记录的项目关联待核对，原成交和收款保持不变。</p>}
                 </CardContent></Card>)}
 
                 <Card className="border-slate-200"><CardContent className="p-4 md:p-5">
@@ -2911,7 +2970,7 @@ export default function Customers() {
               <div className="space-y-4">
                 {effective.modules.basic.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5">
                   <h3 className="text-base font-semibold text-slate-900">客户摘要</h3>
-                  <div className="customer-detail-summary-fields mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{addressLines.region || '地区待补充'}</span></div><div className="flex justify-between gap-4"><span className="shrink-0 text-slate-500">详细地址</span><span className="min-w-0 break-words text-right font-medium text-slate-800">{addressLines.street || '地址待补充'}</span></div></div>
+                  <div className="customer-detail-summary-fields mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><span className="text-slate-500">客户编号</span><span className="font-medium text-slate-800">{c.customer_code || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">销售负责人</span><span className="font-medium text-slate-800">{c.sales_person || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">联系人</span><span className="font-medium text-slate-800">{c.contact_name || '-'}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">电话</span><span className="font-medium text-slate-800">{formatPhoneNumber(c.phone, c.country)}</span></div><div className="flex justify-between gap-4"><span className="text-slate-500">地区</span><span className="text-right font-medium text-slate-800">{addressLines.region || '地区待补充'}</span></div><div className="flex justify-between gap-4"><span className="shrink-0 text-slate-500">详细地址</span><span className="min-w-0 break-words text-right font-medium text-slate-800">{addressLines.street || '地址待补充'}</span></div></div>
                   <div className="mt-4 flex flex-wrap gap-2">{canManageContacts && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('info')}>查看基础资料</Button>}{canCreateFollowUp && <Button size="sm" variant="outline" onClick={() => { handleDetailTabChange('followups'); setFollowForm(emptyFollowForm); setEditingFollowId(null); setShowFollowForm(true); }}>新增跟进</Button>}{effective.modules.opportunities.read && <Button size="sm" variant="outline" onClick={() => handleDetailTabChange('opportunities')}>查看商机</Button>}</div>
                 </CardContent></Card>)}
 
@@ -2920,7 +2979,7 @@ export default function Customers() {
                   <div className="mt-4 space-y-3">{canViewReceipts && <><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计应收</p><p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(totalAmountDue)}</p></div><span className="text-xs text-slate-400">最近 {latestDealDate}</span></div><div className="flex items-end justify-between border-b border-slate-100 pb-3"><div><p className="text-xs text-slate-500">累计实收</p><p className="mt-1 text-xl font-semibold text-emerald-700">{formatCurrency(totalAmountPaid)}</p></div><span className="text-xs text-slate-400">最近 {latestPaymentDate}</span></div><div className="flex items-end justify-between"><div><p className="text-xs text-slate-500">当前未结清</p><p className={`mt-1 text-xl font-semibold ${totalOutstanding > 0 ? 'text-rose-700' : 'text-slate-900'}`}>{formatCurrency(totalOutstanding)}</p></div><span className="text-xs text-slate-400">累计应收 {formatCurrency(totalAmountDue)}</span></div></>}{!canViewReceipts && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">{effective.finance_access === 'status' ? `收款记录 ${financeStatus?.payment_count ?? 0} 笔 · ${financeStatus?.has_outstanding ? '有待收款' : '暂无待收款'}；金额未授权` : '财务信息未授权'}</p>}</div>
                 </CardContent></Card>
 
-                {effective.modules.delivery.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>)}
+                {effective.modules.renewals.read && (<Card className="border-slate-200"><CardContent className="p-4 md:p-5"><h3 className="text-base font-semibold text-slate-900">续费摘要</h3><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-700">即将到期</p><p className="mt-1 text-xl font-semibold text-amber-900">{upcomingRenewalCount}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">自动续费</p><p className="mt-1 text-xl font-semibold text-slate-900">{autoRenewCount}</p></div></div><Button className="mt-4 w-full" variant="outline" onClick={() => handleDetailTabChange('renewals')}>查看续费与收款状态</Button></CardContent></Card>)}
               </div>
             </div>}
           </TabsContent>}
@@ -3001,8 +3060,9 @@ export default function Customers() {
             <Card className="customer-detail-contacts-card border-slate-200"><CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-medium text-slate-600 flex items-center gap-2"><Users className="w-4 h-4" /> 联系人信息</span>
-                {canManageContacts && <Button size="sm" onClick={() => { setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); }} className="bg-blue-600 hover:bg-blue-700"><UserPlus className="w-3.5 h-3.5 mr-1" /> 添加联系人</Button>}
+                {canManageContacts && <Button size="sm" onClick={() => { setContactForm(emptyContactForm); setEditingContactId(null); setShowContactForm(true); }} className="bg-blue-600 hover:bg-blue-700"><UserPlus className="w-3.5 h-3.5 mr-1" /> {primaryContact ? '添加其他对接人' : '添加联系人'}</Button>}
               </div>
+              {primaryContact && <article className="customer-operations cops-primary-contact"><div className="cops-section-title"><div><h3>{primaryContact.name || '主联系人姓名待补充'}</h3><p>主资料联系人 · 沿用客户原资料</p></div>{canEditBasic(c) && <Button size="sm" variant="outline" disabled={detailWriteBlocked} onClick={() => void openEdit(c)}>编辑主资料</Button>}</div><p>{primaryContact.phone ? formatPhoneNumber(primaryContact.phone, c.country) : '电话待补充'}{primaryContact.email && ` · ${primaryContact.email}`}</p></article>}
               {canManageContacts && showContactForm && (
                 <div className="customer-detail-inline-form mb-4 p-4 border border-blue-200 bg-blue-50/50 rounded-lg space-y-3">
                   <span className="text-sm font-medium text-blue-700">{editingContactId ? '编辑联系人' : '添加联系人'}</span>
@@ -3010,7 +3070,7 @@ export default function Customers() {
                     <div><Label className="text-xs">姓名 *</Label><Input value={contactForm.contact_name} onChange={e => setContactForm({ ...contactForm, contact_name: e.target.value })} placeholder="联系人姓名" /></div>
                     <div><Label className="text-xs" htmlFor="customer-contact-phone">电话</Label><Input id="customer-contact-phone" value={contactForm.contact_phone} onChange={e => setContactForm({ ...contactForm, contact_phone: e.target.value })} placeholder="本地号码或 + 国家码，分机 ext 123" /></div>
                     <div><Label className="text-xs">角色</Label><NativeSelect value={contactForm.contact_role} onChange={v => setContactForm({ ...contactForm, contact_role: v })} options={Object.entries(contactRoleLabels).map(([k, v]) => ({ value: k, label: v }))} /></div>
-                    <div><Label className="text-xs">备注</Label><Input value={contactForm.notes} onChange={e => setContactForm({ ...contactForm, notes: e.target.value })} placeholder="备注信息" /></div>
+                    <div><Label className="text-xs">对接补充（选填）</Label><Input value={contactForm.notes} onChange={e => setContactForm({ ...contactForm, notes: e.target.value })} placeholder="负责事项、首选语言或当地可联系时段" /></div>
                   </div>
                   <div className="customer-detail-inline-form-actions flex justify-end gap-2">
                     <Button variant="outline" size="sm" disabled={savingContact} onClick={() => { if (contactDraft.confirmDiscard()) { setShowContactForm(false); setEditingContactId(null); } }}>取消</Button>
@@ -3018,7 +3078,7 @@ export default function Customers() {
                   </div>
                 </div>
               )}
-              {contacts.length === 0 && !showContactForm ? <p className="text-sm text-slate-400 text-center py-8">{canManageContacts ? '暂无联系人信息，点击“添加联系人”开始添加' : '暂无联系人信息'}</p> : (
+              {contacts.length === 0 && !showContactForm && !primaryContact ? <p className="text-sm text-slate-400 text-center py-8">{canManageContacts ? '当前授权资料中暂无联系人，可添加主要对接人' : '当前授权资料中暂无联系人信息'}</p> : (
                 <div className="space-y-3">{contacts.map((ct: any) => (
                   <div key={ct.id} className="customer-contact-record p-3 bg-slate-50 rounded-lg group">
                     <div className="customer-contact-record-heading flex items-center justify-between">
@@ -3125,7 +3185,9 @@ export default function Customers() {
 
           {customerCanReadTab(c, 'subscriptions') && (
           <TabsContent value="subscriptions">
-            <Card className="border-slate-200"><CardContent className="p-5">
+            <Card className="border-slate-200"><CardContent className="customer-operations p-4 md:p-5">
+              {serviceWorkContent}
+              <details className="cops-disclosure"><summary>套餐与账期明细 · {subscriptions.length} 条</summary>
               {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无套餐</p> : (
                 <>
                   {pendingServiceRows.length > 0 && <section className="mb-4 space-y-2" aria-label="待开始套餐"><p className="text-sm font-semibold text-amber-800">待开始套餐 · {pendingServiceRows.length}</p>{pendingServiceRows.map((item: any) => <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{getPackageClassification(item.package_name).currentLabel}</span><Badge className="bg-amber-100 text-amber-800">{canViewFinanceStatus ? '待核款 · 未开始' : '未开始服务'}</Badge></div><p className="mt-2 text-xs text-amber-800">{canViewFinanceStatus ? '成交已登记，实际收款尚待老板核对；当前不计为在服套餐。' : '成交已登记，服务尚未开始；当前不计为在服套餐。'}</p><p className="mt-1 text-xs text-slate-500">约定服务：{item.start_date?.slice(0, 10) || '待确认'} 至 {item.end_date?.slice(0, 10) || '按套餐约定'}</p></div>)}</section>}
@@ -3157,6 +3219,7 @@ export default function Customers() {
                   </details>}
                 </>
               )}
+            </details>
             </CardContent></Card>
           </TabsContent>
           )}
@@ -3349,7 +3412,7 @@ export default function Customers() {
           {customerCanReadTab(c, 'renewals') && (
           <TabsContent value="renewals">
             <Card className="border-slate-200"><CardContent className="p-5">
-              {subscriptions.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
+              {renewalRows.length === 0 ? <p className="text-sm text-slate-400 text-center py-8">暂无续费信息</p> : (
                 <>
                   <div className="space-y-3">{paginatedRenewals.items.map((s: any) => {
                     const computedStatus = s.computed_status || computeSubscriptionState(s);
@@ -3478,6 +3541,8 @@ export default function Customers() {
           </div>
         </details>
       </div>
+
+      <CustomerWorkQueue actorKey={customerActor} scopeKey={customerQueueScope} customers={customers} isOwner={isOwner} canReadHandoffs={canReadCustomerHandoffs} onOpenCustomer={(id, tab) => { const customer = customers.find(item => Number(item.id) === id && customerPermissions(item).access_level !== 'none'); if (customer) void openDetail(customer, tab); }} />
 
       {showColPicker && (
         <Card className="border-slate-200"><CardContent className="p-3">

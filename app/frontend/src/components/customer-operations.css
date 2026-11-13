@@ -1,0 +1,148 @@
+/* Customer operations presentation only; no global component or theme rules. */
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations {
+  min-width: 0;
+  color: var(--crm-ink, #172638);
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-section-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations :is(.cops-section-title p, .cops-section-title > span, .cops-record-meta, .cops-source, .cops-empty) {
+  margin: 4px 0 0;
+  color: var(--crm-muted, #65758a);
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-record-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations :is(.cops-cooperation-row, .cops-risk-row, .cops-primary-contact, .cops-next-action) {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--crm-border, #dfe5ee);
+  border-radius: 8px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-cooperation-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations h4 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  flex: 1 1 140px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-risk-row h4 {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations :is(.cops-cooperation-heading > div, .cops-cooperation-heading > span) {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-next-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-next-action > div {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations :is(.cops-next-action p, .cops-risk-row p, .cops-primary-contact > p) {
+  margin: 4px 0 0;
+  color: var(--crm-muted, #65758a);
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-row-actions:empty {
+  display: none;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations :is(.cops-disclosure, .cops-service-work > section + section) {
+  margin-top: 16px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-disclosure > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-block: 8px;
+  cursor: pointer;
+  color: var(--crm-ink, #172638);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .is-unlinked {
+  color: #92400e;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-risk-summary {
+  margin: 8px 0;
+  color: #92400e;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations button {
+  min-height: 44px;
+}
+
+@media (max-width: 767px) {
+  .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/customers"] .customer-detail-page .customer-operations .cops-next-action > button {
+    width: 100%;
+  }
+}

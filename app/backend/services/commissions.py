@@ -380,13 +380,33 @@ async def _is_first_service_payment(db: AsyncSession, payment: Payments) -> bool
 async def _resolve_payment_scope(db: AsyncSession, payment: Payments) -> None:
     if payment.engagement_id:
         engagement = await db.get(CustomerEngagement, payment.engagement_id)
-        if engagement:
+        if engagement and engagement.customer_id == payment.customer_id:
+            if payment.business_line_id not in (None, engagement.business_line_id) or payment.product_id not in (None, engagement.product_id):
+                return
             payment.business_line_id = payment.business_line_id or engagement.business_line_id
             payment.product_id = payment.product_id or engagement.product_id
-            return
+        # An explicit project, even if no longer resolvable, is never replaced
+        # by a subscription/name guess from another source.
+        return
     if payment.source_deal_id:
         deal = await db.get(Deals, payment.source_deal_id)
         if deal:
+            if deal.customer_id != payment.customer_id:
+                return
+            if deal.engagement_id:
+                engagement = await db.get(CustomerEngagement, deal.engagement_id)
+                if not engagement or engagement.customer_id != payment.customer_id:
+                    return
+                if (deal.business_line_id not in (None, engagement.business_line_id)
+                        or deal.product_id not in (None, engagement.product_id)
+                        or deal.product_plan_id not in (None, engagement.product_plan_id)
+                        or payment.business_line_id not in (None, engagement.business_line_id)
+                        or payment.product_id not in (None, engagement.product_id)):
+                    return
+                payment.engagement_id = engagement.id
+                payment.business_line_id = payment.business_line_id or engagement.business_line_id
+                payment.product_id = payment.product_id or engagement.product_id
+                return
             subscription = await db.scalar(
                 select(Subscriptions).where(Subscriptions.deal_id == deal.id).order_by(Subscriptions.id.desc()).limit(1)
             )

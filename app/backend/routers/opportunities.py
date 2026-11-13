@@ -466,6 +466,9 @@ async def convert_opportunity(
         opportunity_id=opportunity.id,
         customer_id=opportunity.customer_id,
         customer_name=opportunity.customer_name,
+        business_line_id=line.id,
+        product_id=product.id,
+        product_plan_id=plan.id,
         sales_employee_id=opportunity.owner_employee_id,
         sales_name=opportunity.owner_name,
         product_type=line.code,
@@ -500,6 +503,7 @@ async def convert_opportunity(
     )
     db.add(engagement)
     await db.flush()
+    deal.engagement_id = engagement.id
     record_customer_change(db, current_user, opportunity, "opportunities", changes={"status": "won", "converted_deal_id": deal.id, "converted_engagement_id": engagement.id})
     opportunity.status = "won"
     opportunity.won_at = opportunity.won_at or now

@@ -2,6 +2,7 @@ import CompactFinanceTable from '@/components/CompactFinanceTable';
 import './crm-customer-delivery-compact.css';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { getSafeInternalPath, getReturnLabel } from '@/lib/navigation-state';
+import { readServiceDetailTarget } from '@/lib/service-detail-target';
 import { useDialogDraft } from '@/lib/use-dialog-draft';
 import { useRetainedView } from '@/lib/use-retained-view';
 import { useListScroll } from '@/lib/use-list-scroll';
@@ -509,6 +510,9 @@ export default function ServiceBoard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const sourceReturnPath = getSafeInternalPath(searchParams.get('returnTo'));
   const focusedProgress = useRef('');
+  const detailTarget = useMemo(() => readServiceDetailTarget(searchParams), [searchParams]);
+  const focusedLinkedTask = useRef('');
+  const linkedTaskElement = useRef<HTMLDivElement | null>(null);
 
   // Core data
   const [progresses, setProgresses] = useState<ServiceProgress[]>([]);
@@ -1216,7 +1220,7 @@ export default function ServiceBoard() {
     setDetailTab('overview');
     closeCompleteTaskDialog(true);
     if (sourceReturnPath) navigate(sourceReturnPath);
-    else if (searchParams.has('progress_id')) { const params = new URLSearchParams(searchParams); params.delete('progress_id'); params.delete('returnTo'); setSearchParams(params, { replace: true }); }
+    else if (searchParams.has('progress_id')) { const params = new URLSearchParams(searchParams); params.delete('progress_id'); params.delete('detail_tab'); params.delete('task_id'); params.delete('returnTo'); setSearchParams(params, { replace: true }); }
   };
 
   const openCompleteTask = async (task: ServiceTask) => {
@@ -1577,12 +1581,23 @@ export default function ServiceBoard() {
 
   useEffect(() => {
     const id = searchParams.get('progress_id');
-    if (loading || !id || focusedProgress.current === id) return;
-    const progress = progresses.find(item => String(item.id) === id);
-    focusedProgress.current = id;
-    if (progress) { void openDetail(progress); setDetailTab('tasks'); }
+    const key = detailTarget?.key || `invalid:${id}`;
+    if (loading || !id || focusedProgress.current === key) return;
+    const progress = detailTarget ? progresses.find(item => item.id === detailTarget.progressId) : undefined;
+    focusedProgress.current = key;
+    if (progress && detailTarget) { void openDetail(progress); setDetailTab(detailTarget.tab); }
     else toast.error('该服务记录不在当前可访问范围内');
-  }, [loading, progresses, searchParams]);
+  }, [loading, progresses, searchParams, detailTarget]);
+
+  useEffect(() => {
+    if (!detailTarget?.taskId || detailTarget.tab !== 'tasks' || detailTab !== 'tasks'
+      || selectedProgress?.id !== detailTarget.progressId || detailTasksLoading || detailTasksError
+      || focusedLinkedTask.current === detailTarget.key) return;
+    focusedLinkedTask.current = detailTarget.key;
+    const task = detailTasks.find(item => item.id === detailTarget.taskId && item.service_progress_id === detailTarget.progressId);
+    if (task) linkedTaskElement.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    else toast.error('目标任务已变更或不在当前可访问范围内，请核对该服务的任务清单');
+  }, [detailTarget, detailTab, selectedProgress?.id, detailTasksLoading, detailTasksError, detailTasks]);
 
   // ==================== Export data preparation ====================
   const exportData = useMemo(() => {
@@ -2648,11 +2663,12 @@ export default function ServiceBoard() {
                             <Badge className="bg-green-100 text-green-700">{completedDetailTasks.length} 个</Badge>
                           </div>
                         )}
-                        <div data-testid={`service-task-${t.id}`} className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} group`}>
+                        <div ref={detailTarget?.taskId === t.id ? linkedTaskElement : undefined} data-testid={`service-task-${t.id}`} data-linked-task={detailTarget?.taskId === t.id ? 'true' : undefined} className={`p-3 rounded-lg border ${t.status === 'delayed' || isTaskOverdue ? 'border-red-200 bg-red-50/50' : t.status === 'completed' ? 'border-green-200 bg-green-50/30' : t.status === 'waiting_client' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200'} ${detailTarget?.taskId === t.id ? 'ring-2 ring-primary/40' : ''} group`}>
                           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
                           <div className="min-w-0">
                             <div className="flex min-w-0 flex-1 items-center gap-2 flex-wrap">
                               <span className={`text-sm font-medium ${t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-700'}`}>{t.task_name}</span>
+                              {detailTarget?.taskId === t.id && <Badge variant="outline">本次定位</Badge>}
                               <Badge className={`text-[10px] ${taskStatusColors[t.status]}`}>{taskStatusLabels[t.status]}</Badge>
                               {t.platform && <Badge className="text-[10px] bg-blue-100 text-blue-700">{platformLabels[t.platform] || t.platform}</Badge>}
                               {t.status === 'completed' && t.completion_quality && (
