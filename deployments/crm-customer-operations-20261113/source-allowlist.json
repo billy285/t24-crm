@@ -1,0 +1,16 @@
+[
+  "app/backend/routers/opportunities.py",
+  "app/backend/services/commissions.py",
+  "app/backend/tests/test_opportunity_project_linkage.py",
+  "app/frontend/src/components/CustomerWorkQueue.tsx",
+  "app/frontend/src/components/customer-operations.css",
+  "app/frontend/src/lib/customer-operations-presentation.ts",
+  "app/frontend/src/lib/customer-work-queue.ts",
+  "app/frontend/src/lib/service-detail-target.ts",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/ServiceBoard.tsx",
+  "app/frontend/tests/customer-operations-integration.test.mjs",
+  "app/frontend/tests/customer-operations-presentation.test.mjs",
+  "app/frontend/tests/customer-work-queue.test.mjs",
+  "app/frontend/tests/service-detail-target.test.mjs"
+]

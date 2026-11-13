@@ -1,0 +1,29 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "1e82cbd6f123e7372e8078411035db5c90eedc91",
+  "baseline_source_sha": "313bc88af3d906e1e2c4beec9c3d2a5e2e32e890",
+  "build_receipt_sha256": "bcddf52029ec223667f30e7c382f94f78c31b0c238b0df1e964841301514a485",
+  "changed_source_files": {
+    "app/backend/routers/opportunities.py": "f498d50fe5499802701891f5443c2b12ce51a15ef1498e3cc44d0c84d91e3200",
+    "app/backend/services/commissions.py": "e9ef220656c7a9d24e43c1b4d453fe883ba1dd676bbde1968ff1a0570646fb76",
+    "app/backend/tests/test_opportunity_project_linkage.py": "d0d712b711dec2ca1017df9422c0b1f3732d3b6311ab85e0f12b4eb36d4db518",
+    "app/frontend/src/components/CustomerWorkQueue.tsx": "e6c72f87735fc0def61c43bc8e2d767c79873eeef26d876e661c8d89d8a73a06",
+    "app/frontend/src/components/customer-operations.css": "afbc2fed2053a86c271068d0e8a77b5e3769bb33c7ccacb5e8f347414b8409f1",
+    "app/frontend/src/lib/customer-operations-presentation.ts": "29db45cb2f292429621e9a23085dff20cde9056c27e6701de792446e778a0e65",
+    "app/frontend/src/lib/customer-work-queue.ts": "772c8ecc2df7d7068e45d961ddcef10cb043e5e9b8bfcce9caf53afc9d56e3b7",
+    "app/frontend/src/lib/service-detail-target.ts": "ac782239e65e6a7a1880e369059e646b26e77d89cf84617140058f26af8a4c38",
+    "app/frontend/src/pages/Customers.tsx": "1aa97ce8d85ec3e044f295d5813d47b78edf0ae9a1e8471c68f682cddfbf244c",
+    "app/frontend/src/pages/ServiceBoard.tsx": "fecd8aef3c19b2b3bd508098c1841c677f0e8612c3f3e19da0502ad566f42c5b",
+    "app/frontend/tests/customer-operations-integration.test.mjs": "6e1dc3644fb53bafad34a2f05df4b5346c0a678acbd5d16195b0c24b6d881618",
+    "app/frontend/tests/customer-operations-presentation.test.mjs": "86138a32ccb66b3d1a2ed764ded0ac0955ac19b1005d70d75ea128268cadf959",
+    "app/frontend/tests/customer-work-queue.test.mjs": "24d0018246bea31d4c3dcc2232a076029a78acb38ab660a77665a02ebdd3c097",
+    "app/frontend/tests/service-detail-target.test.mjs": "3039c58ac3953775b5cf7db3eebfc95b2e619e4ab6540226e553802aeea0b2a6"
+  },
+  "dist_inventory_sha256": "637fb23b756715c8ef1747832054366abb214226302555b5ba46c54117c2e0d7",
+  "fresh_build_passed": true,
+  "frontend_version": "04f1462c48e1",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "73959dcf57911de940f8ee4ba724231d1a81a74c",
+  "stage": "CRM_CUSTOMER_OPERATIONS_SOURCE_FREEZE"
+}
