@@ -1,0 +1,31 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "47ffed1e369bb1a49d04de7cf706e1f68c945e56",
+  "baseline_source_sha": "ca97f4b8ce9ad1aa4d18c8af718cf8e7f94b9cb8",
+  "build_receipt_sha256": "032db2bcdd62b23203c348a7c0388c140243dcc9397543f3b3b5b27042e594be",
+  "changed_source_files": {
+    "app/backend/routers/sales_intelligence.py": "22c313e610ba22701fa480fedf560dbc638b5cf53c0d17a5eaf2f4509fde60b2",
+    "app/backend/routers/sales_leads.py": "fc47f18d2f53275210792bfed35ad66aa2c692f903bf24b8a3121a7a6ee77bf3",
+    "app/backend/routers/service_progresses.py": "5fbec577f5ecfa7f61ed818e8d4b74206f13e3669292dced5cff05ab24d334fd",
+    "app/backend/services/business_intelligence.py": "d378647df4db1b6a15250f98c7ad934fa7435248099c45822173463306bcb2ef",
+    "app/backend/services/media_operations.py": "25e7b025a8f734f2ca3c764ba1e12b8efad449c3741bd3e1999e365e669b20d4",
+    "app/backend/services/sales_conversion_reporting.py": "c79beaa62b0903ee9a4fd6ddf19d070ae98bd7b8b3436166a80b30b39414e9d2",
+    "app/backend/services/sales_deal_handoffs.py": "c3517a3f1c86a20d60920c02430ea3895f35bba7d725948675130fa2cee9dd48",
+    "app/backend/services/service_weekly_evidence.py": "e560cdc3dde2a59ce0213d22ff2f4ce95b6e61419f95028da2faca922fe04b73",
+    "app/frontend/src/pages/Dashboard.tsx": "cc358992c1b48bdb9740d298af09b3d7a1e1c47fae438cef657ffe473f3ee5a2",
+    "app/frontend/src/pages/SalesLeads.tsx": "f735208f88e2acce083b6ef5429ba4eb0c206aacefc503d40ffd3f7beebeddb3",
+    "app/frontend/src/pages/ServiceBoard.tsx": "e56678786f2e67e8a74d6751029debf171c10496c31a453472c65af0fa553a06"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_company_roadmap_business_semantics.py": "3b94c8a8049b80aa99e3bbb024ad1e47edbb429e4bbef0efa3043c56cb732370",
+    "app/backend/tests/test_sales_catalog_handoffs.py": "ae537431342a43cc88d1b22139efc6d346cca7ac666087bb42b4b5e2c1d70fde",
+    "app/backend/tests/test_service_weekly_evidence.py": "fa5092dc1cee9ffdda8450c9aa9beec3d5fdbf944c7ff06f082abdfe4ac0b309"
+  },
+  "dist_inventory_sha256": "841a895f8c0066e96a4944325786c25d86b3791829f298a6e83dd316682853e2",
+  "fresh_build_passed": true,
+  "frontend_version": "57d97b528bbb",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "f58a4abcfeaad77d08d8d16ce48f4fcaee4e6605",
+  "stage": "CRM_METRIC_REPAIR_SOURCE_FREEZE"
+}

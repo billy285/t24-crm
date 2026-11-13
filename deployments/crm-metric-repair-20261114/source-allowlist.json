@@ -1,0 +1,13 @@
+[
+  "app/backend/routers/sales_intelligence.py",
+  "app/backend/routers/sales_leads.py",
+  "app/backend/routers/service_progresses.py",
+  "app/backend/services/business_intelligence.py",
+  "app/backend/services/media_operations.py",
+  "app/backend/services/sales_conversion_reporting.py",
+  "app/backend/services/sales_deal_handoffs.py",
+  "app/backend/services/service_weekly_evidence.py",
+  "app/frontend/src/pages/Dashboard.tsx",
+  "app/frontend/src/pages/SalesLeads.tsx",
+  "app/frontend/src/pages/ServiceBoard.tsx"
+]
