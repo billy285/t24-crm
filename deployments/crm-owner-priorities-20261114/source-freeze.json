@@ -1,0 +1,17 @@
+{
+  "baseline_git_commit": "8019bb1a28765e4dc697df46738d8adc9052f80b",
+  "baseline_source_sha": "f89c9d0d07b76be0771b9af2b42b21d9cb9606d7",
+  "build_receipt_sha256": "90c7385ad9bc15fd22141f61d7748f2109ba98a2c134b040cb4779fbb87d1bf9",
+  "changed_source_files": {
+    "app/frontend/src/components/ManagementActionDesk.tsx": "5f99724ffeb0118bb515b4ba35d2af3382ed48b9ee1bb16c3e634800e27baa88",
+    "app/frontend/src/pages/ManagementDecisions.tsx": "05d06745903cda1e10be9c6b5f4eb5d6fedc302be7e2052f4282a6532bd6cf5d",
+    "app/frontend/tests/mobile-admin-safety.spec.ts": "11bbd7673d203d278bc431956efd399b4e196f417a1d3047602a45b57bffe289"
+  },
+  "dist_inventory_sha256": "36a6a7af95f9c21384ac1a2f9ac80bf6b4d504576c158428de37b2964a87ad96",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "e514d9428774",
+  "source_commit_bytes_verified": true,
+  "source_sha": "ca97f4b8ce9ad1aa4d18c8af718cf8e7f94b9cb8",
+  "stage": "CRM_OWNER_PRIORITIES_SOURCE_FREEZE"
+}
