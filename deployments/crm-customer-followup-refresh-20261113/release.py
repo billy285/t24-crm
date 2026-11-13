@@ -161,7 +161,12 @@ class Release:
         return p
 
     def describe(self, info):
-        expected = {'id': info['Id'], 'image': info['Image'], 'started': info['State']['StartedAt'], 'config': self.pf.runtime_hash(info, info['Mounts'])}
+        original = self.baseline['runtime']
+        if info['Id'] == original['id']:
+            expected = {'id': original['id'], 'image': original['image'], 'started': info['State']['StartedAt'], 'config': original['config']}
+        else:
+            mounts = sorted(info['Mounts'], key=self.pf.canonical)
+            expected = {'id': info['Id'], 'image': info['Image'], 'started': info['State']['StartedAt'], 'config': self.pf.runtime_hash(info, mounts)}
         return self.pf.runtime(info, expected)
 
     def capture_expected(self, runtime, backend_sha, root, version):

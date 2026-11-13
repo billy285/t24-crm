@@ -2,7 +2,7 @@
   "backend_focused_tests_passed": true,
   "baseline_git_commit": "d1dfab62d20a971cf48a43c382f0bd69a1a824db",
   "baseline_source_sha": "4f1770c9b830fcadd896fc06a90de817cae9b14c",
-  "build_receipt_sha256": "d3df5fec5a37d02fed70aefa886d5c8c9c81c937ee13474430ca0eebd6ccd0af",
+  "build_receipt_sha256": "c869d46ffbdefe9a9373d0b8492275de9cbb785da0263bfc55c568c7c50dac2a",
   "changed_source_files": {
     "app/backend/routers/app_config.py": "0f5a399a8b713d507d9aa4f5a222c10e7c98d9873b9ece54cdc794696d3111d0",
     "app/backend/tests/test_customer_followup_status_config.py": "d6cb6deba08331707051e21d054ffff326fb00249ec28624419406ec5ebb1657",
@@ -22,6 +22,6 @@
   "frontend_version": "e38d2dcbcd38",
   "no_migration": true,
   "source_commit_bytes_verified": true,
-  "source_sha": "6d65c9be1bb48bb5ba73a48de2a0e6efc7eea6c5",
+  "source_sha": "c1b80a5410a12b5e433e60d835a50ede839b6b0b",
   "stage": "CRM_CUSTOMER_FOLLOWUP_REFRESH_SOURCE_FREEZE"
 }
