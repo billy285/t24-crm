@@ -852,7 +852,6 @@ export default function ManagementDecisions() {
   const summary = data?.summary;
   const pendingCount = summary?.review_counts?.pending || 0;
   const followUpCount = summary?.review_counts?.needs_follow_up || 0;
-  const warningTotal = Object.values(summary?.warning_counts || {}).reduce((total, value) => total + value, 0);
   const economicsTotals = Object.entries(growth?.unit_economics.totals || {});
   const riskyHealth = (growth?.customer_health.items || []).filter(row => searchParams.get('health') === 'risk' ? ['risk', 'critical'].includes(row.level) : row.level !== 'healthy');
   const salesCapacitySummary = growth?.team_capacity.sales_lead_capacity || {};
@@ -1002,7 +1001,7 @@ export default function ManagementDecisions() {
       {!['overview', 'insights', 'projects'].includes(section) && <><Button variant="ghost" size="sm" onClick={() => changeSection('overview')}><ArrowLeft className="mr-1 h-3.5 w-3.5" />返回待处理</Button><MobileDesktopOnlyNotice title="该管理流程请在电脑端处理" description="手机可查看经营待办与依据；项目状态、数据质量批处理和历史补录仍在电脑端处理。" /></>}
       {section === 'overview' && <ManagementActionDesk
         automation={automation} items={data?.items || []} anomalies={data?.anomalies || []}
-        riskCount={summary?.risk_reminder_count || 0} warningCount={warningTotal} loadedAt={viewLoadedAt}
+        loadedAt={viewLoadedAt}
         loading={loading} isAdmin={isAdmin} isMobile={isMobile} returnPath={currentDecisionPath()}
         onReview={openReview} onCreateTask={createQualityTask} onHistory={() => changeSection('history')} onQuality={() => changeSection('exceptions')}
       />}
@@ -1133,7 +1132,7 @@ export default function ManagementDecisions() {
               <div>
                 <p className="font-semibold text-slate-900">数据质量中心</p>
                 <p className="mt-1 text-xs leading-5 text-slate-600">
-                  每天北京时间 {String(automation?.schedule.hour ?? 8).padStart(2, '0')}:00 自动扫描；高优先和风险问题自动进入任务协作。只提醒、只建任务，不会自动停止客户或项目。
+                  {!automation ? '正在读取扫描设置。' : automation.schedule.enabled ? `定时扫描已开启，每天北京时间 ${String(automation.schedule.hour).padStart(2, '0')}:00 执行。` : '定时扫描已关闭。'} 执行扫描时，高优先和风险问题会进入任务协作。
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
                   {automation?.last_run?.completed_at ? `最近扫描：${new Date(automation.last_run.completed_at).toLocaleString('zh-CN', { hour12: false })}` : '尚未执行持久化扫描'}

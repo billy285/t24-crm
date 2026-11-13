@@ -31,19 +31,22 @@ export function managementSourceTime(value?: string) {
   return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export default function ManagementActionDesk<T extends Review>({ automation, items, anomalies, riskCount, warningCount, loadedAt, loading, isAdmin, isMobile, returnPath, onReview, onCreateTask, onHistory, onQuality }: {
-  automation: { items: Issue[]; last_run?: { completed_at?: string; scan_date?: string; status: string } } | null;
-  items: T[]; anomalies: Signal[]; riskCount: number; warningCount: number;
+export default function ManagementActionDesk<T extends Review>({ automation, items, anomalies, loadedAt, loading, isAdmin, isMobile, returnPath, onReview, onCreateTask, onHistory, onQuality }: {
+  automation: { items: Issue[]; schedule?: { enabled: boolean }; last_run?: { completed_at?: string; scan_date?: string; status: string } } | null;
+  items: T[]; anomalies: Signal[];
   loadedAt: string; loading: boolean; isAdmin: boolean; isMobile: boolean; returnPath: string;
   onReview: (item: T) => void; onCreateTask: (id: number) => Promise<void>; onHistory: () => void; onQuality: () => void;
 }) {
   const [params, setParams] = useSearchParams();
-  const requestedTab = params.get('inbox') || 'tasks';
-  const tab: InboxTab = ['tasks', 'history', 'issues', 'signals'].includes(requestedTab) ? requestedTab as InboxTab : 'tasks';
-  const query = params.get('inboxSearch') || '';
+  const [visibleSignalCount, setVisibleSignalCount] = useState(5);
+  const requestedTab = params.get('inbox');
   const selectedKey = params.get('inboxItem');
+  // Older bookmarks may have only an item key from the former default tasks tab.
+  const fallbackTab: InboxTab = selectedKey?.startsWith('task-') ? 'tasks' : 'signals';
+  const tab: InboxTab = requestedTab && ['tasks', 'history', 'issues', 'signals'].includes(requestedTab) ? requestedTab as InboxTab : fallbackTab;
+  const query = params.get('inboxSearch') || '';
   const setSelectedKey = (key: string | null) => { const next = new URLSearchParams(params); if (key) next.set('inboxItem', key); else next.delete('inboxItem'); setParams(next, { replace: true }); };
-  const setQuery = (value: string) => { const next = new URLSearchParams(params); if (value) next.set('inboxSearch', value); else next.delete('inboxSearch'); next.delete('inboxItem'); setParams(next, { replace: true }); };
+  const setQuery = (value: string) => { setVisibleSignalCount(5); const next = new URLSearchParams(params); if (value) next.set('inboxSearch', value); else next.delete('inboxSearch'); next.delete('inboxItem'); setParams(next, { replace: true }); };
   const setTab = (value: InboxTab) => { const next = new URLSearchParams(params); next.set('inbox', value); next.delete('inboxSearch'); next.delete('inboxItem'); setParams(next, { replace: true }); };
   const [creating, setCreating] = useState(false);
   const activeIssues = (automation?.items || []).filter(item => item.status !== 'resolved');
@@ -71,7 +74,9 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
       owner: '管理员核对', status: item.review_status === 'needs_follow_up' ? '稍后核对' : '待补录', source: '历史分类审核',
       evidence: [...item.warnings.map(row => row.message), ...item.suggestions.flatMap(row => row.basis)], review: item })),
     signals: [
-      ...anomalies.map((signal, index) => ({ key: `signal-${signal.customer_id}-${signal.project_id || ''}-${signal.code}-${index}`, customerId: signal.customer_id, name: signal.customer_name,
+      ...anomalies.map((signal, index) => ({ signal, index }))
+        .sort((a, b) => Number(b.signal.severity === 'high') - Number(a.signal.severity === 'high'))
+        .map(({ signal, index }) => ({ key: `signal-${signal.customer_id}-${signal.project_id || ''}-${signal.code}-${index}`, customerId: signal.customer_id, name: signal.customer_name,
         reason: signal.message, owner: signal.project_id ? `项目 #${signal.project_id}` : '客户层面', status: signal.severity === 'high' ? '高优先' : '提醒',
         source: signal.category === 'risk' ? '实时风险提醒' : '实时检查', evidence: [signal.message, ...(signal.suggested_action ? [`建议：${signal.suggested_action}`] : [])] })),
       ...items.filter(item => item.warnings.length > 0).map(item => ({ key: `classification-${item.customer_id}`, customerId: item.customer_id, name: item.customer_name,
@@ -80,6 +85,7 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
     ],
   };
   const rows = rowSets[tab].filter(row => !query.trim() || [row.name, row.reason, row.owner].join(' ').toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleRows = tab === 'signals' ? rows.slice(0, visibleSignalCount) : rows;
   const selected = rows.find(row => row.key === selectedKey);
   const selectedIndex = selected ? rows.indexOf(selected) : -1;
   const nextRow = selectedIndex >= 0 ? rows[selectedIndex + 1] : undefined;
@@ -90,24 +96,24 @@ export default function ManagementActionDesk<T extends Review>({ automation, ite
       <div className="mgt-board-head">
         <div className="mgt-inbox-tabs" aria-label="待处理来源">
           {([
-            ['tasks', '已有任务', taskGroups.size], ['history', '历史补录', pendingHistory.length],
-            ...(untaskedIssues.length ? [['issues', '待分配问题', untaskedIssues.length]] : []), ['signals', '其他信号', null],
+            ['signals', '实时提醒', rowSets.signals.length], ['tasks', '已有任务', taskGroups.size],
+            ['history', '历史补录', pendingHistory.length], ...(untaskedIssues.length || tab === 'issues' ? [['issues', '待分配问题', untaskedIssues.length]] : []),
           ] as Array<[InboxTab, string, number | null]>).map(([value, label, count]) => <button key={value} type="button" aria-pressed={tab === value} onClick={() => setTab(value)}>{label}{count !== null && <span>{!loadedAt || (scanStale && (value === 'tasks' || value === 'issues')) ? '—' : count}</span>}</button>)}
         </div>
         <div className="mgt-search"><Search size={15} /><Input aria-label="搜索待处理客户或问题" placeholder="搜索客户或问题" value={query} onChange={event => setQuery(event.target.value)} /></div>
       </div>
       <div className="mgt-source-note">
-        {['tasks', 'issues'].includes(tab) ? <><span>最近扫描 · {managementSourceTime(scanAt)}</span>{scanStale && <span className="mgt-warning" role="status">今天的待办尚未核实{scanAt && '，以下为上次扫描记录'}</span>}</> : <span>分类与风险读取：{managementSourceTime(loadedAt)}</span>}
-        {tab === 'signals' && <span>风险 {loadedAt ? riskCount : '—'} 条 · 分类提示 {loadedAt ? warningCount : '—'} 条；同一客户可能有多条提示</span>}
+        {['tasks', 'issues'].includes(tab) ? <><span>最近扫描 · {managementSourceTime(scanAt)}</span>{scanStale && <span className="mgt-warning" role="status">{automation?.schedule?.enabled === false ? '定时扫描已关闭' : '今天的待办尚未核实'}{scanAt && '，以下为上次扫描记录'}</span>}</> : <span>数据读取 · {managementSourceTime(loadedAt)}</span>}
         {tab === 'history' && <span>按客户计数 · 新客户从客户管理录入</span>}
       </div>
-      {loading && !loadedAt ? <p className="mgt-empty" role="status">正在读取待处理事项…</p> : rows.map(row => <article key={row.key} className="mgt-action-row">
+      {loading && !loadedAt ? <p className="mgt-empty" role="status">正在读取待处理事项…</p> : visibleRows.map(row => <article key={row.key} className="mgt-action-row">
         <div className="mgt-row-main"><h3>{row.name}</h3><p>{row.reason}</p></div>
         <span className="mgt-row-owner">{row.owner}</span><span className="mgt-row-status">{row.status}</span>
         <Button size="sm" variant="outline" onClick={() => setSelectedKey(row.key)}>{row.review ? '核对' : '跟进'}<ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>
       </article>)}
-      {!loading && rows.length === 0 && <div className="mgt-empty"><EmptyIcon size={19} />{!loadedAt ? '资料尚未读取成功，请刷新后重试' : showingLastScan ? '今日待办数量未知' : query ? '没有匹配的客户或问题' : tab === 'tasks' ? '当前没有关联任务的待处理问题' : '当前来源没有待处理事项'}</div>}
-      <div className="mgt-board-footer"><span>{showingLastScan && loadedAt ? '上次记录 · ' : ''}{loadedAt ? rows.length : '—'} {tab === 'tasks' ? '个任务' : tab === 'history' ? '位客户' : '组事项'}</span>{!isMobile && <Button size="sm" variant="ghost" onClick={tab === 'history' ? onHistory : onQuality}>{tab === 'history' ? '查看全部历史记录' : '查看扫描与处理记录'}</Button>}</div>
+      {visibleRows.length < rows.length && <Button size="sm" variant="ghost" onClick={() => setVisibleSignalCount(count => count + 10)}>显示更多提醒（还有 {rows.length - visibleRows.length} 项）</Button>}
+      {!loading && rows.length === 0 && <div className="mgt-empty"><EmptyIcon size={19} />{!loadedAt ? '资料尚未读取成功，请刷新后重试' : showingLastScan ? '今日待办数量未知' : query ? '没有匹配的客户或问题' : tab === 'tasks' ? '当前没有关联任务的待处理问题' : tab === 'signals' ? '当前没有项目或分类提醒' : '当前来源没有待处理事项'}</div>}
+      <div className="mgt-board-footer"><span>{showingLastScan && loadedAt ? '上次记录 · ' : ''}{loadedAt ? rows.length : '—'} {tab === 'tasks' ? '个任务' : tab === 'history' ? '位客户' : '项'}</span>{!isMobile && <Button size="sm" variant="ghost" onClick={tab === 'history' ? onHistory : onQuality}>{tab === 'history' ? '查看全部历史记录' : '查看扫描与处理记录'}</Button>}</div>
     </div>
     <Dialog open={Boolean(selected)} onOpenChange={open => { if (!open) setSelectedKey(null); }}>
       <CrmFormDialogContent className="mgt-action-detail sm:max-w-xl"><CrmFormDialogHeader><p className="mgt-detail-kicker">{selected?.source}</p><DialogTitle>{selected?.name}</DialogTitle></CrmFormDialogHeader>{selected && <><CrmFormDialogBody>

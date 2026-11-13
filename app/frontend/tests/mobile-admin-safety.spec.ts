@@ -520,3 +520,58 @@ test('430px 安全页面保持只读提示且无横向溢出', async ({ page }) 
     await expectNoHorizontalOverflow(page);
   }
 });
+
+for (const width of [390, 1093]) {
+  test(`经营待处理默认展示本次读取的提醒，旧任务和定时扫描状态清楚区分 · ${width}`, async ({ page }) => {
+    await seedAdmin(page, 'super_admin');
+    await page.setViewportSize({ width, height: 844 });
+    const payloads = managementDecisionPayloads();
+    const classification = {
+      ...payloads.classification,
+      anomalies: Array.from({ length: 6 }, (_, i) => ({
+        customer_id: i + 1, customer_name: `实时商家 ${i}`, code: 'project_warning',
+        severity: i === 5 ? 'high' : 'warning', message: `待处理项目 ${i}`,
+      })),
+      items: [{
+        customer_id: 77, customer_name: '已自动归类', review_status: 'auto_classified', warnings: [], suggestions: [], projects: [],
+      }, {
+        customer_id: 88, customer_name: '归属冲突', review_status: 'pending', suggestions: [], projects: [],
+        warnings: ['缺少来源', '金额不一致'].map(message => ({ code: 'uncertain', scope: 'payment', message })),
+      }],
+    };
+    const automation = {
+      ...payloads.automation, schedule: { ...payloads.automation.schedule, enabled: false },
+      last_run: { status: 'completed', completed_at: '2026-08-16T01:55:00Z', scan_date: '2026-08-16' },
+      items: [{ id: 4, customer_id: 9, status: 'open', severity: 'warning', customer_name: '旧扫描商家',
+        message: '上次扫描的问题', last_detected_at: '2026-08-16T01:55:00Z', task: { id: 15, status: 'pending' } }],
+    };
+    await page.route(/\/api\/v1\/management-decisions\/classification-review/, route => fulfillJson(route, classification));
+    await page.route(/\/api\/v1\/management-decisions\/automation\/overview/, route => fulfillJson(route, automation));
+    await page.route(/\/api\/v1\/management-decisions\/growth-dashboard/, route => fulfillJson(route, payloads.growth));
+    await page.goto(`${baseUrl}/management-decisions`);
+    const desk = page.getByRole('region', { name: '经营待处理' });
+    await expect(desk.getByRole('button', { name: /实时提醒.*7/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(desk.getByText('实时商家 5')).toBeVisible();
+    await expect(desk.locator('article')).toHaveCount(5);
+    await expect(desk.getByText('旧扫描商家')).toHaveCount(0);
+    await expect(desk.getByText('已自动归类')).toHaveCount(0);
+    await expect(desk.getByText(/最近扫描/)).toHaveCount(0);
+    await desk.getByRole('button', { name: /显示更多提醒/ }).click();
+    await expect(desk.locator('article')).toHaveCount(7);
+    const search = desk.getByRole('textbox');
+    await search.fill('归属冲突');
+    await expect(desk.locator('article')).toHaveCount(1);
+    await expect(desk.getByText('缺少来源；金额不一致')).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await desk.getByRole('button', { name: /已有任务/ }).click();
+    await expect(desk.getByText('旧扫描商家')).toBeVisible();
+    await expect(desk.getByText(/定时扫描已关闭，以下为上次扫描记录/)).toBeVisible();
+    await page.goto(`${baseUrl}/management-decisions?inboxItem=task-15`);
+    await expect(page.getByRole('dialog').getByText('旧扫描商家')).toBeVisible();
+    if (width > 800) {
+      await page.goto(`${baseUrl}/management-decisions?section=quality`);
+      await expect(page.getByText(/定时扫描已关闭。.*高优先/)).toBeVisible();
+      await expect(page.getByText(/定时扫描已开启/)).toHaveCount(0);
+    }
+  });
+}
