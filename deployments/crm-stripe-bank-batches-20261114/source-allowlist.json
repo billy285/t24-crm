@@ -1,0 +1,5 @@
+[
+  "app/backend/services/stripe_bank_reconciliation.py",
+  "app/frontend/src/components/StripeBankReconciliation.tsx",
+  "app/frontend/src/lib/stripe-bank-reconciliation.ts"
+]

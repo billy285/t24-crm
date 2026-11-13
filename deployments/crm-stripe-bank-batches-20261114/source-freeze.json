@@ -1,0 +1,22 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "f4075fb0bf3cbec8f4ac0ef265a53ad49f74c74d",
+  "baseline_source_sha": "de25cc8d903685a133f7e5d22089e6af9e31a712",
+  "build_receipt_sha256": "f1c265855f650a5bf00b2cc7ae3ad8a56b6ca8e2ff0824d5822b171e42f3863b",
+  "changed_source_files": {
+    "app/backend/services/stripe_bank_reconciliation.py": "22e83c43f222ef2a8c9505b4d6a44bfbc07caf09871d226537363f4b4b9dfda6",
+    "app/frontend/src/components/StripeBankReconciliation.tsx": "ea38026f640d3d8de05be83bc79595312fe5cebe16959fcc05703f10747f1a4f",
+    "app/frontend/src/lib/stripe-bank-reconciliation.ts": "34741845e467d5812a206441bd1c3e2302e00e09cf3d210a4939a21e4ff6a215"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_stripe_bank_reconciliation.py": "8ac3f17f0be03fe2251e0f0782c28f57c4c73c546c78506790504e65723db65c",
+    "app/frontend/tests/stripe-bank-reconciliation.test.mjs": "d401e86bd79352eb3c6e7afaf2c6be79d71e8aa1518ada785b7f6d4ce7f82eb1"
+  },
+  "dist_inventory_sha256": "ec41f8a2258cb5d9c697c3a4f4f2f919c786ff9dde0d07c5bcb4cb0db98fab2c",
+  "fresh_build_passed": true,
+  "frontend_version": "f29520faaa21",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "12b2b3ad6b0cff129a976d41152057cffd432df8",
+  "stage": "CRM_STRIPE_BANK_BATCHES_SOURCE_FREEZE"
+}
