@@ -39,6 +39,20 @@ const qualityIssueSubject = (issue: QualityIssue) => {
   return '';
 };
 
+function CommissionIssueSummary({ issue }: { issue: QualityIssue }) {
+  const subject = qualityIssueSubject(issue);
+  const receipt = issue.payment_id ? `收款 #${issue.payment_id}` : '';
+  const showReceipt = receipt && !issue.description.includes(receipt);
+
+  return <div className="commission-issue-summary">
+    <strong className="commission-issue-subject">{subject || issue.title}</strong>
+    {subject && <span className="commission-issue-reason">{issue.title}</span>}
+    <span className="commission-issue-description">
+      {showReceipt && <>{receipt} · </>}{issue.description}
+    </span>
+  </div>;
+}
+
 const partnerTypeLabels: Record<string, string> = { agency: '代理商', partner: '销售合伙人', employee: '内部销售', direct: '公司直营' };
 const partnerStatusLabels: Record<string, string> = { active: '合作中', suspended: '暂停结算', terminated: '已终止', settled: '已结清' };
 const entryTypeLabels: Record<string, string> = { first_order: '首期佣金', renewal: '续费佣金', refund_reversal: '退款冲回' };
@@ -405,14 +419,9 @@ export default function Commissions() {
       <h2 className="mt-3 text-xl font-medium text-slate-900">还有 {data.summary.quality.issue_count} 项分润数据待补齐</h2>
       {isMobile ? <details className="commission-quality-details">
         <summary>查看待办明细<ChevronDown size={16} aria-hidden="true" /></summary>
-        <ul aria-label="待补资料明细">{(data.quality_issues || []).map(issue => {
-          const subject = qualityIssueSubject(issue);
-          return <li key={issue.key}>
-            <strong>{subject || issue.title}</strong>
-            {subject && <span>{issue.title}</span>}
-            <p>{issue.description}</p>
-          </li>;
-        })}</ul>
+        <ul aria-label="待补资料明细">
+          {(data.quality_issues || []).map(issue => <li key={issue.key}><CommissionIssueSummary issue={issue} /></li>)}
+        </ul>
       </details> : <Button className="mt-6 gap-2" onClick={() => setActiveTab('quality')}>查看待办<ArrowRight className="h-4 w-4" /></Button>}
     </section>}
 
@@ -457,7 +466,18 @@ export default function Commissions() {
       <section hidden={activeTab !== 'settlements'} aria-label="月度结算">{activeTab === 'settlements' && <><Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle className="text-base">渠道月度结算单</CardTitle><p className="mt-1 text-xs text-slate-500">使用上方月份筛选生成结算口径；待确认不进入费用，已确认、待发放和已发放不会重复计费。</p></div><Button variant="outline" onClick={exportSettlements} disabled={!settlements.length}>导出结算 CSV</Button></div></CardHeader><CardContent className="overflow-x-auto p-0"><CompactFinanceTable {...commissionSettlements} legacyClassName="w-full min-w-[900px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">渠道</th><th>币种</th><th>记录</th><th>待确认</th><th>已确认费用</th><th>待发放</th><th>已发放</th><th>退款冲回</th></tr></thead><tbody>{settlements.map(row => <tr key={row.key} className="border-t"><td className="px-4 py-3 font-medium">{row.partner_name}<p className="text-xs font-normal text-slate-500">{row.partner_code || (row.partner_id ? `#${row.partner_id}` : '身份待核对')}</p></td><td>{row.currency}</td><td>{row.entry_count}</td><td className="text-amber-700">{money(row.pending, row.currency)}</td><td className="font-semibold text-blue-700">{money(row.confirmed, row.currency)}</td><td>{money(row.payable, row.currency)}</td><td className="text-emerald-700">{money(row.paid, row.currency)}</td><td className={row.adjustments < 0 ? 'text-red-600' : ''}>{money(row.adjustments, row.currency)}</td></tr>)}{!settlements.length && <tr><td colSpan={8} className="py-12 text-center text-slate-400">当前月份暂无可结算佣金</td></tr>}</tbody></CompactFinanceTable></CardContent></Card></>}</section>
       <section hidden={activeTab !== 'partners'} aria-label="渠道与协议">{activeTab === 'partners' && <><div className="grid gap-4 lg:grid-cols-2">{(data?.partners || []).map(partner => { const rules = (data?.agreements || []).filter(item => item.partner_id === partner.id); return <Card key={partner.id}><CardHeader className="pb-3"><div className="flex items-start justify-between"><div><CardTitle className="text-base">{partner.name}</CardTitle><p className="text-xs text-slate-400">{partner.partner_code} · {partnerTypeLabels[partner.partner_type]}</p></div><Badge>{partnerStatusLabels[partner.status]}</Badge></div></CardHeader><CardContent>{['agency', 'partner'].includes(partner.partner_type) && <div className="commission-login-row"><div><span className={partner.employee_id ? 'text-emerald-700' : 'text-amber-700'}>{partner.employee_id ? '登录账号已绑定' : '尚未开通渠道查看'}</span><p>{partner.login_account ? `${partner.login_account.name} · ${partner.login_account.email || `账号 #${partner.login_account.id}`} · ${partner.login_account.status === 'active' || partner.login_account.status === 'probation' ? '有效' : '已停用'}` : partner.employee_id ? `账号 #${partner.employee_id}` : '合作档案与登录账号需要明确绑定'}</p></div>{!partner.employee_id && <Button size="sm" variant="outline" onClick={() => openLogin(partner)}>开通登录</Button>}</div>}<div className="space-y-2">{rules.map(rule => <div key={rule.id} className="rounded-lg border bg-slate-50 p-3 text-sm"><div className="flex justify-between"><span>协议 V{rule.version}</span><Badge variant="outline">{rule.status === 'active' ? '当前生效' : '历史版本'}</Badge></div><p className="mt-1 text-xs text-slate-500">{ruleLabel(rule)}</p><p className="mt-1 text-slate-600">{isLegacy(rule.calculation_version) ? '首笔' : '首服务月'} {percent(rule.first_order_rate)} · 续费 {percent(rule.renewal_rate)} · 观察期 {rule.refund_guard_days} 天</p><p className="text-xs text-slate-400">{rule.effective_from} 至 {rule.effective_to || '长期'}</p></div>)}{rules.length === 0 && <p className={`text-sm ${partner.partner_type === 'direct' ? 'text-emerald-700' : 'text-amber-600'}`}>{partner.partner_type === 'direct' ? '直营归属不产生外部佣金，无需协议' : '尚未配置分润协议'}</p>}</div>{partner.partner_type !== 'direct' && partner.status === 'active' && <div className="mt-4 flex gap-2"><Button size="sm" variant="outline" onClick={() => changePartnerStatus(partner, 'suspended')}>暂停结算</Button><Button size="sm" variant="outline" className="text-red-600" onClick={() => changePartnerStatus(partner, 'terminated')}>停止合作</Button></div>}{partner.partner_type !== 'direct' && partner.status === 'suspended' && <Button className="mt-4" size="sm" onClick={() => changePartnerStatus(partner, 'active')}>恢复合作</Button>}</CardContent></Card>})}{!data?.partners.length && <Card><CardContent className="py-12 text-center text-slate-400">先新增销售合伙人、代理商或内部销售。</CardContent></Card>}</div></>}</section>
       <section hidden={activeTab !== 'attributions'} aria-label="客户归属">{activeTab === 'attributions' && <><Card><CardContent className="overflow-x-auto p-0"><CompactFinanceTable {...commissionAttributions} legacyClassName="w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="px-4 py-3">客户</th><th>归属渠道</th><th>项目</th><th>生效期间</th><th>计佣方式</th><th>操作</th></tr></thead><tbody>{filteredAttributions.map(item => <tr className="border-t" key={item.id}><td className="px-4 py-3 font-medium">{item.customer_name || `客户 #${item.customer_id}`}</td><td>{item.partner_name}</td><td>{item.engagement_id ? `项目 #${item.engagement_id}` : '客户全部项目'}</td><td>{item.effective_from} 至 {item.effective_to || '当前'}</td><td><Badge className={item.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>{item.is_active ? '当前归属' : '历史归属'}</Badge><p className="mt-1 text-xs">{commissionModeLabels[item.commission_mode || 'legacy'] || '规则待核对'}</p><p className="text-xs text-slate-500">{item.commission_start_date ? `计佣起点 ${item.commission_start_date}` : '请明确计佣起点'}</p>{item.first_service_start && <p className="text-xs text-slate-500">首期起始 {item.first_service_start}</p>}</td><td>{item.is_active && <Button size="sm" variant="outline" onClick={() => configureAttribution(item)}>设置规则</Button>}</td></tr>)}</tbody></CompactFinanceTable></CardContent></Card></>}</section>
-      <section hidden={activeTab !== 'quality'} aria-label="待办事项">{activeTab === 'quality' && <><div className="space-y-3">{(data?.quality_issues || []).map(issue => <Card key={issue.key} className={issue.severity === 'high' ? 'border-amber-200' : ''}><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4"><div><div className="flex items-center gap-2"><Badge className={issue.severity === 'high' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}>{issue.severity === 'high' ? '高优先级' : '待补齐'}</Badge><p className="font-semibold text-slate-900">{issue.title}</p></div><p className="mt-2 text-sm text-slate-600">{issue.customer_name ? `${issue.customer_name} · ` : ''}{issue.description}</p></div><Button size="sm" variant="outline" onClick={() => resolveIssue(issue)}>{issue.type === 'commission_rule_review' ? '核对计佣' : ['partner_without_agreement', 'payment_without_agreement'].includes(issue.type) ? '补充协议' : '设置归属'}</Button></CardContent></Card>)}{!data?.quality_issues?.length && <Card><CardContent className="py-12 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-emerald-500" /><p className="mt-3 font-semibold text-emerald-800">分润数据检查通过</p><p className="mt-1 text-sm text-slate-500">当前付费项目和服务实收均有归属或适用协议。</p></CardContent></Card>}</div></>}</section>
+      <section hidden={activeTab !== 'quality'} aria-label="待办事项">
+        {activeTab === 'quality' && <div className="space-y-3">
+          {(data?.quality_issues || []).map(issue => <Card key={issue.key}>
+            <CardContent className="commission-quality-row">
+              <CommissionIssueSummary issue={issue} />
+              <Badge className={issue.severity === 'high' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}>{issue.severity === 'high' ? '高优先级' : '待补齐'}</Badge>
+              <Button size="sm" variant="outline" onClick={() => resolveIssue(issue)}>{issue.type === 'commission_rule_review' ? '核对计佣' : ['partner_without_agreement', 'payment_without_agreement'].includes(issue.type) ? '补充协议' : '设置归属'}</Button>
+            </CardContent>
+          </Card>)}
+          {!data?.quality_issues?.length && <Card><CardContent className="py-12 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-emerald-500" /><p className="mt-3 font-semibold text-emerald-800">分润数据检查通过</p><p className="mt-1 text-sm text-slate-500">当前付费项目和服务实收均有归属或适用协议。</p></CardContent></Card>}
+        </div>}
+      </section>
       <section hidden={activeTab !== 'rules'} aria-label="计算规则">{activeTab === 'rules' && <><div className="grid gap-4 lg:grid-cols-3"><Card><CardContent className="p-5"><HandCoins className="h-6 w-6 text-blue-600" /><h3 className="mt-3 font-semibold">首服务月与续费分开</h3><p className="mt-1 text-sm text-slate-500">新协议按真实服务起始日划分首服务月；一期内分次收款沿用首期比例。服务跨期按覆盖天数拆分。旧协议与已确认快照保留历史规则。</p></CardContent></Card><Card><CardContent className="p-5"><AlertTriangle className="h-6 w-6 text-amber-600" /><h3 className="mt-3 font-semibold">续费方式明确约定</h3><p className="mt-1 text-sm text-slate-500">新协议默认固定续费比例；历史协议的活跃规则仍保留在原台账快照中。已付首期的客户可设置“仅续费”并登记历史依据。</p></CardContent></Card><Card><CardContent className="p-5"><Building2 className="h-6 w-6 text-emerald-600" /><h3 className="mt-3 font-semibold">计佣与公司账目分别核对</h3><p className="mt-1 text-sm text-slate-500">佣金只基于有效服务实收，广告代充值排除。待确认不计费用；已确认、应付、已发放只记一次。停止合作保留历史记录。</p></CardContent></Card></div></>}</section>
     </div>
     {!isManagementView && <details className="commission-accounting"><summary className="cursor-pointer text-sm text-slate-500">财务汇总与记账规则</summary><div className="mt-5 space-y-4">

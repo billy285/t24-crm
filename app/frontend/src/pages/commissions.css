@@ -74,7 +74,40 @@
 .commission-quality-details summary::-webkit-details-marker { display: none; }
 .commission-quality-details[open] summary svg { transform: rotate(180deg); }
 .commission-quality-details ul { margin: 0; padding: 0; list-style: none; }
-.commission-quality-details li { display: grid; gap: 4px; padding-block: 12px; border-top: 1px solid hsl(var(--border)); overflow-wrap: anywhere; }
-.commission-quality-details li strong { font-size: 15px; }
-.commission-quality-details li span, .commission-quality-details li p { font-size: 13px; line-height: 1.5; }
-.commission-quality-details li p { margin: 0; color: hsl(var(--muted-foreground)); }
+.commission-quality-details li {
+  padding-block: 16px;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.commission-issue-summary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  overflow-wrap: anywhere;
+  color: hsl(var(--foreground));
+}
+
+.commission-issue-subject {
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 650;
+}
+
+.commission-issue-reason {
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.commission-issue-description {
+  color: hsl(var(--muted-foreground));
+  font-size: max(13px, var(--t24-aux-size));
+  line-height: 19px;
+}
+
+.commission-page .commission-quality-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--t24-space-16);
+  padding: var(--t24-space-16);
+}

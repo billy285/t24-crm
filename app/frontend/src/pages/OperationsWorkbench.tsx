@@ -370,13 +370,12 @@ export default function OperationsWorkbench() {
       <ServiceFollowThroughNav view="today" onChange={changeView} />
       {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
-        <div>
-          <h2 className="app-page-heading">运营今日工作台</h2>
-        </div>
+        <h2 className="app-page-heading">运营今日工作台</h2>
         <div className="dc-workbench-tools">
           <MediaOperationsEntry inline />
-          <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading || refreshing} aria-busy={refreshing}>
-            <RefreshCw className="mr-1.5 h-4 w-4" />刷新
+          <Button variant="outline" size="sm" className="dc-workbench-refresh" onClick={() => void loadData()} disabled={loading || refreshing} aria-busy={refreshing} title="刷新运营待办">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only md:not-sr-only">刷新</span>
           </Button>
         </div>
       </div>
