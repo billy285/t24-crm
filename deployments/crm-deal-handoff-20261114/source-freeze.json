@@ -1,0 +1,18 @@
+{
+  "baseline_git_commit": "05bc961f6116fa696fb266f9c6aa7e4c0ef1d0e1",
+  "baseline_source_sha": "c32757eb1db9e3677b44c4fe616e5db713d16c96",
+  "build_receipt_sha256": "e4352039285d1c998e0a70525fc77ff69473a6c2d8d73c9c2467aa897bc12da8",
+  "changed_source_files": {
+    "app/frontend/src/components/CompactFinanceTable.tsx": "2ed83f3af9d89cdbe2f77e5484932648b5ff3cb2fb16628e2abcd371b27ab75c",
+    "app/frontend/src/components/compact-finance-table.css": "ff1d24578b6db701b48f158971b5f6cef4a973621eabb57aa56d8b76b92e37e9",
+    "app/frontend/src/pages/Deals.tsx": "1a3c73c6a510d08a2e543e844c42bfd3bacbf997bd9255bf45d580b188bbcf0c",
+    "app/frontend/src/pages/deal-editor-refined.css": "a2ab34ea66bbd7a4b47254ef6a86824ea158c93e8b6dba6c3e9a850a165e8c81"
+  },
+  "dist_inventory_sha256": "d64253b84866746eb22ce09ad2e95f6caf89c2108a5f6d19dae7f0de78785569",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "3a8c61131ddc",
+  "source_commit_bytes_verified": true,
+  "source_sha": "38c63158b7afeeffa89b87031f45d7c1bb2d77b6",
+  "stage": "CRM_DEAL_HANDOFF_SOURCE_FREEZE"
+}
