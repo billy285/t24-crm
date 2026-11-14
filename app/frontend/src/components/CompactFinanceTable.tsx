@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ChevronRight, X } from 'lucide-react';
 import { Sheet, SheetClose, SheetDescription, SheetOverlay, SheetPortal, SheetTitle } from '@/components/ui/sheet';
+import { DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import './compact-finance-table.css';
 
 export interface CompactFinanceColumn {
@@ -44,6 +45,7 @@ interface TableElementProps {
   colSpan?: number;
   rowSpan?: number;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
+  onSelect?: (event: Event) => void;
 }
 
 export interface CompactFinanceCell {
@@ -173,18 +175,25 @@ function detailSections(headers: string[], groups: readonly CompactFinanceDetail
 
 /** End the modal before an original handler opens its own dialog or changes the record. */
 function withActionHandoff(node: ReactNode, beforeAction: () => void): ReactNode {
-  return Children.map(node, child => {
-    if (!isValidElement<TableElementProps>(child)) return child;
-    const props: Partial<TableElementProps> = {};
-    if (child.props.children !== undefined) props.children = withActionHandoff(child.props.children, beforeAction);
-    if (child.props.onClick || child.type === 'a') {
-      props.onClick = event => {
-        beforeAction();
-        child.props.onClick?.(event);
-      };
-    }
-    return cloneElement(child, props);
-  });
+  if (Array.isArray(node)) return node.map(child => withActionHandoff(child, beforeAction));
+  if (!isValidElement<TableElementProps>(node)) return node;
+  const props: Partial<TableElementProps> = {};
+  // Radix asChild requires its original single element, including after a recursive clone.
+  if (node.props.children !== undefined) props.children = withActionHandoff(node.props.children, beforeAction);
+  if (node.type === DropdownMenuContent) props.className = `${node.props.className || ''} cft-drawer-menu`;
+  if (node.props.onClick || node.type === 'a') {
+    props.onClick = event => {
+      beforeAction();
+      node.props.onClick?.(event);
+    };
+  }
+  if (node.type === DropdownMenuItem && node.props.onSelect) {
+    props.onSelect = event => {
+      beforeAction();
+      node.props.onSelect?.(event);
+    };
+  }
+  return cloneElement(node, props);
 }
 
 /** Follow only the dialog opened by this action, then return to its persistent ledger trigger. */

@@ -119,6 +119,7 @@
 
   /* Portals sit outside the CRM shell; the unique drawer classes keep this styling local. */
   .cft-drawer-overlay { z-index: 79; background: rgb(15 23 42 / 20%); animation: none; }
+  .cft-drawer-menu { z-index: 81; }
   .cft-drawer {
     position: fixed;
     inset: 0 0 0 auto;
