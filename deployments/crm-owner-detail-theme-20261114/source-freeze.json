@@ -1,0 +1,17 @@
+{
+  "baseline_git_commit": "0a18e307538c29d5e7cf538cb0399ee371d0a2b3",
+  "baseline_source_sha": "ad22dac20e6fd26c20254bba58e9dc4953bbbe69",
+  "build_receipt_sha256": "ecf44192f268f2596d36fc5b42d9a182c72bd3699428ca0b7bc80d0b1cca8611",
+  "changed_source_files": {
+    "app/frontend/src/pages/Dashboard.tsx": "498d0c17827cb1a6818a82d01d98a172a837e449e23ca0a770f644506f4e1226",
+    "app/frontend/src/pages/crm-owner-home.css": "d5f14ad6ae2b1d5cd0227eadf700950ba35764952508bf8e804ce2dc4b8765e9",
+    "app/frontend/src/pages/owner-sales-cockpit.css": "161d39890ecbc99d22d822c89fd6cd78790c78f6d0a1e958f82ac0b81b26588a"
+  },
+  "dist_inventory_sha256": "0891d31f8322b4914261942b56f4e5f5822c33073e7fdf9e460e74aa18b59506",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "475c7922e1fb",
+  "source_commit_bytes_verified": true,
+  "source_sha": "c32757eb1db9e3677b44c4fe616e5db713d16c96",
+  "stage": "CRM_OWNER_DETAIL_THEME_SOURCE_FREEZE"
+}
