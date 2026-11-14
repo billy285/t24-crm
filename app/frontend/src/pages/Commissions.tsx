@@ -469,11 +469,11 @@ export default function Commissions() {
       <section hidden={activeTab !== 'quality'} aria-label="待办事项">
         {activeTab === 'quality' && <div className="space-y-3">
           {(data?.quality_issues || []).map(issue => <Card key={issue.key}>
-            <CardContent className="commission-quality-row">
+            <div className="commission-quality-row">
               <CommissionIssueSummary issue={issue} />
               <Badge className={issue.severity === 'high' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}>{issue.severity === 'high' ? '高优先级' : '待补齐'}</Badge>
               <Button size="sm" variant="outline" onClick={() => resolveIssue(issue)}>{issue.type === 'commission_rule_review' ? '核对计佣' : ['partner_without_agreement', 'payment_without_agreement'].includes(issue.type) ? '补充协议' : '设置归属'}</Button>
-            </CardContent>
+            </div>
           </Card>)}
           {!data?.quality_issues?.length && <Card><CardContent className="py-12 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-emerald-500" /><p className="mt-3 font-semibold text-emerald-800">分润数据检查通过</p><p className="mt-1 text-sm text-slate-500">当前付费项目和服务实收均有归属或适用协议。</p></CardContent></Card>}
         </div>}
