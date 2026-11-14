@@ -1,0 +1,21 @@
+{
+  "baseline_git_commit": "ca0b69f74c69d6661b3e0bf4a795890baabf4e1d",
+  "baseline_source_sha": "7bba253c20f09bc9773e5dc845e13d8889e225a7",
+  "build_receipt_sha256": "1dbb413452001f89cb3d4a58aecf1f5bf2bf1f0fcc749347164e8c62194c4abf",
+  "changed_source_files": {
+    "app/frontend/src/components/MediaMerchantWorkspace.tsx": "d83a09024d8c45cbdda023eeda8bf897c4efbfe6fb28c67a7d97bbf541e72fad",
+    "app/frontend/src/components/MediaWorkspaceToolbar.tsx": "3c7ea1d84914ff3d10a5ad3b04cca75340db2dc2b786064f7be3b88de7b6986c",
+    "app/frontend/src/components/media-ops-refinement.css": "9c863ed01de0ae69f1aba8318a948530047ac027f7d21bdedb4f2aef02fd44fa",
+    "app/frontend/src/pages/Commissions.tsx": "c7b4e740f7f42f07fac59be7749b2e75c51a5dd0dbcc7f2a7d929da3b6f3a299",
+    "app/frontend/src/pages/OperationsWorkbench.tsx": "b82791fed83a9fd8150fdcb8b777a9a5a445644bedbed81ffa460ddb089d9a0e",
+    "app/frontend/src/pages/commissions.css": "758750185b3ab9c09b07114fc7d6b8df6fb26cc96c47a9c4ff5bb59516821520",
+    "app/frontend/src/pages/crm-delivery-refinement.css": "3d620836a80ad88d4fbd656507615627a72b7850f9c293e52df9b759f5612303"
+  },
+  "dist_inventory_sha256": "cdf5022a9b6b7f1c186cd046d629ffd84b51e9c95cc6dd3c7044abc95ba85499",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "feae5e84b6a4",
+  "source_commit_bytes_verified": true,
+  "source_sha": "d1603e77d1b388a5852787d86ec1418a0c495f16",
+  "stage": "CRM_MOBILE_READING_SOURCE_FREEZE"
+}
