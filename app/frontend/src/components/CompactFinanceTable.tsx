@@ -175,7 +175,9 @@ function detailSections(headers: string[], groups: readonly CompactFinanceDetail
 
 /** End the modal before an original handler opens its own dialog or changes the record. */
 function withActionHandoff(node: ReactNode, beforeAction: () => void): ReactNode {
-  if (Array.isArray(node)) return node.map(child => withActionHandoff(child, beforeAction));
+  if (typeof node === 'object' && node !== null && Symbol.iterator in node) {
+    return Children.map(node, child => withActionHandoff(child, beforeAction));
+  }
   if (!isValidElement<TableElementProps>(node)) return node;
   const props: Partial<TableElementProps> = {};
   // Radix asChild requires its original single element, including after a recursive clone.
