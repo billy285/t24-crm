@@ -1,0 +1,27 @@
+{
+  "baseline_git_commit": "e01d45a976e404e623e67844baad9bffca94f713",
+  "baseline_source_sha": "1ca9767b2ed8037bf5aaf22946fb3231b391ff9b",
+  "build_receipt_sha256": "880892e29cf628b0a67aa81301c3a68a615265bd15ea6a5799f3010e4a303ccd",
+  "changed_source_files": {
+    "app/frontend/src/components/MediaOperationsEntry.tsx": "5221d1930b9bbc3c116e87032ab6db07583715611b935a191dc5292776c57c6a",
+    "app/frontend/src/components/MediaWorkspacePriorities.tsx": "52b807147ad78045e2dcdbc93219323ea4f8e974245cafd2f1e84c547c340ff3",
+    "app/frontend/src/components/crm-order-sales-media.css": "8ca07d737dad020d4f8ac63fe23158995fca57bda49bf02606314dd7bc8ed4ca",
+    "app/frontend/src/components/media-ops-refinement.css": "716768d3db8178c3c97cec46d4d908dba7e8f4114dbfa9dbd1dea61f05bd3037",
+    "app/frontend/src/lib/service-board-config.ts": "bf9434f6603177720d66c14dcacad49447c2b9fdaeb3837a169b8933c9a665dc",
+    "app/frontend/src/pages/Commissions.tsx": "017ad48c987c2e5feed078e6b38988c6fb68a9d3ddfe49293e0d9bbfdf41afe0",
+    "app/frontend/src/pages/OperationsWorkbench.tsx": "a443b2924631c4828b9541313f8e6606d08915c611a80ca7dc4e00794d16b316",
+    "app/frontend/src/pages/ServiceBoard.tsx": "9e4e5c37a0345b036dc8670d032c128df2c514dd48377a5d72cacf5f19ba950c",
+    "app/frontend/src/pages/Tasks.tsx": "f0e1504d6b5d21a192d1d86548feeb4ae2e4f569445ac21a386b7600d029ddfb",
+    "app/frontend/src/pages/commissions.css": "4ad885d02875e735e63a11803e98847e0858da821153027d40b7206df94477d1",
+    "app/frontend/src/pages/crm-delivery-refinement.css": "3dcf79c3e4b69c413f7056c19626cb25f5bb8692dd57b9f563886b9258a6fab7",
+    "app/frontend/tests/commission-layout.spec.ts": "d1c2a9f010799a50a1fff11a957571b273c91b27a6a3a0ca5b666675f2ef7720",
+    "app/frontend/tests/delivery-layout.spec.ts": "3a022e73d520eec249f305c36c86ea20dbdcaa04b2b93e6f97e1b6a22457c6ba"
+  },
+  "dist_inventory_sha256": "41e0602c949094aaccf5122c666e3eef430489a28bfa1bf89e4aebb04c8d651c",
+  "fresh_build_passed": true,
+  "frontend_only": true,
+  "frontend_version": "65929b60c4b9",
+  "source_commit_bytes_verified": true,
+  "source_sha": "7bba253c20f09bc9773e5dc845e13d8889e225a7",
+  "stage": "CRM_HIERARCHY_REFINE_SOURCE_FREEZE"
+}
