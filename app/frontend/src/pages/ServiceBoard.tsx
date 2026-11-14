@@ -14,7 +14,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { invokeWithAuth } from '../lib/tokenStore';
 import { useRole } from '../lib/role-context';
-import { businessDateDifference, businessDateKey, businessWeekRange } from '../lib/business-date';
+import { businessDateDifference, businessDateKey, businessWeekRange, formatBusinessDateTimeInput } from '../lib/business-date';
 import { decorateEffectiveSubscriptions } from '../lib/subscription-utils';
 import { getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
@@ -169,13 +169,26 @@ const getServiceRemainingDays = (sp: Pick<ServiceProgress, 'service_end_date'>) 
   if (!sp.service_end_date) return null;
   return businessDateDifference(sp.service_end_date.slice(0, 10));
 };
-const isOverdue = (sp: ServiceProgress) => {
-  const remainDays = getServiceRemainingDays(sp);
-  return remainDays !== null && remainDays <= 0 && sp.service_stage !== 'ended';
+const getServicePhase = (sp: ServiceProgress, today = businessDateKey()) => {
+  if (sp.service_stage === 'ended' || sp.service_stage === 'paused') return sp.service_stage;
+  if (sp.service_start_date && sp.service_start_date.slice(0, 10) > today) return 'upcoming';
+  if (sp.service_end_date && sp.service_end_date.slice(0, 10) < today) return 'expired';
+  return 'active';
 };
+const isOverdue = (sp: ServiceProgress) => getServicePhase(sp) === 'expired';
 const isExpiringSoon = (sp: ServiceProgress) => {
-  const remainDays = getServiceRemainingDays(sp);
-  return remainDays !== null && remainDays > 0 && remainDays <= SERVICE_EXPIRY_WARNING_DAYS;
+  if (getServicePhase(sp) !== 'active') return false;
+  const days = getServiceRemainingDays(sp);
+  return days !== null && days <= SERVICE_EXPIRY_WARNING_DAYS;
+};
+const getServiceStatusLabel = (sp: ServiceProgress) => {
+  switch (getServicePhase(sp)) {
+    case 'ended': return '服务已结束';
+    case 'paused': return '服务已暂停';
+    case 'upcoming': return '尚未开始';
+    case 'expired': return '交付已逾期';
+    default: return getServiceRemainingDays(sp) === 0 ? '今日到期' : isExpiringSoon(sp) ? '即将到期' : '进行中';
+  }
 };
 const isUpdatedThisWeek = (sp: ServiceProgress) => {
   if (!sp.last_update_time) return false;
@@ -183,11 +196,13 @@ const isUpdatedThisWeek = (sp: ServiceProgress) => {
   const now = new Date();
   return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24) <= 7;
 };
-const isLongNoUpdate = (sp: ServiceProgress) => {
-  if (!sp.last_update_time) return true;
-  const d = new Date(sp.last_update_time);
-  const now = new Date();
-  return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24) > 14;
+const isLongNoUpdate = (sp: ServiceProgress, today: string) => {
+  if (getServicePhase(sp, today) !== 'active') return false;
+  const timestamp = sp.last_update_time || sp.created_at;
+  const lastActivity = timestamp?.length > 10 ? formatBusinessDateTimeInput(timestamp).slice(0, 10) : timestamp;
+  const start = sp.service_start_date?.slice(0, 10);
+  const baseline = start && (!lastActivity || start > lastActivity) ? start : lastActivity;
+  return Boolean(baseline && (businessDateDifference(today, baseline) ?? 0) > 14);
 };
 const hasIssue = (sp: ServiceProgress) => !!sp.issue_status && !['none', '无'].includes(sp.issue_status) && !sp.issue_resolved;
 const isWaitingForClientMaterial = (sp: ServiceProgress) => (
@@ -730,19 +745,8 @@ export default function ServiceBoard() {
   };
 
   // ==================== Filtering ====================
-  const filtered = useMemo(() => {
+  const filteredScope = useMemo(() => {
     return progresses.filter(sp => {
-      if (quickFilter === 'today_pending') {
-        const tasks = allTasks.filter(t => t.service_progress_id === sp.id && t.status !== 'completed' && t.status !== 'cancelled' && t.due_date && t.due_date.slice(0, 10) <= businessToday);
-        if (tasks.length === 0) return false;
-      }
-      if (quickFilter === 'overdue' && !isOverdue(sp)) return false;
-      if (quickFilter === 'has_issue' && !hasIssue(sp)) return false;
-      if (quickFilter === 'waiting_client' && sp.issue_status !== 'waiting_client' && sp.issue_status !== 'waiting_material') return false;
-      if (quickFilter === 'expiring_soon' && !isExpiringSoon(sp)) return false;
-      if (quickFilter === 'updated_this_week' && !isUpdatedThisWeek(sp)) return false;
-      if (quickFilter === 'long_no_update' && !isLongNoUpdate(sp)) return false;
-
       if (search) {
         const q = search.toLowerCase();
         const match = [sp.customer_name, sp.sales_person, sp.ops_person, sp.design_person, sp.city, sp.package_name]
@@ -759,7 +763,31 @@ export default function ServiceBoard() {
 
       return true;
     });
-  }, [progresses, allTasks, quickFilter, search, filters, businessToday]);
+  }, [progresses, search, filters]);
+
+  const filtered = useMemo(() => {
+    return filteredScope.filter(sp => {
+      if (quickFilter === 'today_pending') {
+        const tasks = allTasks.filter(t => t.service_progress_id === sp.id && t.status !== 'completed' && t.status !== 'cancelled' && t.due_date && t.due_date.slice(0, 10) <= businessToday);
+        if (tasks.length === 0) return false;
+      }
+      if (quickFilter === 'active' && getServicePhase(sp, businessToday) !== 'active') return false;
+      if (quickFilter === 'overdue' && !isOverdue(sp)) return false;
+      if (quickFilter === 'has_issue' && !hasIssue(sp)) return false;
+      if (quickFilter === 'waiting_client' && !isWaitingForClientMaterial(sp)) return false;
+      if (quickFilter === 'expiring_soon' && !isExpiringSoon(sp)) return false;
+      if (quickFilter === 'updated_this_week' && !isUpdatedThisWeek(sp)) return false;
+      if (quickFilter === 'long_no_update' && !isLongNoUpdate(sp, businessToday)) return false;
+
+      return true;
+    });
+  }, [filteredScope, allTasks, quickFilter, businessToday]);
+
+  const quickCounts = useMemo(() => ({
+    has_issue: filteredScope.filter(hasIssue).length,
+    overdue: filteredScope.filter(sp => getServicePhase(sp, businessToday) === 'expired').length,
+    long_no_update: filteredScope.filter(sp => isLongNoUpdate(sp, businessToday)).length,
+  }), [filteredScope, businessToday]);
 
   const activeDeliveryFilters = [
     ...(quickFilter !== 'all' ? [{ key: 'quick', label: quickFilterLabels[quickFilter], clear: () => setQuickFilter('all') }] : []),
@@ -785,11 +813,11 @@ export default function ServiceBoard() {
   // ==================== Stats ====================
   const stats = useMemo(() => {
     const total = progresses.length;
-    const active = progresses.filter(p => !['ended', 'paused'].includes(p.service_stage)).length;
+    const active = progresses.filter(p => getServicePhase(p, businessToday) === 'active').length;
     const withIssue = progresses.filter(p => hasIssue(p)).length;
     const overdueCount = progresses.filter(p => isOverdue(p)).length;
     const updatedWeek = progresses.filter(p => isUpdatedThisWeek(p)).length;
-    const longNoUpd = progresses.filter(p => isLongNoUpdate(p)).length;
+    const longNoUpd = progresses.filter(p => isLongNoUpdate(p, businessToday)).length;
     const expiring = progresses.filter(p => isExpiringSoon(p)).length;
     const visibleProgressIds = new Set(progresses.map(p => p.id));
     const scopedTasks = allTasks.filter(t => !t.service_progress_id || visibleProgressIds.has(t.service_progress_id));
@@ -1647,7 +1675,7 @@ export default function ServiceBoard() {
   const renderProgressCard = ({ sp }: { sp: ServiceProgress }) => {
     const ts = getTaskStats(sp.id);
     const overdue = isOverdue(sp);
-    const expiring = sp.service_stage !== 'ended' && isExpiringSoon(sp);
+    const expiring = isExpiringSoon(sp);
     const issue = hasIssue(sp);
     const nextStage = getNextStage(sp.service_type, sp.service_stage);
     const remainDays = getServiceRemainingDays(sp);
@@ -1657,7 +1685,7 @@ export default function ServiceBoard() {
     if (isMobile) {
       const nextTask = onboarding.nextStep?.task || allTasks.find(task => task.service_progress_id === sp.id && !['completed', 'cancelled'].includes(task.status));
       return <article className={`dc-progress-card rounded-2xl border bg-white p-4 ${issue || overdue ? 'border-rose-200' : 'border-slate-200'}`}>
-        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || '阶段待核对'} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : overdue ? '已逾期' : expiring ? '即将到期' : sp.service_stage === 'ended' ? '已结束' : '进行中'}</Badge></div>
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="break-words text-base font-semibold text-slate-900">{sp.customer_name}</h3><p className="mt-1 text-sm text-slate-500">{allStageLabels[sp.service_stage] || '阶段待核对'} · {sp.ops_person || '待分配运营'}</p></div><Badge className={issue || overdue ? 'shrink-0 bg-rose-100 text-rose-700' : 'shrink-0 bg-blue-100 text-blue-700'}>{issue ? '有卡点' : getServiceStatusLabel(sp)}</Badge></div>
         <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">{issue ? sp.issue_description || '需要先处理服务卡点' : nextTask ? `下一步：${nextTask.task_name}` : sp.last_work_summary || '查看服务记录，确认下一步安排'}</p>
         <Button className="mt-3 min-h-11 w-full" onClick={() => { void openDetail(sp); setDetailTab('tasks'); }}>{issue ? '处理服务卡点' : nextTask ? '继续任务' : '查看服务详情'}</Button>
         <details className="mfocus-delivery-card-details mt-3 border-t border-dashed border-slate-200 pt-3"><summary className="cursor-pointer text-sm text-slate-500"><span>服务详情与更多操作</span><ChevronDown size={16} aria-hidden="true"/></summary><div className="mt-3 space-y-3 text-sm"><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p>{!allStageLabels[sp.service_stage] && <p>阶段原值：{sp.service_stage || '未设置'} · 待核对</p>}<p>进度 {sp.progress_percent}% · 待办 {ts.pending} · 已完成 {ts.completed}</p><p>销售 {sp.sales_person || '未分配'} · 到期 {sp.service_end_date?.slice(0, 10) || '未设置'}</p>{canEdit && <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => openQuickUpdate(sp)}>更新进展</Button><Button variant="outline" onClick={() => openEditProgress(sp)}>编辑服务</Button>{nextStage && <Button variant="outline" onClick={() => handleAdvanceStage(sp)}>推进阶段</Button>}</div>}</div></details>
@@ -1682,19 +1710,19 @@ export default function ServiceBoard() {
             </div>
             <p className="text-xs text-slate-500 mt-0.5">{sp.city}{sp.state ? `, ${sp.state}` : ''} · {industryLabels[sp.industry] || sp.industry}</p>
             <p className={`text-xs mt-1 ${
-              sp.service_stage === 'ended' ? 'text-slate-500' : remainDays == null
+              getServicePhase(sp) !== 'active' && !overdue ? 'text-slate-500' : remainDays == null
                 ? 'text-slate-400'
-                : remainDays <= 0
+                : remainDays < 0
                   ? 'text-red-600 font-medium'
                   : remainDays <= SERVICE_EXPIRY_WARNING_DAYS
                     ? 'text-yellow-700 font-medium'
                     : 'text-slate-500'
             }`}>
-              {sp.service_stage === 'ended' ? '服务已结束' : remainDays == null
+              {getServicePhase(sp) !== 'active' && !overdue ? getServiceStatusLabel(sp) : remainDays == null
                 ? '到期剩余: -'
-                : remainDays <= 0
+                : remainDays < 0
                   ? `已逾期 ${Math.abs(remainDays)} 天`
-                  : `剩余 ${remainDays} 天`}
+                  : remainDays === 0 ? '今日到期' : `剩余 ${remainDays} 天`}
             </p>
           </div>
           <div className="text-right shrink-0 ml-2">
@@ -2458,9 +2486,10 @@ export default function ServiceBoard() {
                       {sp.service_end_date?.slice(0, 10) || '-'}
                       {(() => {
                         const remainDays = getServiceRemainingDays(sp);
-                        if (sp.service_stage === 'ended') return ' (服务已结束)';
+                        if (['ended', 'paused', 'upcoming'].includes(getServicePhase(sp))) return ` (${getServiceStatusLabel(sp)})`;
                         if (remainDays == null) return '';
-                        if (remainDays <= 0) return ` (已逾期 ${Math.abs(remainDays)} 天)`;
+                        if (remainDays === 0) return ' (今日到期)';
+                        if (remainDays < 0) return ` (已逾期 ${Math.abs(remainDays)} 天)`;
                         if (remainDays <= SERVICE_EXPIRY_WARNING_DAYS) return ` (剩余 ${remainDays} 天)`;
                         return '';
                       })()}
@@ -2880,9 +2909,9 @@ export default function ServiceBoard() {
         <summary><BarChart3 size={15}/><strong>概览与规则</strong>{(isAdmin || role === 'ops') && <span className="mfocus-delivery-overview-counts">{stats.withIssue > 0 && <span className="text-rose-700">卡点 {stats.withIssue}</span>}{stats.overdueCount > 0 && <span className="text-amber-700">逾期 {stats.overdueCount}</span>}{stats.withIssue === 0 && stats.overdueCount === 0 && <span>交付 {stats.total} 条</span>}</span>}<ChevronDown size={15}/></summary>
       {(isAdmin || role === 'ops') && <DeliveryMetrics label="交付概览" items={[
         { key: 'total', label: '交付记录', value: stats.total, note: '当前可见范围；一位客户可有多项服务', onClick: () => setQuickFilter('all'), active: quickFilter === 'all' },
-        { key: 'active', label: '服务进行中', value: stats.active, note: '正在推进的服务交付', tone: 'green' },
+        { key: 'active', label: '服务进行中', value: stats.active, note: '当前服务期内的项目', tone: 'green', onClick: () => setQuickFilter('active'), active: quickFilter === 'active' },
         { key: 'issue', label: '问题卡点', value: stats.withIssue, note: '需要协调和解决', tone: 'rose', onClick: () => setQuickFilter('has_issue'), active: quickFilter === 'has_issue' },
-        { key: 'overdue', label: '交付已逾期', value: stats.overdueCount, note: '已到期且尚未结束', tone: 'amber', onClick: () => setQuickFilter('overdue'), active: quickFilter === 'overdue' },
+        { key: 'overdue', label: '交付已逾期', value: stats.overdueCount, note: '服务期已过，待确认收尾', tone: 'amber', onClick: () => setQuickFilter('overdue'), active: quickFilter === 'overdue' },
       ]} />}
 
       {(canCreate || archivedStoppedCount > 0) && <details className="dc-guidance">
@@ -2950,7 +2979,7 @@ export default function ServiceBoard() {
                   {stats.lowQualityCompleted > 0 ? ` ${stats.lowQualityCompleted} 个低质量完成` : ''}
                   {stats.weeklyMissingPlatforms > 0 ? ` ${stats.weeklyMissingPlatforms} 个平台本周更新未达标` : ''}
                   {stats.weeklyMissingReports > 0 ? ` ${stats.weeklyMissingReports} 个项目内部周报待完成` : ''}
-                  {stats.longNoUpd > 0 ? ` ${stats.longNoUpd} 个长期未更新客户` : ''}
+                  {stats.longNoUpd > 0 ? ` ${stats.longNoUpd} 个服务中项目超过 14 天未更新` : ''}
                   。运营完成任务时选择对应文案或素材，系统会自动降低风险。
                 </span>
               </div>
@@ -2968,8 +2997,8 @@ export default function ServiceBoard() {
             { label: '已逾期', value: stats.overdueCount, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: '即将到期', value: stats.expiring, color: 'text-yellow-600', bg: 'bg-yellow-50' },
             { label: '本周更新', value: stats.updatedWeek, color: 'text-green-600', bg: 'bg-green-50' },
-            { label: '长期未更新', value: stats.longNoUpd, color: 'text-slate-600', bg: 'bg-slate-50' },
-            { label: '客户总数', value: stats.total, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { label: quickFilterLabels.long_no_update, value: stats.longNoUpd, color: 'text-slate-600', bg: 'bg-slate-50' },
+            { label: '交付项目总数', value: stats.total, color: 'text-purple-600', bg: 'bg-purple-50' },
           ].map(s => (
             <div key={s.label} className={`${s.bg} rounded-lg p-3 text-center`}>
               <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
@@ -3070,7 +3099,7 @@ export default function ServiceBoard() {
                   );
                 })}
                 {filteredWeeklyActionItems.length > 8 && (
-                  <p className="text-xs text-slate-400 text-center pt-1">还有 {filteredWeeklyActionItems.length - 8} 个客户未展示，可通过筛选负责人或客户名称查看。</p>
+                  <p className="text-xs text-slate-400 text-center pt-1">还有 {filteredWeeklyActionItems.length - 8} 个项目未展示，可通过筛选负责人或客户名称查看。</p>
                 )}
               </div>
             )}
@@ -3087,9 +3116,9 @@ export default function ServiceBoard() {
             className={`min-h-11 text-xs md:h-8 md:min-h-0 ${quickFilter === k ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
             onClick={() => setQuickFilter(quickFilter === k ? 'all' : k)}
           >{v}
-            {k === 'has_issue' && stats.withIssue > 0 && <span className="ml-1 text-[10px]">({stats.withIssue})</span>}
-            {k === 'overdue' && stats.overdueCount > 0 && <span className="ml-1 text-[10px]">({stats.overdueCount})</span>}
-            {k === 'long_no_update' && stats.longNoUpd > 0 && <span className="ml-1 text-[10px]">({stats.longNoUpd})</span>}
+            {k === 'has_issue' && quickCounts.has_issue > 0 && <span className="ml-1 text-[10px]">({quickCounts.has_issue})</span>}
+            {k === 'overdue' && quickCounts.overdue > 0 && <span className="ml-1 text-[10px]">({quickCounts.overdue})</span>}
+            {k === 'long_no_update' && quickCounts.long_no_update > 0 && <span className="ml-1 text-[10px]">({quickCounts.long_no_update})</span>}
           </Button>
         ))}
       </div>
@@ -3153,7 +3182,7 @@ export default function ServiceBoard() {
               <td><button type="button" className="dc-customer-name" onClick={() => openDetail(sp)}>{sp.customer_name}</button><p>{serviceTypeLabels[sp.service_type] || sp.service_type} · {sp.package_name || '未填写套餐'}</p><small>{[sp.city, sp.state].filter(Boolean).join(', ') || '未填写地区'}</small></td>
               <td><div className="dc-stage-line"><span>{allStageLabels[sp.service_stage] || sp.service_stage}</span><b>{sp.progress_percent}%</b></div><div className="dc-progress-track"><i style={{ width: `${Math.max(0, Math.min(sp.progress_percent, 100))}%` }} /></div><small>{ts.total ? `${ts.completed} / ${ts.total} 任务完成` : '尚无交付任务'}{ts.overdue > 0 ? ` · ${ts.overdue} 项逾期` : ''}</small></td>
               <td><span className="dc-person"><i>{(sp.ops_person || '待')[0]}</i>{sp.ops_person || '待分配运营'}</span><small>销售 · {sp.sales_person || '未分配'}</small>{sp.design_person && <small>设计 · {sp.design_person}</small>}</td>
-              <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{sp.service_stage === 'ended' ? '服务已结束' : isOverdue(sp) ? '交付已逾期' : isExpiringSoon(sp) ? '即将到期' : '按阶段推进'}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
+              <td>{issue ? <span className="dc-status dc-status-rose">{issueStatusLabels[sp.issue_status] || '有问题卡点'}</span> : <span className={`dc-status ${sp.service_stage === 'ended' ? 'dc-status-green' : isOverdue(sp) ? 'dc-status-rose' : 'dc-status-blue'}`}>{getServiceStatusLabel(sp)}</span>}<p className="dc-summary-text" title={issue ? sp.issue_description : sp.last_work_summary}>{issue ? sp.issue_description || '待补充问题说明' : onboarding.nextStep && !onboarding.isComplete ? `下一步：${onboarding.nextStep.label}` : sp.last_work_summary || '暂无工作摘要'}</p><small>更新于 {sp.last_update_time?.slice(0, 10) || '尚未更新'}</small></td>
               <td><div className="dc-row-actions"><Button size="sm" variant="outline" onClick={() => openDetail(sp)}>查看交付</Button>{canEdit && <><Button size="sm" variant="ghost" onClick={() => openQuickUpdate(sp)}>更新进展</Button></>}{canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" className="dc-admin-menu-trigger h-8 w-8 shrink-0 px-0" aria-label={`更多服务操作：${sp.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-44">{nextStage && <DropdownMenuItem onSelect={() => handleAdvanceStage(sp)}>推进到{allStageLabels[nextStage] || nextStage}</DropdownMenuItem>}<DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-slate-700" aria-label={`编辑服务进度：${sp.customer_name}`} onClick={() => openEditProgress(sp)}><Edit size={14} /><span>编辑服务资料</span></Button></DropdownMenuItem>{canEdit && canDelete && <DropdownMenuItem asChild><Button size="sm" variant="ghost" className="min-h-11 w-full justify-start gap-2 px-3 text-rose-600 hover:bg-rose-50" aria-label={`删除服务进度：${sp.customer_name}`} onClick={() => setDeleteTarget({ type: 'progress', item: sp })}><Trash2 size={14} /><span>删除服务</span></Button></DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</div></td>
             </tr>;
           })}</tbody></CompactFinanceTable></div>}

@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowRight, CheckCircle2, ClipboardCheck, Image, Store, TriangleAlert } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Image } from 'lucide-react';
 import { Button } from './ui/button';
 import { mediaUtcToLocal } from '@/lib/media-operations-api';
 import type { WorkspaceMerchant, WorkspaceProjection, WorkspaceQueueAction, WorkspaceStatusFilter } from '@/lib/media-workspace-api';
@@ -17,9 +17,55 @@ function workspacePriorityCount(value: number | null, complete: boolean): string
 export default function MediaWorkspacePriorities({ data, isOwner, onFilter, onView, onMerchant }: Props) {
   const value = workspacePriorityData(data);
   if (!value) return <p className="mwr-priority-unavailable" role="status"><AlertCircle size={16}/>当前待办尚未完整读取，请重新核对范围。</p>;
-  return <section className="mwr-priorities" aria-label={isOwner ? '老板优先待办' : '我的运营优先待办'}><header><div><span>{isOwner ? '老板优先待办' : '我的工作'}</span><h2>先处理这些事情</h2></div><button type="button" onClick={() => onFilter('attention')}>查看运营清单<ArrowRight size={15}/></button></header><p className="mwr-summary-scope">状态卡：授权范围汇总；{value.matches !== undefined && value.allMerchants !== undefined ? `清单：当前筛选 ${workspacePriorityCount(value.matches, value.complete)} / ${workspacePriorityCount(value.allMerchants, value.complete)} 家。` : '清单已按当前筛选。'}异常按当前筛选。</p>{!value.complete && <p className="mwr-partial" role="status"><AlertCircle size={15}/>部分来源待核对。下方正数为已读取数量，空白或0不表示没有待办。</p>}<div className="mwr-priority-metrics"><button type="button" onClick={() => onFilter('review')}><ClipboardCheck size={17}/><span>待审核商家</span><strong>{workspacePriorityCount(value.review, value.complete)}<small>{value.review === null || !value.complete && value.review === 0 ? '' : '家'}</small></strong><small>按商家集中核对</small></button><button type="button" onClick={() => onFilter('attention')} className={value.attention ? 'attention' : ''}><Store size={17}/><span>需处理商家</span><strong>{workspacePriorityCount(value.attention, value.complete)}<small>{value.attention === null || !value.complete && value.attention === 0 ? '' : '家'}</small></strong><small>异常、逾期及待分配</small></button><button type="button" onClick={() => onView('reports')} className={value.exceptions ? 'attention' : ''}><TriangleAlert size={17}/><span>执行异常／待确认</span><strong>{workspacePriorityCount(value.exceptions, value.complete)}<small>{!value.complete && value.exceptions === 0 ? '' : '条'}</small></strong><small>打开原记录核对原因</small></button><button type="button" onClick={() => onFilter('all')}><Image size={17}/><span>菜单与配图</span><strong className="mwr-check-label">逐家检查</strong><small>缺素材时进入商家补齐</small></button></div><div className="mwr-priority-list">{value.merchants.length > 0 ? value.merchants.map(merchant => {
-    const action = merchant.work_queue?.next_action, allowed = action?.kind === 'monthly' && !isOwner ? undefined : action || undefined;
-    const missing = merchant.work_queue?.checks.find(check => check.state === 'missing');
-    return <article key={merchant.id}><div><button className="mwr-merchant-name" type="button" onClick={() => onMerchant(merchant)}>{merchant.name}</button><p>{merchant.issues?.slice(0, 2).map(issue => <span key={issue.code} className={`mw-issue ${issue.severity}`}>{issue.label}</span>)}{missing && <span className="mw-issue medium">{missing.label}</span>}</p></div><span className="mwr-operator">{merchant.primary_operator_name || (merchant.assignment_state === 'unassigned' ? '主要运营待分配' : '按原协作范围处理')}</span><Button variant="outline" onClick={() => onMerchant(merchant, allowed)}>{allowed?.kind === 'materials' ? '补齐素材' : '去处理'}<ArrowRight size={14}/></Button></article>;
-  }) : <div className="mwr-priority-empty">{value.complete ? <CheckCircle2 size={18}/> : <AlertCircle size={18}/>}<span>{value.complete ? '当前已保存记录中没有需优先处理的商家。' : '待办来源尚未完整，进入运营清单继续核对。'}</span><button type="button" onClick={() => onFilter('all')}>查看商家<ArrowRight size={14}/></button></div>}</div><p className="mwr-priority-footnote">{data?.observed_at && <>本地更新：{mediaUtcToLocal(data.observed_at, 'Asia/Shanghai').replace('T', ' ')}（北京时间）。</>}商家数与记录条数分别统计，汇总不随分页变化；发布仍须确认。</p></section>;
+  const metrics = [
+    { label: '待审核商家', count: value.review, unit: '家', open: () => onFilter('review') },
+    { label: '需处理商家', count: value.attention, unit: '家', open: () => onFilter('attention'), attention: true },
+    { label: '执行异常／待确认', count: value.exceptions, unit: '条', open: () => onView('reports'), attention: true },
+  ];
+  return <section className="mwr-priorities" aria-label={isOwner ? '老板优先待办' : '我的运营优先待办'}>
+    <header>
+      <h2>{isOwner ? '优先待办' : '我的运营待办'}</h2>
+      <button type="button" onClick={() => onFilter('attention')}>查看运营清单<ArrowRight size={15}/></button>
+    </header>
+    {!value.complete && <p className="mwr-partial" role="status"><AlertCircle size={15}/>部分来源待核对，当前仅显示已读取的数量。</p>}
+    <div className="mwr-priority-metrics">
+      {metrics.map(({ label, count, unit, attention, open }) => (
+        <button key={label} type="button" className={attention && count ? 'attention' : undefined} onClick={open}>
+          <span>{label}</span>
+          <strong>{workspacePriorityCount(count, value.complete)}{count !== null && (value.complete || count > 0) && <small>{unit}</small>}</strong>
+        </button>
+      ))}
+    </div>
+    <div className="mwr-priority-list">
+      {value.merchants.length > 0 ? value.merchants.map(merchant => {
+        const action = merchant.work_queue?.next_action;
+        const allowed = action?.kind === 'monthly' && !isOwner ? undefined : action || undefined;
+        const missing = merchant.work_queue?.checks.find(check => check.state === 'missing');
+        return <article key={merchant.id}>
+          <div>
+            <button className="mwr-merchant-name" type="button" onClick={() => onMerchant(merchant)}>{merchant.name}</button>
+            <p>
+              {merchant.issues?.slice(0, 2).map(issue => <span key={issue.code} className={`mw-issue ${issue.severity}`}>{issue.label}</span>)}
+              {missing && <span className="mw-issue medium">{missing.label}</span>}
+            </p>
+          </div>
+          <span className="mwr-operator">{merchant.primary_operator_name || (merchant.assignment_state === 'unassigned' ? '主要运营待分配' : '按原协作范围处理')}</span>
+          <Button variant="outline" onClick={() => onMerchant(merchant, allowed)}>{allowed?.kind === 'materials' ? '补齐素材' : '去处理'}<ArrowRight size={14}/></Button>
+        </article>;
+      }) : <div className="mwr-priority-empty">
+        {value.complete ? <CheckCircle2 size={18}/> : <AlertCircle size={18}/>}
+        <span>{value.complete ? '当前已保存记录中没有需优先处理的商家。' : '待办来源尚未完整，进入运营清单继续核对。'}</span>
+        <button type="button" onClick={() => onFilter('all')}>查看商家<ArrowRight size={14}/></button>
+      </div>}
+    </div>
+    <footer className="mwr-priority-tools">
+      <button type="button" onClick={() => onFilter('all')}><Image size={15}/>逐家检查菜单与配图</button>
+      <details>
+        <summary>统计范围</summary>
+        <p>待审核和需处理按授权商家计数。执行异常按当前筛选的记录条数统计。</p>
+        {value.matches !== undefined && value.allMerchants !== undefined && <p>清单显示 {workspacePriorityCount(value.matches, value.complete)} / {workspacePriorityCount(value.allMerchants, value.complete)} 家。</p>}
+        {data?.observed_at && <p>本地更新于 {mediaUtcToLocal(data.observed_at, 'Asia/Shanghai').replace('T', ' ')}（北京时间）。</p>}
+      </details>
+    </footer>
+  </section>;
 }

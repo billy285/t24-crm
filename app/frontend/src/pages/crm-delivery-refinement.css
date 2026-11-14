@@ -15,8 +15,6 @@
  .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading>div{min-width:0;flex:1}
  .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading .app-page-description{display:none}
  .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading>button{flex-shrink:0}
- .crm-delivery-refined .dc-media-entry{border:1px solid #dce4ef;border-radius:10px;background:#fff;margin:8px 0}
- .crm-delivery-refined .dc-media-entry>summary{padding:10px 12px;font-size:12px;color:#526783;cursor:pointer;min-height:44px}
 
  .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metrics{grid-template-columns:repeat(var(--dc-metric-count,4),minmax(0,1fr));gap:0;margin:12px 0;border:1px solid #dce4ef;border-radius:12px;background:#fff;overflow:hidden}
  .t24-system.app-shell .crm-desktop-main .crm-delivery-refined.crm-delivery-refined .dc-metrics .dc-metric{min-width:0;min-height:76px;border:0;border-right:1px solid #edf1f6;border-radius:0;padding:9px 5px;box-shadow:none;background:transparent;gap:5px;grid-column:auto}
@@ -29,4 +27,51 @@
  .crm-delivery-refined .dc-applied-filters button{min-height:44px}
  .crm-delivery-refined .dc-today-toolbar{align-items:stretch;gap:8px}
  .crm-delivery-refined .dc-today-toolbar nav{overflow-x:auto;white-space:nowrap;max-width:100%}
+}
+
+.dc-today .dc-workbench-tools,
+.dc-today .dc-media-link,
+.dc-today .dc-media-link a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.t24-system .crm-desktop-main .crm-delivery-refined.dc-today .dc-heading > .dc-workbench-tools {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.dc-today .dc-media-link a,
+.dc-today .dc-media-link button {
+  color: var(--crm-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding-inline: 4px;
+}
+.dc-today .dc-media-link a:hover { color: var(--crm-accent); }
+.dc-today .dc-media-link b,
+.dc-today .dc-action-filters b { font-variant-numeric: tabular-nums; }
+.dc-today .dc-media-link b {
+  color: var(--crm-accent);
+  background: var(--crm-accent-soft);
+  border-radius: 4px;
+  padding-inline: 5px;
+}
+.dc-today .dc-action-filters b { margin-inline-start: 4px; }
+@media (max-width: 767px) {
+  .dc-today .dc-workbench-tools,
+  .dc-today .dc-media-link,
+  .dc-today .dc-media-link a { gap: 4px; }
+  .dc-today .dc-media-link a,
+  .dc-today .dc-media-link button { min-height: 44px; }
+  .dc-today .dc-media-link button { min-width: 44px; }
+  .dc-today .dc-action-filters button {
+    display: flex;
+    flex: 1 0 auto;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .dc-today .dc-action-filters b { margin-inline-start: 0; }
 }

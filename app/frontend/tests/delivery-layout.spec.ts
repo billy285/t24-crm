@@ -36,18 +36,18 @@ async function seed(page: Page) {
   return writes;
 }
 
-test('成交客户切换列展示保留尾款和原始收款金额，且不提交账目', async ({ page }) => {
+test('成交客户明细保留尾款和原始收款金额，且不提交账目', async ({ page }) => {
   const writes = await seed(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${base}/sales`);
   await expect(page.getByRole('columnheader', { name: '尾款', exact: true })).toBeVisible();
   await expect(page.getByText('$28', { exact: true })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: '最近收款', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '展开全部列' }).click();
-  await expect(page.getByRole('columnheader', { name: '最近收款', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /查看星河餐厅.*明细/ }).click();
+  await expect(page.getByRole('dialog').getByText('最近收款', { exact: true })).toBeVisible();
   await expect(page.getByText('$400', { exact: true })).toBeVisible();
   await expect(page.getByText('$428', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '简洁视图' }).click();
+  await page.getByRole('button', { name: '关闭明细' }).click();
   await expect(page.getByText('$28', { exact: true })).toBeVisible();
   expect(writes).toEqual([]);
 });
@@ -73,3 +73,43 @@ test('交付和记录页面在电脑与手机均可阅读，切换布局不产�
   }
   expect(writes).toEqual([]);
 });
+
+for (const width of [1440, 390]) {
+  test(`stale delivery filter only includes projects currently in service at ${width}px`, async ({ page }) => {
+    const writes = await seed(page);
+    await page.clock.setFixedTime(new Date('2026-11-14T01:00:00Z'));
+    await page.setViewportSize({ width, height: 900 });
+    const baseProject = { customer_id: 101, service_type: 'social_media', service_stage: 'normal_ops', ops_person: admin.name, progress_percent: 50, issue_status: 'none', service_start_date: '2026-09-01', last_update_time: '2026-10-01' };
+    const variants = [
+      { customer_name: '在服待更新' },
+      { customer_name: '已暂停记录', service_stage: 'paused' },
+      { customer_name: '已结束记录', service_stage: 'ended' },
+      { customer_name: '尚未开始记录', service_start_date: '2026-12-01' },
+      { customer_name: '已过服务期', service_end_date: '2026-11-13' },
+      { customer_name: '刚开始服务', service_start_date: '2026-11-14' },
+      { customer_name: '正好十四天', last_update_time: '2026-10-30T17:00:00Z' },
+      { customer_name: '今日到期记录', service_end_date: '2026-11-14', last_update_time: '2026-11-09' },
+    ];
+    await page.route('**/entities/service_progresses/all*', route => route.fulfill({ json: { items: variants.map((row, i) => ({ ...baseProject, ...row, id: 750 + i })), total: variants.length } }));
+    await page.goto(`${base}/service-board`);
+    const filters = page.getByRole('region', { name: '交付筛选与视图' });
+    if (width === 390) await filters.getByRole('button', { name: '筛选', exact: true }).click();
+    const stale = filters.getByRole('button', { name: /^服务中超 14 天未更新/ });
+    await expect(stale).toHaveText(/\(1\)/);
+    await stale.click();
+    const list = page.locator('.dc-progress-list');
+    await expect(list.getByText('在服待更新', { exact: true }).first()).toBeVisible();
+    for (const other of variants.slice(1)) await expect(list.getByText(other.customer_name, { exact: true })).toHaveCount(0);
+    const search = filters.getByRole('textbox', { name: '搜索服务交付' });
+    await search.fill('已结束记录');
+    await expect(stale).not.toHaveText(/\(1\)/);
+    await expect(list).toContainText('没有匹配的交付记录');
+    await search.fill('');
+    await filters.getByRole('button', { name: '服务中', exact: true }).click();
+    await expect(list).toContainText('今日到期记录');
+    await expect(list).toContainText('刚开始服务');
+    await expect(list).not.toContainText('已过服务期');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(writes).toEqual([]);
+  });
+}

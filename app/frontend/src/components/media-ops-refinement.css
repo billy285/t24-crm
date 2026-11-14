@@ -10,3 +10,22 @@
 .ma-overview-compact .ma-caption,.ma-overview-compact .ma-overview-metrics span,.ma-overview-compact .ma-overview-metrics small{color:#64748b}@media(max-width:760px){.mwr-active-filters button,.mwr-priority-empty>button,.mwr-priorities>header>button,.mwr-merchant-name,.ma-overview-toggle{min-height:44px}.mwr-merchant-name{display:flex;align-items:center}.ma-overview-expanded>header>button{height:44px;width:44px;min-height:44px}.mwr-advanced-toggle{height:44px;min-height:44px;width:44px}}
 .mwr-month{grid-template-columns:minmax(0,1fr)}.mwr-month input{min-width:0;max-width:100%}@media(max-width:359px){.mwr-month input{padding-inline:7px}}
 @media(max-width:359px){.mwr-toolbar-main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:10px}.mw-shell .mwr-toolbar .mw-scope>label:last-child{display:grid!important;grid-column:1/-1;grid-row:2;grid-template-columns:60px minmax(0,1fr);align-items:center;gap:8px}.mwr-toolbar .mw-scope>label:last-child>.relative{min-width:0;width:100%}.mwr-month{grid-column:1/-1;grid-row:3;grid-template-columns:60px minmax(0,1fr);align-items:center;gap:8px}.mwr-toolbar .t24-native-select,.mwr-month input{font-size:16px;min-width:0;min-height:44px}.mwr-month input{padding-inline:9px}}
+
+.mwr-priority-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 0 16px;
+  margin-top: 8px;
+  color: var(--crm-muted, #64748b);
+  font-size: 12px;
+}
+.mwr-priority-tools > button, .mwr-priority-tools summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.mwr-priority-tools > button { display: inline-flex; align-items: center; gap: 6px; }
+.mwr-priority-tools details[open] { flex-basis: 100%; }
+.mwr-priority-tools p { margin: 0 0 4px; }
+.mwr-priority-metrics > button > span { grid-column: 1 / -1; }

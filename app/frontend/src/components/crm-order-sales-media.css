@@ -747,6 +747,7 @@
 
 .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mwr-priority-metrics {
   gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--crm-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1246,23 +1247,11 @@
   min-height: 44px;
 }
 
-.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mwr-priority-metrics {
-  gap: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mwr-priority-metrics > button {
-  min-height: 96px;
-  padding: 10px;
-  border-bottom: 1px solid var(--crm-border);
-}
-
-.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mwr-priority-metrics > button:nth-child(even) {
-  border-right: 0;
-}
-
-.t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mwr-priority-metrics > button:nth-last-child(-n+2) {
-  border-bottom: 0;
+  min-height: 74px;
+  padding: 8px 10px;
+  align-content: center;
+  gap: 2px;
 }
 
 .t24-system.app-shell[data-crm-order="20261111"] .crm-desktop-main[data-crm-page="/media-ops"] .mw-operation-queue {

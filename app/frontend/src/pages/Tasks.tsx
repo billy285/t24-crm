@@ -80,11 +80,10 @@ const taskReminderMessages: Record<string, { title: string; description: string 
 };
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const primaryViewLabels: Record<string, string> = {
-  unfinished: '未完成',
+  unfinished: '团队待办',
   all: '全部任务',
   mine: '我的任务',
   system: '系统提醒',
-  team: '团队待办',
   completed: '已完成',
 };
 
@@ -186,9 +185,9 @@ export default function Tasks() {
   const canOpenCustomers = canAccess('/customers');
   const defaultPrimaryView = canViewAllTasks && !window.matchMedia('(max-width: 767px)').matches ? 'unfinished' : 'mine';
   const safePrimaryView = useCallback((value?: string | null) => {
-    if (!value || !primaryViewLabels[value]) return defaultPrimaryView;
-    if (['all', 'unfinished'].includes(value) && !canViewAllTasks) return 'mine';
-    if (value === 'team' && !canViewTeamTasks) return 'mine';
+    if (value === 'team' || value === 'unfinished') return canViewTeamTasks ? 'unfinished' : 'mine';
+    if (!value || !Object.prototype.hasOwnProperty.call(primaryViewLabels, value)) return defaultPrimaryView;
+    if (value === 'all' && !canViewAllTasks) return 'mine';
     return value;
   }, [canViewAllTasks, canViewTeamTasks, defaultPrimaryView]);
   const {
@@ -289,7 +288,7 @@ export default function Tasks() {
   useEffect(() => {
     const nextView = searchParams.get('view');
     const nextSource = searchParams.get('source');
-    if (nextView && primaryViewLabels[nextView]) setPrimaryView(safePrimaryView(nextView));
+    if (nextView) setPrimaryView(safePrimaryView(nextView));
     else if (nextSource === 'system') setPrimaryView('system');
 
     const nextStatus = searchParams.get('status');
@@ -428,7 +427,6 @@ export default function Tasks() {
       || (primaryView === 'unfinished' && !isClosedTask(t))
       || (primaryView === 'mine' && isMine && !isClosedTask(t))
       || (primaryView === 'system' && (source === 'system' || Boolean(t.automation_issue_id)) && !isClosedTask(t))
-      || (primaryView === 'team' && !isClosedTask(t))
       || (primaryView === 'completed' && t.status === 'completed');
     const matchQuick = quickFilter === 'all'
       || (quickFilter === 'today_due' && isDueTodayTask(t))
@@ -479,16 +477,14 @@ export default function Tasks() {
       );
     }).length;
     return [
-      { key: 'unfinished', label: '未完成', count: tasks.filter(task => !isClosedTask(task)).length, hint: '当前可见范围的未完成任务', icon: ClipboardList },
+      { key: 'unfinished', label: primaryViewLabels.unfinished, count: tasks.filter(task => !isClosedTask(task)).length, hint: '当前可见范围的未完成任务', icon: Users },
       { key: 'all', label: '全部任务', count: tasks.length, hint: '所有状态与来源', icon: ClipboardList },
       { key: 'mine', label: '我的任务', count: mineCount, hint: employeeName ? `${employeeName} 负责或协作` : '登录员工负责或协作', icon: UserCheck },
       { key: 'system', label: '系统提醒', count: tasks.filter(task => (getTaskSource(task) === 'system' || task.automation_issue_id) && !isClosedTask(task)).length, hint: '自动扫描产生', icon: Bot },
-      { key: 'team', label: '团队待办', count: tasks.filter(task => !isClosedTask(task)).length, hint: '全部未完成任务', icon: Users },
       { key: 'completed', label: '已完成', count: completedCount, hint: '查看处理结果', icon: CheckCircle2 },
     ].filter(view => (
       (view.key !== 'all' || canViewAllTasks)
-      && (view.key !== 'unfinished' || canViewAllTasks)
-      && (view.key !== 'team' || canViewTeamTasks)
+      && (view.key !== 'unfinished' || canViewTeamTasks)
     ));
   }, [canViewAllTasks, canViewTeamTasks, completedCount, employee?.name, tasks]);
   const workload = useMemo(() => {
@@ -528,7 +524,7 @@ export default function Tasks() {
       setQuickFilter('all');
       return;
     }
-    setPrimaryView(canViewTeamTasks ? 'team' : 'mine');
+    setPrimaryView(canViewTeamTasks ? 'unfinished' : 'mine');
     setQuickFilter(focus);
   };
 

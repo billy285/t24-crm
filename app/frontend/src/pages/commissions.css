@@ -68,3 +68,13 @@
   .commission-page .commission-priority > p:last-child { margin-top: 8px; }
   .commission-page .commission-toolbar { padding-block: 10px; }
 }
+
+.commission-quality-details { margin-top: 4px; }
+.commission-quality-details summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; cursor: pointer; list-style: none; color: hsl(var(--primary)); font-size: 14px; font-weight: 600; }
+.commission-quality-details summary::-webkit-details-marker { display: none; }
+.commission-quality-details[open] summary svg { transform: rotate(180deg); }
+.commission-quality-details ul { margin: 0; padding: 0; list-style: none; }
+.commission-quality-details li { display: grid; gap: 4px; padding-block: 12px; border-top: 1px solid hsl(var(--border)); overflow-wrap: anywhere; }
+.commission-quality-details li strong { font-size: 15px; }
+.commission-quality-details li span, .commission-quality-details li p { font-size: 13px; line-height: 1.5; }
+.commission-quality-details li p { margin: 0; color: hsl(var(--muted-foreground)); }

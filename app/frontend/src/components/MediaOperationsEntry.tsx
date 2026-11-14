@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, ClipboardCheck, RefreshCw } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useRole } from '@/lib/role-context';
 import { BUSINESS_DATA_REFRESH_EVENT } from '@/lib/data-refresh';
 import { mediaOperationsApi, type MediaList, type MediaSummary } from '@/lib/media-operations-api';
 
 /** A separately scoped count: old delivery totals never imply no content work. */
-export default function MediaOperationsEntry({ compact = false }: { compact?: boolean }) {
+export default function MediaOperationsEntry({ compact = false, inline = false }: { compact?: boolean; inline?: boolean }) {
   const { employee, systemRole, canAccess } = useRole();
   const navigate = useNavigate();
   const identity = `${employee?.id || ''}:${systemRole || ''}`;
@@ -40,7 +40,18 @@ export default function MediaOperationsEntry({ compact = false }: { compact?: bo
   if (!allowed) return null;
   const summary = result?.identity === identity ? result.summary : null;
   const pending = summary ? summary.draft + summary.in_review + summary.ready + summary.blocked : null;
-  const waiting = loading || (!error && !summary);
+  const waiting = !summary && (loading || !error);
+  if (inline) {
+    const queueLabel = summary
+      ? `待准备 ${summary.draft} · 待审核 ${summary.in_review} · 待发布 ${summary.ready} · 异常 ${summary.blocked}`
+      : error ? '待办统计读取失败' : '正在读取待办统计';
+    return <div className="dc-media-link">
+      <Link to="/media-ops" title={queueLabel} aria-label={`打开代运营，${queueLabel}`}>
+        代运营{pending != null && pending > 0 && <b>{pending}</b>}<ArrowRight size={14} aria-hidden="true" />
+      </Link>
+      {error && <button type="button" onClick={() => void refresh()} aria-label="代运营待办读取失败，重新读取" title="代运营待办读取失败，重新读取"><RefreshCw size={14} aria-hidden="true" /></button>}
+    </div>;
+  }
   return <section aria-label="代运营待办" className={`mb-4 flex min-w-0 flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 ${compact ? 'p-4' : 'px-4 py-3'}`}>
     <ClipboardCheck className="h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
     <div className="min-w-0 flex-1"><h2 className="text-sm font-semibold text-slate-800">{waiting ? '正在读取代运营待办…' : error ? '代运营待办待更新' : pending ? `${pending} 项代运营任务待处理` : '代运营暂无待办'}</h2>

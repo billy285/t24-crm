@@ -6,7 +6,7 @@ import { buildReturnLink } from '@/lib/navigation-state';
 import { Input } from '@/components/ui/input';
 import { useListScroll } from '@/lib/use-list-scroll';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { DeliveryMetrics, DeliveryEmpty } from '@/components/DeliveryUI';
+import { DeliveryEmpty } from '@/components/DeliveryUI';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -371,25 +371,35 @@ export default function OperationsWorkbench() {
       {pendingWorkArrangement && !completeTarget && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><span>{pendingWorkArrangement.target.title}已完成，下一步任务待补齐。</span><Button variant="outline" onClick={() => { setCompleteTarget(pendingWorkArrangement.target); setCompletionNote(pendingWorkArrangement.note); setCreateNextTask(true); setNextTaskTitle(pendingWorkArrangement.title); setNextTaskDate(pendingWorkArrangement.date); setArrangementError('处理结果已保存，下一步任务未创建。请重试补齐安排。'); }}>补齐下一步安排</Button></div>}
       <div className="dc-heading">
         <div>
-          <p className="app-page-kicker">T24 Marketing · Operations Today</p>
           <h2 className="app-page-heading">运营今日工作台</h2>
-          <p className="app-page-description">先处理逾期和今天必须完成的事项；任务与服务问题可在本页直接闭环。</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading || refreshing} aria-busy={refreshing}>
-          <RefreshCw className={`mr-1.5 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />刷新
-        </Button>
+        <div className="dc-workbench-tools">
+          <MediaOperationsEntry inline />
+          <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={loading || refreshing} aria-busy={refreshing}>
+            <RefreshCw className="mr-1.5 h-4 w-4" />刷新
+          </Button>
+        </div>
       </div>
 
-      {isMobile ? <details className="dc-media-entry"><summary>代运营内容与发布待办</summary><MediaOperationsEntry /></details> : <MediaOperationsEntry />}
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => void loadData()} disabled={refreshing}>重新读取</Button></div>}
 
-      <div className="calm-operations-metrics"><DeliveryMetrics label="今日事项概览" items={[
-        { key: 'overdue', label: '逾期未处理', value: operationsMetric(stats.overdue, actionsIncomplete), note: '优先推动，避免继续延误', tone: 'rose', active: filter === 'overdue', onClick: () => setFilter('overdue') },
-        { key: 'today', label: '今天必须做', value: operationsMetric(stats.today, actionsIncomplete), note: '今日需要完成的事项', active: filter === 'today', onClick: () => setFilter('today') },
-        { key: 'waiting', label: '等待客户', value: operationsMetric(stats.waiting, actionsIncomplete), note: '资料或反馈尚未到位', tone: 'amber', active: filter === 'waiting', onClick: () => setFilter('waiting') },
-        { key: 'issue', label: '服务问题', value: operationsMetric(stats.issues, actionsIncomplete), note: '需要协调处理的卡点', tone: 'green', active: filter === 'issue', onClick: () => setFilter('issue') },
-      ]} /></div>
-      <div className="dc-today-toolbar"><div><h3>下一步动作 <span>{actionsIncomplete ? `已载入 ${filteredActions.length} 项 · 待核对` : `${filteredActions.length} 项`}</span></h3><p>{usePersonalScope ? '我的待办' : '团队待办'} · 按逾期、今日、等待客户排序</p></div><nav aria-label="今日事项筛选">{([{ key: 'all', label: '全部' }, { key: 'overdue', label: '已逾期' }, { key: 'today', label: '今日' }, { key: 'waiting', label: '等待客户' }, { key: 'issue', label: '服务问题' }] as const).map(item => <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>)}</nav></div>
+      <div className="dc-today-toolbar">
+        <h3>{usePersonalScope ? '我的待办' : '团队待办'}</h3>
+        <nav aria-label="今日事项筛选" className="dc-action-filters">
+          {([
+            { key: 'all', label: '全部', count: actions.length },
+            { key: 'overdue', label: '已逾期', count: stats.overdue },
+            { key: 'today', label: '今日', count: stats.today },
+            { key: 'waiting', label: '等待客户', count: stats.waiting },
+            { key: 'issue', label: '服务问题', count: stats.issues },
+          ] as const).map(item => (
+            <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}
+              aria-label={`${item.label} ${operationsMetric(item.count, actionsIncomplete)}`}>
+              {item.label}<b>{actionsIncomplete ? (item.count ? `${item.count}+` : '—') : item.count}</b>
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="calm-execution-workspace"><section className="min-w-0">
       {filteredActions.length === 0 ? (
@@ -416,7 +426,6 @@ export default function OperationsWorkbench() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
                             <span>{actionTypeLabel}</span>
-                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-blue-700">运营待办</span>
                           </div>
                           <h4 className="mt-1 line-clamp-2 text-[15px] font-bold leading-5 text-slate-950">{mobileActionTitle}</h4>
                         </div>

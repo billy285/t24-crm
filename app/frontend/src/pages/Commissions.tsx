@@ -33,6 +33,12 @@ type OptionsData = { employees: Array<{ id: number; name: string; employee_code?
 type BulkAttributionItem = { customer_id: number; customer_code?: string; customer_name: string; engagement_id?: number; engagement_name?: string; effective_from: string; partner_id?: number; partner_name?: string; partner_type?: string; status: 'ready' | 'manual_review'; basis: string; issue_keys: string[] };
 type BulkAttributionPreview = { preview_token: string; source_issue_count: number; target_count: number; ready_count: number; employee_count: number; direct_count: number; manual_review_count: number; items: BulkAttributionItem[] };
 
+const qualityIssueSubject = (issue: QualityIssue) => {
+  if (issue.customer_name || issue.customer_id) return issue.customer_name || `客户 #${issue.customer_id}`;
+  if (issue.partner_name || issue.partner_id) return issue.partner_name || `渠道 #${issue.partner_id}`;
+  return '';
+};
+
 const partnerTypeLabels: Record<string, string> = { agency: '代理商', partner: '销售合伙人', employee: '内部销售', direct: '公司直营' };
 const partnerStatusLabels: Record<string, string> = { active: '合作中', suspended: '暂停结算', terminated: '已终止', settled: '已结清' };
 const entryTypeLabels: Record<string, string> = { first_order: '首期佣金', renewal: '续费佣金', refund_reversal: '退款冲回' };
@@ -396,10 +402,18 @@ export default function Commissions() {
     </div>
 
     {!!data?.summary.quality?.issue_count && !isManagementView && <section className="commission-priority" aria-label="分润待办">
-      <p className="text-xs text-amber-700">需要处理</p>
       <h2 className="mt-3 text-xl font-medium text-slate-900">还有 {data.summary.quality.issue_count} 项分润数据待补齐</h2>
-      <p className="mt-2 text-sm text-slate-500">先核对客户归属，再处理协议或冲突。</p>
-      {!isMobile ? <Button className="mt-6 gap-2" onClick={() => setActiveTab('quality')}>查看待办<ArrowRight className="h-4 w-4" /></Button> : <p className="mt-5 text-xs text-slate-500">请在电脑端处理待办事项。</p>}
+      {isMobile ? <details className="commission-quality-details">
+        <summary>查看待办明细<ChevronDown size={16} aria-hidden="true" /></summary>
+        <ul aria-label="待补资料明细">{(data.quality_issues || []).map(issue => {
+          const subject = qualityIssueSubject(issue);
+          return <li key={issue.key}>
+            <strong>{subject || issue.title}</strong>
+            {subject && <span>{issue.title}</span>}
+            <p>{issue.description}</p>
+          </li>;
+        })}</ul>
+      </details> : <Button className="mt-6 gap-2" onClick={() => setActiveTab('quality')}>查看待办<ArrowRight className="h-4 w-4" /></Button>}
     </section>}
 
     <div className="commission-record-heading">

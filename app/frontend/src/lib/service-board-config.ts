@@ -253,15 +253,16 @@ export const countryDisplayLabels: Record<string, string> = {
 };
 
 // 快捷标签定义
-export type QuickFilter = 'all' | 'today_pending' | 'overdue' | 'has_issue' | 'waiting_client' | 'expiring_soon' | 'updated_this_week' | 'long_no_update';
+export type QuickFilter = 'all' | 'active' | 'today_pending' | 'overdue' | 'has_issue' | 'waiting_client' | 'expiring_soon' | 'updated_this_week' | 'long_no_update';
 
 export const quickFilterLabels: Record<QuickFilter, string> = {
-  all: '全部服务客户',
+  all: '全部交付项目',
+  active: '服务中',
   today_pending: '今日待处理',
   overdue: '已逾期',
   has_issue: '有问题卡点',
   waiting_client: '等待客户资料',
   expiring_soon: '即将到期',
   updated_this_week: '本周有更新',
-  long_no_update: '长期未更新',
+  long_no_update: '服务中超 14 天未更新',
 };
