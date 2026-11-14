@@ -30,6 +30,7 @@ import { hasTodayManagementScan } from '@/lib/business-date';
 import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
 import { OwnerExceptions } from '@/components/ServiceFollowThrough';
 import './crm-owner-home.css';
+import './owner-sales-cockpit.css';
 
 interface Reminder {
   id: string;
@@ -792,56 +793,65 @@ export default function Dashboard() {
     const lowExecution = people.filter(item => item.metrics.assigned > 0 && item.metrics.completion_rate < 80).length;
     const weakNotes = people.filter(item => item.metrics.calls >= 5 && item.metrics.note_quality_rate < 70).length;
     const funnel = [
-      { label: '已分配', value: metrics.assigned, color: 'bg-slate-700' },
-      { label: '已记录通话', value: metrics.calls, color: 'bg-blue-600' },
-      { label: '已接通', value: metrics.connected, color: 'bg-cyan-500' },
-      { label: '有意向', value: metrics.interested, color: 'bg-amber-500' },
-      { label: '已预约', value: metrics.appointments, color: 'bg-violet-500' },
-      { label: '转正式客户', value: metrics.converted, color: 'bg-emerald-600' },
+      { label: '已分配', value: metrics.assigned },
+      { label: '已记录通话', value: metrics.calls },
+      { label: '已接通', value: metrics.connected },
+      { label: '有意向', value: metrics.interested },
+      { label: '已预约', value: metrics.appointments },
+      { label: '转正式客户', value: metrics.converted },
     ];
     const funnelBase = Math.max(...funnel.map(item => item.value), 1);
     const salesMetricCards = [
-      { label: '已分配任务', value: metrics.assigned, helper: `${metrics.completed} 条已完成`, icon: Target, tone: 'text-slate-700 bg-slate-100', link: '/sales-workbench' },
-      { label: '任务记录完成率', value: `${metrics.completion_rate}%`, helper: `${metrics.calls} 条员工保存记录`, icon: PhoneCall, tone: 'text-blue-700 bg-blue-50', link: '/sales-workbench' },
-      { label: '接通率', value: `${metrics.connection_rate}%`, helper: `${metrics.connected} 次有效接通`, icon: PhoneForwarded, tone: 'text-cyan-700 bg-cyan-50', link: '/sales-leads' },
-      { label: '意向率', value: `${metrics.interest_rate}%`, helper: `${metrics.interested} 个有意向`, icon: TrendingUp, tone: 'text-amber-700 bg-amber-50', link: '/sales-leads' },
-      { label: '预约率', value: `${metrics.appointment_rate}%`, helper: `${metrics.appointments} 个已预约`, icon: CalendarCheck2, tone: 'text-violet-700 bg-violet-50', link: '/sales-leads' },
-      { label: '转正式客户', value: metrics.converted, helper: '仅统计确认转入', icon: Handshake, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
-      { label: '待审批报价', value: pipeline.pending_quotes, helper: `${pipeline.approved_quotes} 份已批准`, icon: FileCheck2, tone: 'text-orange-700 bg-orange-50', link: '/sales-leads' },
-      { label: '累计确认首款', value: amountsByCurrency(pipeline.confirmed_received_by_currency, pipeline.confirmed_received_amount), helper: `已批报价 ${amountsByCurrency(pipeline.approved_quote_by_currency, pipeline.approved_quote_amount)}`, icon: Banknote, tone: 'text-emerald-700 bg-emerald-50', link: '/sales-leads' },
+      { label: '已分配任务', value: metrics.assigned, helper: `${metrics.completed} 条已完成`, icon: Target, link: '/sales-workbench' },
+      { label: '任务记录完成率', value: `${metrics.completion_rate}%`, helper: `${metrics.calls} 条员工保存记录`, icon: PhoneCall, link: '/sales-workbench' },
+      { label: '接通率', value: `${metrics.connection_rate}%`, helper: `${metrics.connected} 次有效接通`, icon: PhoneForwarded, link: '/sales-leads' },
+      { label: '意向率', value: `${metrics.interest_rate}%`, helper: `${metrics.interested} 个有意向`, icon: TrendingUp, link: '/sales-leads' },
+      { label: '预约率', value: `${metrics.appointment_rate}%`, helper: `${metrics.appointments} 个已预约`, icon: CalendarCheck2, link: '/sales-leads' },
+      { label: '转正式客户', value: metrics.converted, helper: '仅统计确认转入', icon: Handshake, link: '/sales-leads' },
+      { label: '待审批报价', value: pipeline.pending_quotes, helper: `${pipeline.approved_quotes} 份已批准`, icon: FileCheck2, link: '/sales-leads' },
+      { label: '累计确认首款', value: amountsByCurrency(pipeline.confirmed_received_by_currency, pipeline.confirmed_received_amount), helper: `已批报价 ${amountsByCurrency(pipeline.approved_quote_by_currency, pipeline.approved_quote_amount)}`, icon: Banknote, link: '/sales-leads' },
     ];
     const ownerTodos = [
-      { label: '高意向超过24小时未推进', count: attention.high_intent_stale, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
-      { label: '已经逾期的回访', count: attention.overdue_followups, tone: 'text-rose-700 bg-rose-50 border-rose-100' },
-      { label: '今天必须完成的回访', count: attention.due_followups, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
-      { label: '新旧成交记录的首款待核对', count: attention.receipt_conflicts || 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
-      { label: '历史成交的销售归属待核对', count: salesManagement.metrics.unattributed_conversions || 0, tone: 'text-amber-700 bg-amber-50 border-amber-100' },
-      { label: '成交交接仍未收全款', count: attention.unpaid_handoffs, tone: 'text-orange-700 bg-orange-50 border-orange-100' },
-      { label: '任务完成率低于80%的销售', count: lowExecution, tone: 'text-blue-700 bg-blue-50 border-blue-100' },
-      { label: '通话备注质量需要改善', count: weakNotes, tone: 'text-violet-700 bg-violet-50 border-violet-100' },
-      { label: '可回收或待跟进线索', count: (salesRecovery?.summary.recoverable || 0) + (salesRecovery?.summary.watch || 0), tone: 'text-slate-700 bg-slate-50 border-slate-200' },
+      { label: '高意向超过24小时未推进', count: attention.high_intent_stale, tone: 'urgent' },
+      { label: '已经逾期的回访', count: attention.overdue_followups, tone: 'urgent' },
+      { label: '今天必须完成的回访', count: attention.due_followups, tone: 'warning' },
+      { label: '新旧成交记录的首款待核对', count: attention.receipt_conflicts || 0, tone: 'warning' },
+      { label: '历史成交的销售归属待核对', count: salesManagement.metrics.unattributed_conversions || 0, tone: 'warning' },
+      { label: '成交交接仍未收全款', count: attention.unpaid_handoffs, tone: 'warning' },
+      { label: '任务完成率低于80%的销售', count: lowExecution, tone: 'default' },
+      { label: '通话备注质量需要改善', count: weakNotes, tone: 'default' },
+      { label: '可回收或待跟进线索', count: (salesRecovery?.summary.recoverable || 0) + (salesRecovery?.summary.watch || 0), tone: 'default' },
     ].filter(item => item.count > 0);
 
     return (
-      <section className="space-y-4">
-        <Card className="overflow-hidden border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-white shadow-lg">
-          <CardContent className="p-5 md:p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300"><TrendingUp className="h-4 w-4" />销售老板驾驶舱</div>
-                <h3 className="mt-2 text-xl font-semibold">从员工记录、跟进纪律到正式成交，一眼看清销售推进效率</h3>
-                <p className="mt-1 text-xs text-slate-300">拨号辅助不作为真实通话证明；销售数据与正式财务分开，绩效只作管理参考。</p>
+      <section className="owner-sales-cockpit space-y-4" aria-labelledby="owner-sales-cockpit-title">
+        <Card>
+          <CardContent className="p-4 md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 id="owner-sales-cockpit-title" className="flex items-center gap-2 text-base font-semibold">
+                  <TrendingUp className="owner-sales-accent h-4 w-4" aria-hidden="true" />销售老板驾驶舱
+                </h3>
+                <p className="owner-sales-muted mt-1 text-xs leading-5">拨号辅助不作为真实通话证明；销售数据与正式财务分开，绩效只作管理参考。</p>
               </div>
-              <div className="flex rounded-lg bg-white/10 p-1">
+              <div className="owner-sales-period" role="group" aria-label="销售统计期间">
                 {([{ value: 1, label: '今日' }, { value: 7, label: '近7天' }, { value: 30, label: '近30天' }] as const).map(option => (
-                  <button key={option.value} type="button" onClick={() => setSalesPeriod(option.value)} className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${salesPeriod === option.value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'}`}>{option.label}</button>
+                  <button key={option.value} type="button" aria-pressed={salesPeriod === option.value} onClick={() => setSalesPeriod(option.value)}>
+                    {option.label}
+                  </button>
                 ))}
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
               {salesMetricCards.map(item => {
                 const Icon = item.icon;
-                return <button key={item.label} type="button" onClick={() => navigate(item.link)} className="rounded-xl border border-white/10 bg-white/[0.07] p-3 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.12]"><div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4" /></div><p className="text-xs text-slate-300">{item.label}</p><p className="mt-1 text-xl font-bold text-white">{item.value}</p><p className="mt-1 truncate text-[11px] text-slate-400">{item.helper}</p></button>;
+                return (
+                  <button key={item.label} type="button" onClick={() => navigate(item.link)} className="owner-sales-metric">
+                    <span className="owner-sales-metric-label"><Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{item.label}</span>
+                    <strong>{item.value}</strong>
+                    <span className="owner-sales-muted text-xs leading-5">{item.helper}</span>
+                  </button>
+                );
               })}
             </div>
           </CardContent>
@@ -849,17 +859,28 @@ export default function Dashboard() {
 
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <Card className="border-slate-200">
-            <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-base"><span>销售转化漏斗</span><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>进入电话销售中心 <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base"><span>销售转化漏斗</span><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>进入电话销售中心 <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button></CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              {funnel.map((item, index) => <div key={item.label} className="grid grid-cols-[76px_1fr_44px] items-center gap-3"><span className="text-xs font-medium text-slate-600">{item.label}</span><div className="h-7 overflow-hidden rounded-md bg-slate-100"><div className={`flex h-full min-w-[8px] items-center rounded-md px-2 text-[10px] text-white transition-all ${item.color}`} style={{ width: `${Math.max(item.value / funnelBase * 100, item.value ? 8 : 0)}%` }}>{index > 0 && funnel[index - 1].value > 0 ? `${Math.round(item.value / funnel[index - 1].value * 100)}%` : ''}</div></div><span className="text-right text-sm font-bold text-slate-800">{item.value}</span></div>)}
+              {funnel.map((item, index) => (
+                <div key={item.label} className="owner-sales-funnel-row">
+                  <span>{item.label}</span>
+                  <div className="owner-sales-funnel-track">
+                    <div className="owner-sales-funnel-bar" style={{ width: `${item.value / funnelBase * 100}%` }} />
+                  </div>
+                  <span className="owner-sales-muted text-right tabular-nums">
+                    {index > 0 && funnel[index - 1].value > 0 ? `${Math.round(item.value / funnel[index - 1].value * 100)}%` : ''}
+                  </span>
+                  <strong className="text-right tabular-nums">{item.value}</strong>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
           <Card className="border-slate-200">
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><ShieldAlert className="h-4 w-4 text-rose-500" />老板待处理事项</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><ShieldAlert className="owner-sales-accent h-4 w-4" />老板待处理事项</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {ownerTodos.map(item => <button key={item.label} type="button" onClick={() => navigate('/sales-leads')} className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition hover:shadow-sm ${item.tone}`}><span>{item.label}</span><span className="rounded-full bg-white px-2 py-0.5 font-bold">{item.count}</span></button>)}
+                {ownerTodos.map(item => <button key={item.label} type="button" onClick={() => navigate('/sales-leads')} className="owner-sales-todo" data-tone={item.tone}><span>{item.label}</span><span className="owner-sales-count">{item.count}</span></button>)}
                 {ownerTodos.length === 0 && <div className="rounded-lg bg-emerald-50 p-5 text-center text-sm text-emerald-700"><CheckCircle2 className="mx-auto mb-2 h-6 w-6" />当前没有销售异常待办</div>}
               </div>
             </CardContent>
@@ -867,9 +888,9 @@ export default function Dashboard() {
         </div>
 
         <Card className="border-slate-200">
-          <CardHeader className="pb-3"><div className="flex items-center justify-between"><div><CardTitle className="text-base">团队表现与系统建议</CardTitle><p className="mt-1 text-xs text-slate-500">{salesPeriod === 1 ? '按今天员工已保存的通话与跟进记录评分。' : `按最近${salesPeriod}天员工已保存的通话与跟进记录评分。`}</p></div><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>查看完整评分</Button></div></CardHeader>
+          <CardHeader className="pb-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle className="text-base">团队表现与系统建议</CardTitle><p className="mt-1 text-xs text-slate-500">{salesPeriod === 1 ? '按今天员工已保存的通话与跟进记录评分。' : `按最近${salesPeriod}天员工已保存的通话与跟进记录评分。`}</p></div><Button size="sm" variant="outline" onClick={() => navigate('/sales-leads')}>查看完整评分</Button></div></CardHeader>
           <CardContent className="overflow-x-auto">
-            <CompactFinanceTable {...CRM_COMMAND_TABLES.salesPerformance} legacyClassName="w-full min-w-[860px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">综合分</th><th className="pb-2">任务完成</th><th className="pb-2">接通率</th><th className="pb-2">意向率</th><th className="pb-2">预约 / 转客户</th><th className="pb-2">逾期回访</th><th className="pb-2">下一步建议</th></tr></thead><tbody className="divide-y divide-slate-100">{people.slice(0, 8).map(item => <tr key={item.sales_employee_id}><td className="py-3 font-semibold text-slate-900"><span>#{item.rank} {item.salesperson}</span><p className="text-[11px] font-normal text-slate-400">{item.confidence}</p></td><td className="py-3 text-lg font-bold text-blue-700">{item.score}</td><td className="py-3">{item.metrics.completion_rate}%</td><td className="py-3">{item.metrics.connection_rate}%</td><td className="py-3">{item.metrics.interest_rate}%</td><td className="py-3">{item.metrics.appointments} / {item.metrics.conversions}</td><td className={`py-3 font-semibold ${item.metrics.overdue_followups ? 'text-rose-600' : 'text-emerald-600'}`}>{item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{people.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-500">暂无足够的销售执行数据</td></tr>}</tbody></CompactFinanceTable>
+            <CompactFinanceTable {...CRM_COMMAND_TABLES.salesPerformance} legacyClassName="w-full min-w-[860px] text-left text-sm"><thead className="border-b text-xs text-slate-500"><tr><th className="pb-2">排名 / 销售</th><th className="pb-2">综合分</th><th className="pb-2">任务完成</th><th className="pb-2">接通率</th><th className="pb-2">意向率</th><th className="pb-2">预约 / 转客户</th><th className="pb-2">逾期回访</th><th className="pb-2">下一步建议</th></tr></thead><tbody className="divide-y divide-slate-100">{people.slice(0, 8).map(item => <tr key={item.sales_employee_id}><td className="py-3 font-semibold text-slate-900"><span>#{item.rank} {item.salesperson}</span><p className="text-[11px] font-normal text-slate-400">{item.confidence}</p></td><td className="owner-sales-accent py-3 text-lg font-bold">{item.score}</td><td className="py-3">{item.metrics.completion_rate}%</td><td className="py-3">{item.metrics.connection_rate}%</td><td className="py-3">{item.metrics.interest_rate}%</td><td className="py-3">{item.metrics.appointments} / {item.metrics.conversions}</td><td className={`py-3 font-semibold ${item.metrics.overdue_followups ? 'text-rose-600' : 'text-emerald-600'}`}>{item.metrics.overdue_followups}</td><td className="max-w-xs py-3 text-xs text-slate-600">{item.suggestions[0]}</td></tr>)}{people.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-slate-500">暂无足够的销售执行数据</td></tr>}</tbody></CompactFinanceTable>
           </CardContent>
         </Card>
       </section>
@@ -1004,41 +1025,39 @@ export default function Dashboard() {
       <div id="owner-additional-details" className={`owner-mobile-additional-details crm-owner-secondary-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>
       {reminders.length > 0 && <details className="crm-owner-reminder-disclosure"><summary><span>其他系统提醒 <strong>{reminders.length}</strong></span><span className="crm-owner-reminder-summary-note">跟进、回访与到期事项 <ChevronDown aria-hidden="true" /></span></summary>{renderReminders()}</details>}
       <Collapsible open={showMoreOwnerDetails} onOpenChange={setShowMoreOwnerDetails} className="crm-owner-extra-details space-y-6">
-        <Card className="border-dashed border-slate-300 bg-slate-50/70">
-          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">更多经营明细</p>
-              <p className="mt-1 text-xs text-slate-500">销售漏斗、基础统计、排行榜和最近记录默认收起，需要复盘时再展开。</p>
-            </div>
-            <CollapsibleTrigger asChild>
-              <Button variant="outline" className="shrink-0 bg-white">
-                {showMoreOwnerDetails ? '收起明细' : '展开明细'}
-                <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showMoreOwnerDetails ? 'rotate-180' : ''}`} />
-              </Button>
-            </CollapsibleTrigger>
-          </CardContent>
-        </Card>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="owner-detail-toggle" aria-label={showMoreOwnerDetails ? '收起明细' : '展开明细'}>
+            <span className="owner-detail-toggle-copy">
+              <strong>更多经营明细</strong>
+              <span>销售漏斗、基础统计、排行榜和最近记录</span>
+            </span>
+            <span className="owner-detail-toggle-action">
+              {showMoreOwnerDetails ? '收起明细' : '展开明细'}
+              <ChevronDown size={16} aria-hidden="true" />
+            </span>
+          </button>
+        </CollapsibleTrigger>
 
         <CollapsibleContent className="space-y-6">
           {renderSalesOwnerCockpit()}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {renderStatCard('客户总数', data.totalCustomers || 0, <Users className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/customers')}
-        {renderStatCard('本月新增', data.newThisMonth || 0, <UserPlus className="w-5 h-5 text-purple-600" />, '', 'bg-purple-50', '/customers')}
+          <div className="owner-detail-statistics grid grid-cols-2 md:grid-cols-4 gap-4">
+        {renderStatCard('客户总数', data.totalCustomers || 0, <Users className="w-5 h-5" />, '', 'owner-detail-metric-icon', '/customers')}
+        {renderStatCard('本月新增', data.newThisMonth || 0, <UserPlus className="w-5 h-5" />, '', 'owner-detail-metric-icon', '/customers')}
         {renderStatCard('本月成交额', `$${(data.monthlyDealAmount || 0).toLocaleString()}`, <Handshake className="w-5 h-5 text-green-600" />, '', 'bg-green-50', '/deals')}
         {renderStatCard('本月收款', `$${(data.monthlyRevenue || 0).toLocaleString()}`, <DollarSign className="w-5 h-5 text-emerald-600" />, '', 'bg-emerald-50', '/finance')}
         {renderStatCard('本月公司支出 (CNY)', `¥${(data.monthlyCompanyExpenseCNY || 0).toLocaleString()}`, <CreditCard className="w-5 h-5 text-red-600" />, '', 'bg-red-50', '/finance')}
         {renderStatCard('本月客户成本 (USD)', `$${(data.monthlyCustomerExpenseUSD || 0).toLocaleString()}`, <DollarSign className="w-5 h-5 text-amber-600" />, '', 'bg-amber-50', '/finance')}
         {renderStatCard('即将到期', data.expiringSoon || 0, <Clock className="w-5 h-5 text-orange-600" />, '', 'bg-orange-50', '/finance')}
         {renderStatCard('欠费客户', data.overduePayments || 0, <AlertTriangle className="w-5 h-5 text-red-600" />, '', 'bg-red-50', '/finance')}
-        {renderStatCard('待办任务', data.pendingTasks || 0, <ListTodo className="w-5 h-5 text-purple-600" />, '', 'bg-purple-50', '/tasks')}
-        {renderStatCard('本月工资表', payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'paid' ? '已发放' : payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'confirmed' ? '待发放' : '待确认', <ListTodo className="w-5 h-5 text-blue-600" />, '', 'bg-blue-50', '/payroll')}
-        {renderStatCard('流失客户', data.lostCustomers || 0, <TrendingUp className="w-5 h-5 text-slate-600" />, '', 'bg-slate-100', '/customers?status=lost')}
+        {renderStatCard('待办任务', data.pendingTasks || 0, <ListTodo className="w-5 h-5" />, '', 'owner-detail-metric-icon', '/tasks')}
+        {renderStatCard('本月工资表', payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'paid' ? '已发放' : payrollSummary?.items.find(item => item.month === new Date().toISOString().slice(0, 7))?.status === 'confirmed' ? '待发放' : '待确认', <ListTodo className="w-5 h-5" />, '', 'owner-detail-metric-icon', '/payroll')}
+        {renderStatCard('流失客户', data.lostCustomers || 0, <TrendingUp className="w-5 h-5" />, '', 'owner-detail-metric-icon', '/customers?status=lost')}
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
         {/* Sales Leaderboard */}
-        <Card className="border-slate-200">
+        <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base font-semibold">销售排行榜</CardTitle>
@@ -1052,7 +1071,7 @@ export default function Dashboard() {
             <div className="space-y-3">
               {salesLeaderboard.map((s, i) => (
                 <div key={s.name} className="flex items-center gap-3">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? 'bg-yellow-100 text-yellow-700' : i === 1 ? 'bg-slate-200 text-slate-600' : i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
+                  <span data-leading={i === 0 || undefined} className="owner-detail-rank w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
                   <div className="flex-1"><p className="text-sm font-medium">{s.name}</p><p className="text-xs text-slate-500">{s.count}单</p></div>
                   <span className="text-sm font-bold text-green-600">${s.amount.toLocaleString()}</span>
                 </div>
@@ -1063,12 +1082,12 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent customers */}
-        <Card className="border-slate-200">
+        <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">最近客户</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
               {recentCustomers.map((c: any) => (
-                <button type="button" aria-label={`查看客户：${c.business_name}`} key={c.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/customers', { detail: c.id, returnTo: '/', from: 'dashboard' }))}>
+                <button type="button" aria-label={`查看客户：${c.business_name}`} key={c.id} className="dashboard-object-link owner-detail-record min-h-11 w-full text-left flex items-center justify-between py-2 border-b last:border-0 rounded px-1" onClick={() => navigate(buildReminderLink('/customers', { detail: c.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{c.business_name}</p><p className="text-xs text-slate-500">{c.contact_name}</p></div>
                   <Badge variant="secondary" className={`text-xs ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status}</Badge>
                 </button>
@@ -1079,12 +1098,12 @@ export default function Dashboard() {
         </Card>
 
         {/* Upcoming tasks */}
-        <Card className="border-slate-200">
+        <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base font-semibold">待办任务</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
               {upcomingTasks.map((t: any) => (
-                <button type="button" aria-label={`查看任务：${t.title}`} key={t.id} className="dashboard-object-link min-h-11 w-full text-left flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded px-1" onClick={() => navigate(buildReminderLink('/tasks', { task_id: t.id, returnTo: '/', from: 'dashboard' }))}>
+                <button type="button" aria-label={`查看任务：${t.title}`} key={t.id} className="dashboard-object-link owner-detail-record min-h-11 w-full text-left flex items-center justify-between py-2 border-b last:border-0 rounded px-1" onClick={() => navigate(buildReminderLink('/tasks', { task_id: t.id, returnTo: '/', from: 'dashboard' }))}>
                   <div><p className="text-sm font-medium text-slate-800">{t.title}</p><p className="text-xs text-slate-500">{t.assignee_name} · {taskStatusLabels[t.status] || t.status}</p></div>
                   <Badge variant="secondary" className={`text-xs ${priorityColors[t.priority] || ''}`}>{priorityLabels[t.priority] || t.priority}</Badge>
                 </button>

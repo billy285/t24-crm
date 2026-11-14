@@ -1,0 +1,105 @@
+.owner-sales-cockpit .owner-sales-accent { color: var(--order-accent); }
+.owner-sales-cockpit .owner-sales-muted { color: var(--order-muted); }
+
+.owner-sales-period {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--order-line);
+  border-radius: 9px;
+  background: var(--order-subtle);
+}
+.owner-sales-period button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  color: var(--order-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.owner-sales-period button:hover { color: var(--order-accent); }
+.owner-sales-period button[aria-pressed="true"] {
+  color: var(--order-accent);
+  background: var(--order-soft);
+  box-shadow: inset 0 0 0 1px var(--crm-accent-border, var(--order-accent));
+}
+
+.owner-sales-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid var(--order-line);
+  border-radius: var(--crm-radius);
+  background: var(--order-subtle);
+  color: var(--order-ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.owner-sales-metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--order-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.owner-sales-metric-label svg { color: var(--order-accent); }
+.owner-sales-metric strong { font-size: 22px; line-height: 28px; font-variant-numeric: tabular-nums; }
+.owner-sales-metric:hover, .owner-sales-todo:hover {
+  border-color: var(--crm-accent-border, var(--order-accent));
+  background: var(--order-soft);
+}
+.owner-sales-cockpit button:focus-visible { outline: 2px solid var(--order-accent); outline-offset: 2px; }
+
+.owner-sales-funnel-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) 3.2em minmax(3em, auto);
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.owner-sales-funnel-row > span:first-child { min-width: 6em; }
+.owner-sales-funnel-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--order-subtle);
+}
+.owner-sales-funnel-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--order-accent);
+}
+
+.owner-sales-todo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--order-line);
+  border-radius: var(--crm-radius-control);
+  color: var(--order-ink);
+  text-align: left;
+  font-size: 14px;
+}
+.owner-sales-count {
+  padding: 2px 8px;
+  border-radius: 6px;
+  color: var(--order-accent);
+  background: var(--order-soft);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.owner-sales-todo[data-tone="urgent"] .owner-sales-count { color: var(--crm-danger); background: var(--t24-danger-soft, #fff1f2); }
+.owner-sales-todo[data-tone="warning"] .owner-sales-count { color: var(--crm-warning); background: var(--t24-warning-soft, #fffbeb); }
+
+@media (max-width: 767px) {
+  .owner-sales-period button { min-height: 44px; }
+}

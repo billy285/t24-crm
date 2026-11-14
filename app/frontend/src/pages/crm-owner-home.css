@@ -67,18 +67,15 @@
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-detail-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-operational-details:not(.is-expanded) { display: none; }
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-secondary-details { display: block; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure { min-width: 0; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: space-between; min-height: 48px; padding: 12px 14px; list-style: none; color: #475569; font-size: 13px; cursor: pointer; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure { min-width: 0; border: 1px solid var(--crm-border); border-radius: 10px; background: var(--crm-surface); }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; justify-content: space-between; min-height: 48px; padding: 12px 14px; list-style: none; color: var(--crm-ink); font-size: 13px; cursor: pointer; }
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > summary::-webkit-details-marker { display: none; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure summary strong { margin-left: 6px; color: #1d4ed8; font-variant-numeric: tabular-nums; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: #64748b; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure summary strong { margin-left: 6px; color: var(--crm-blue); font-variant-numeric: tabular-nums; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--crm-muted); }
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note svg { width: 15px; height: 15px; }
 .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure[open] .crm-owner-reminder-summary-note svg { transform: rotate(180deg); }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > .t24-card { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 10px 10px; box-shadow: none; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card { border-style: solid; background: #fff; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { padding: 12px 14px; gap: 10px; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { font-size: 11px; line-height: 17px; }
-.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home :is(.sf-owner-quiet-statuses, .crm-owner-reminder-disclosure) > summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-disclosure > .t24-card { border: 0; border-top: 1px solid var(--crm-border); border-radius: 0 0 10px 10px; box-shadow: none; }
+.t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home :is(.sf-owner-quiet-statuses, .crm-owner-reminder-disclosure) > summary:focus-visible { outline: 2px solid var(--crm-blue); outline-offset: 3px; }
 
 @media (max-width: 1023px) and (min-width: 768px) {
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .calm-owner-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -103,9 +100,51 @@
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure[open] > summary svg { transform: rotate(180deg); }
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .owner-mobile-attention-disclosure .owner-mobile-attention { border: 0; border-top: 1px solid #edf1f6; border-radius: 0 0 12px 12px; }
   .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-reminder-summary-note { width: 100%; justify-content: space-between; }
-  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div { flex-direction: row; align-items: center; }
-  .t24-system.app-shell .crm-desktop-main .calm-admin-dashboard.crm-owner-home .crm-owner-extra-details > .t24-card > div > div > p:last-child { display: none; }
 }
 
 .crm-owner-home .dashboard-object-link { border-radius: 8px; }
 .dashboard-object-link:focus-visible { outline: 2px solid #245ce8; outline-offset: 3px; }
+
+#owner-additional-details .owner-detail-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--crm-surface);
+  color: var(--crm-ink);
+  border: 1px solid var(--crm-border);
+  border-radius: 10px;
+}
+.owner-detail-toggle-copy { display: grid; gap: 2px; }
+.owner-detail-toggle-copy strong { font-size: 14px; font-weight: 600; }
+.owner-detail-toggle-copy > span { color: var(--crm-muted); font-size: 12px; }
+.owner-detail-toggle-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--crm-blue);
+  font-size: 13px;
+  font-weight: 600;
+}
+#owner-additional-details .owner-detail-toggle:hover,
+#owner-additional-details .owner-detail-record:hover { background: var(--crm-surface-soft); }
+.owner-detail-toggle[data-state="open"] .owner-detail-toggle-action svg { transform: rotate(180deg); }
+#owner-additional-details :is(.owner-detail-toggle, .owner-detail-record, .dashboard-stat-trigger):focus-visible {
+  outline: 2px solid var(--crm-blue);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.owner-detail-metric-icon,
+.owner-detail-rank[data-leading] { background: var(--crm-blue-soft); color: var(--crm-blue); }
+.owner-detail-rank:not([data-leading]) { background: var(--crm-surface-soft); color: var(--crm-muted); }
+#owner-additional-details .owner-detail-statistics > .t24-card:hover { border-color: var(--crm-blue); }
+#owner-additional-details .owner-detail-record { border-color: var(--crm-border); }
+
+@media (max-width: 767px) {
+  .owner-detail-toggle-copy > span { display: none; }
+}
