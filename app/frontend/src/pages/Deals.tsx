@@ -433,6 +433,15 @@ function buildEmptyDealForm() {
   };
 }
 
+function DealHandoffProgress({ handedOver, transferred }: { handedOver: boolean; transferred: boolean }) {
+  return (
+    <span className="deal-handoff-progress">
+      <span className="deal-handoff-stage" data-pending={!handedOver}>{handedOver ? '已交接' : '待交接'}</span>
+      <span className="deal-handoff-operations" data-pending={!transferred}>{transferred ? '已转运营' : '待转运营'}</span>
+    </span>
+  );
+}
+
 export default function Deals() {
   const { employee, dataScope, hasPermission } = useRole();
   const isMobile = useIsMobile();
@@ -1591,9 +1600,8 @@ export default function Deals() {
                     {packageClassification.changed && <p className="mt-1 text-xs text-slate-400">历史成交原名：{packageClassification.historicalLabel}</p>}
                     <p className="mt-1 text-xs text-slate-500">{productLabels[d.product_type] || d.product_type || '-'} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
                   </div>
-                  <div className="crm-order-record-fields mt-3 grid grid-cols-2 gap-3 text-sm">
-                    <div><p className="text-xs text-slate-400">交接</p><p className="mt-1 text-slate-700">{d.is_handed_over ? '已交接' : '待交接'}</p></div>
-                    <div><p className="text-xs text-slate-400">运营</p><p className="mt-1 text-slate-700">{d.is_transferred_ops ? '已转运营' : '待转运营'}</p></div>
+                  <div className="deal-mobile-handoff">
+                    <DealHandoffProgress handedOver={d.is_handed_over} transferred={d.is_transferred_ops} />
                   </div>
                   <div className="deal-mobile-primary-actions mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
                     {hasPermission('deal_edit') ? <>
@@ -1631,7 +1639,7 @@ export default function Deals() {
                     <th className="px-4 py-3 font-medium">周期</th>
                     <th className="px-4 py-3 font-medium hidden md:table-cell">成交日</th>
                     <th className="px-4 py-3 font-medium hidden md:table-cell">付款</th>
-                    <th className="px-4 py-3 font-medium hidden lg:table-cell">交接</th>
+                    <th className="px-4 py-3 font-medium">交接</th>
                     <th className="px-4 py-3 font-medium w-36">操作</th>
                   </tr>
                 </thead>
@@ -1651,7 +1659,7 @@ export default function Deals() {
                       <td className="px-4 py-3 text-slate-500">{cycleLabels[d.billing_cycle] || d.billing_cycle}</td>
                       <td className="px-4 py-3 text-slate-500 hidden md:table-cell">{d.deal_date?.slice(0, 10)}</td>
                       <td className="px-4 py-3 hidden md:table-cell">{d.is_paid ? <Badge className="bg-green-100 text-green-700 text-xs">已付</Badge> : <Badge className="bg-red-100 text-red-700 text-xs">未付</Badge>}</td>
-                      <td className="px-4 py-3 hidden lg:table-cell"><div className="flex flex-wrap gap-1"><Badge variant="outline" className={d.is_handed_over ? 'border-emerald-200 text-emerald-700' : 'border-amber-200 text-amber-700'}>{d.is_handed_over ? '已交接' : '待交接'}</Badge><span className="text-xs text-slate-500">{d.is_transferred_ops ? '已转运营' : '待转运营'}</span></div></td>
+                      <td className="px-4 py-3"><DealHandoffProgress handedOver={d.is_handed_over} transferred={d.is_transferred_ops} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                           <Button

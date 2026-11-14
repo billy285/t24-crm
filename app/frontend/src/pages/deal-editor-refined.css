@@ -8,6 +8,48 @@
 .deal-editor-actions { display: flex; justify-content: flex-end; gap: 12px; background: white; padding-top: 16px; border-top: 1px solid #e2e8f0; }
 .deal-editor-actions button { min-height: 44px; }
 .deal-board-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: #92400e; }
+.deal-handoff-progress {
+  display: inline-grid;
+  gap: 1px;
+  text-align: start;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.deal-handoff-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--crm-ink, #172638);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.deal-handoff-stage::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--t24-positive, #059669);
+}
+.deal-handoff-stage[data-pending="true"]::before { background: var(--t24-warning, #d97706); }
+.deal-handoff-operations {
+  padding-inline-start: 10px;
+  color: var(--crm-muted, #64748b);
+  font-size: 12px;
+  line-height: 16px;
+}
+.deal-handoff-progress [data-pending="true"] { color: var(--crm-warning, #92400e); }
+.cft-table td:has(.deal-handoff-progress) { min-width: 5.5rem; }
+.deal-mobile-handoff { margin-top: 8px; }
+.deal-mobile-handoff .deal-handoff-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.deal-mobile-handoff .deal-handoff-operations {
+  border-inline-start: 1px solid var(--crm-border, #dbe3ee);
+}
 @media(max-width:767px) {
   .deal-editor-dialog { width: 100vw!important; max-width: none!important; height: 100dvh!important; max-height: 100dvh!important; border-radius: 0!important; padding: 24px 20px max(16px,env(safe-area-inset-bottom))!important; overflow: hidden!important; }
   .deal-editor-dialog > :first-child { padding-right: 24px; }
