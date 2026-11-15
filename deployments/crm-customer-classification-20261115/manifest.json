@@ -1,0 +1,38 @@
+{
+  "backend_before": {
+    "routers/customers.py": "be17c32bc82772f5b19e81f02a40b31e91abb031799d97eebec54da423c3a86e"
+  },
+  "backend_changes": true,
+  "baseline_frontend_version": "b56a627ff519",
+  "baseline_git_commit": "07708f1a579de7e0a015e53a5c80c4bf59909af4",
+  "baseline_source_sha": "b8744b9b1f5f5472a3b4880e215fe41ae97bbd9c",
+  "changed_source_files": {
+    "app/backend/routers/customers.py": "9d9bb7302922b5f84ec9587b1784ed7cec6b104210d1abf4b717f2274c0adf07"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_customer_business_memberships.py": "3fd26822d74e2eacf743b55b9afc15566ca0db1786c75ceac518f2dc56be8b46"
+  },
+  "credentials_included": false,
+  "database_migration": false,
+  "database_writes": false,
+  "environment_changes": false,
+  "existing_hashed_assets_preserved": true,
+  "files": {
+    "backend/routers/customers.py": "9d9bb7302922b5f84ec9587b1784ed7cec6b104210d1abf4b717f2274c0adf07"
+  },
+  "frontend_version": "b56a627ff519",
+  "new_backend_files": [],
+  "payload_sha256": "033afbdb0cc60a32ef116b647b264f31f4a0a252afe6c7f4ae55bac399651207",
+  "permissions_changes": false,
+  "preflight_sha256": "e745a4aedbfc99980af5fa284321fc7178b7e2c6a1986fc0a7e58a074399baaf",
+  "provider_or_publication_actions": false,
+  "runtime_replacement": true,
+  "schema_revision": "j65bc789b025",
+  "source_allowlist_sha256": "8949b399cb2acb8d2744205d852e9bf28ba1f426d005fc32cd470dc1ac11a510",
+  "source_freeze_sha256": "043c0584316a99e74a6aae084169faef0d9c246c35c7fff33d5a552ac292548a",
+  "source_sha": "c833347b4212fe7e232bf251ffab07cfcafb6177",
+  "stage": "CRM_CUSTOMER_CLASSIFICATION_BACKEND_PAYLOAD",
+  "static_only": false,
+  "target_probe_sha256": "537c4c5d7fee8d88930f48694ba9744061aac846ff5862d2a949243b4744cd70",
+  "template_only": false
+}
