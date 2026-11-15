@@ -140,3 +140,47 @@ class CommissionStatusEvent(Base):
     actor_id = Column(String(64), nullable=True)
     actor_name = Column(String(160), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CommissionStatement(Base):
+    __tablename__ = "commission_statements"
+    __table_args__ = (
+        UniqueConstraint("month", "partner_id", "currency", name="uq_commission_statement_period"),
+        UniqueConstraint("payout_reference", name="uq_commission_statement_payout"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    month = Column(String(7), nullable=False)
+    partner_id = Column(Integer, ForeignKey("sales_partners.id", ondelete="RESTRICT"), nullable=False)
+    currency = Column(String(3), nullable=False)
+    issue_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=False)
+    paid_at = Column(DateTime(timezone=True))
+    paid_amount = Column(Float)
+    paid_snapshot_json = Column(Text)
+    issues_json = Column(Text, nullable=False, default="[]", server_default="[]")
+    payout_reference = Column(String(160))
+    paid_by_id = Column(String(64))
+    paid_by_name = Column(String(160))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CommissionStatementLine(Base):
+    __tablename__ = "commission_statement_lines"
+    __table_args__ = (
+        UniqueConstraint("entry_id", name="uq_commission_statement_entry"),
+        Index("ix_commission_statement_lines_statement", "statement_id"),
+        Index("ix_commission_statement_lines_origin", "origin_statement_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    statement_id = Column(Integer, ForeignKey("commission_statements.id", ondelete="RESTRICT"), nullable=False)
+    origin_statement_id = Column(Integer, ForeignKey("commission_statements.id", ondelete="RESTRICT"), nullable=False)
+    entry_id = Column(Integer, ForeignKey("commission_entries.id", ondelete="RESTRICT"), nullable=False)
+
+
+class CommissionStatementCycle(Base):
+    __tablename__ = "commission_statement_cycles"
+
+    business_date = Column(Date, primary_key=True)
+    completed_at = Column(DateTime(timezone=True), nullable=False)

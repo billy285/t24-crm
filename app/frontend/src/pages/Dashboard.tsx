@@ -29,6 +29,7 @@ import { getLoadErrorMessage } from '../lib/load-utils';
 import { hasTodayManagementScan } from '@/lib/business-date';
 import MobileOwnerDashboard from '@/components/MobileOwnerDashboard';
 import { OwnerExceptions } from '@/components/ServiceFollowThrough';
+import CommissionStatementReminder from '@/components/CommissionStatementReminder';
 import './crm-owner-home.css';
 import './owner-sales-cockpit.css';
 
@@ -1020,6 +1021,7 @@ export default function Dashboard() {
 
   return (
     <div className="t24-command-center calm-admin-page calm-admin-dashboard crm-owner-home app-page space-y-6">
+      {role === 'super_admin' && <CommissionStatementReminder />}
       <OwnerExceptions />
       {renderOwnerCommandCenter()}
       <div id="owner-additional-details" className={`owner-mobile-additional-details crm-owner-secondary-details space-y-4${showOwnerOperationalDetails ? ' is-expanded' : ''}${!ownerCockpit ? ' owner-detail-fallback' : ''}`}>

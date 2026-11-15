@@ -40,6 +40,8 @@ from services.commissions import (
 )
 from services.partner_portal import build_partner_customer_status_rows, partner_status_summary
 from services.finance_period_lock import ensure_profit_months_open
+from services import commission_statements as statements
+from services.commission_statement_worker import scheduler_status
 
 
 router = APIRouter(prefix="/api/v1/commissions", tags=["commissions"])
@@ -286,6 +288,50 @@ class EntryTransitionInput(BaseModel):
     to_status: Literal["confirmed", "payable", "paid", "reversed"]
     reason: Optional[str] = Field(None, max_length=1000)
     payout_reference: Optional[str] = Field(None, max_length=160)
+
+
+class StatementPaymentInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid", allow_inf_nan=False)
+    payout_reference: str = Field(min_length=1, max_length=160)
+    expected_total: float
+    expected_entry_count: int = Field(ge=0)
+    revision: str = Field(min_length=1, max_length=128)
+
+
+@router.get("/statements")
+async def monthly_statements(
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    partner_id: Optional[int] = Query(None, gt=0),
+    _user: UserResponse = Depends(get_finance_user), db: AsyncSession = Depends(get_db),
+):
+    result = await statements.list_statements(db, month, partner_id=partner_id)
+    return {**result, "schedule": await scheduler_status(db)}
+
+
+@router.get("/statements/reminders")
+async def monthly_statement_reminders(
+    _user: UserResponse = Depends(get_finance_user), db: AsyncSession = Depends(get_db),
+):
+    return {**await statements.statement_reminders(db), "schedule": await scheduler_status(db)}
+
+
+@router.get("/statements/{statement_id}")
+async def monthly_statement_detail(
+    statement_id: int, _user: UserResponse = Depends(get_finance_user), db: AsyncSession = Depends(get_db),
+):
+    return await statements.get_statement(db, statement_id)
+
+
+@router.post("/statements/{statement_id}/settle")
+async def record_statement_payment(
+    statement_id: int, payload: StatementPaymentInput,
+    user: UserResponse = Depends(get_finance_user), db: AsyncSession = Depends(get_db),
+):
+    result = await statements.settle_statement(
+        db, statement_id, **payload.model_dump(), actor_id=str(user.id), actor_name=actor_name(user),
+    )
+    await db.commit()
+    return result
 
 
 @router.get("/dashboard")
@@ -614,12 +660,27 @@ async def change_partner_status(
     return {**_partner_payload(partner), "transferred_to_direct": transferred}
 
 
+async def _lock_for_scan(db):
+    enabled = await statements.statements_available(db)
+    if enabled:
+        await statements.lock_statements(db)
+    return enabled
+
+
+async def _scan_and_reconcile(db, enabled):
+    result = await scan_commissions(db, commit=False)
+    if enabled:
+        await statements.reconcile_statements(db)
+    return result
+
+
 @router.post("/agreements", status_code=status.HTTP_201_CREATED)
 async def create_agreement(
     payload: AgreementInput,
     user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    monthly = await _lock_for_scan(db)
     partner = await db.get(SalesPartner, payload.partner_id)
     if not partner:
         raise HTTPException(status_code=404, detail="渠道不存在")
@@ -654,9 +715,10 @@ async def create_agreement(
         calculation_version="service_month_v2", renewal_policy="fixed",
     )
     db.add(row)
+    await db.flush()
+    await _scan_and_reconcile(db, monthly)
     await db.commit()
     await db.refresh(row)
-    await scan_commissions(db)
     return _agreement_payload(row)
 
 
@@ -675,12 +737,15 @@ async def bulk_attribution_apply(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        monthly = await _lock_for_scan(db)
         result = await apply_bulk_customer_attributions(
             db,
             preview_token=payload.preview_token,
             actor_id=str(user.id),
             actor_name=actor_name(user),
         )
+        if monthly:
+            await statements.reconcile_statements(db)
         await db.commit()
         return result
     except ValueError as exc:
@@ -697,6 +762,7 @@ async def create_attribution(
     user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    monthly = await _lock_for_scan(db)
     customer = await db.get(Customers, payload.customer_id)
     partner = await db.get(SalesPartner, payload.partner_id)
     if not customer or not partner:
@@ -716,9 +782,10 @@ async def create_attribution(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.flush()
+    await _scan_and_reconcile(db, monthly)
     await db.commit()
     await db.refresh(row)
-    await scan_commissions(db)
     return {"id": row.id, "customer_id": row.customer_id, "partner_id": row.partner_id, "effective_from": row.effective_from}
 
 
@@ -765,7 +832,10 @@ async def run_scan(
     _user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await scan_commissions(db)
+    monthly = await _lock_for_scan(db)
+    result = await _scan_and_reconcile(db, monthly)
+    await db.commit()
+    return result
 
 
 @router.post("/entries/{entry_id}/transition")
@@ -775,6 +845,7 @@ async def transition_entry(
     user: UserResponse = Depends(get_finance_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await statements.assert_entry_outside_statement(db, entry_id, transition=payload.to_status)
     reference = await db.get(CommissionEntry, entry_id)
     if not reference:
         raise HTTPException(status_code=404, detail="佣金记录不存在")

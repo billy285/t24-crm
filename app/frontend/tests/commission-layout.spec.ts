@@ -18,6 +18,10 @@ async function seed(page: Page, populated = false) {
     { key: 'q4', severity: 'medium', title: '结算资料缺失', description: '缺少服务周期', customer_id: 4 },
     { key: 'q5', severity: 'medium', title: '归属待核对', description: '付款日期未匹配协议', customer_id: 5 },
   ], entries: populated ? [{ id: 1, partner_id: 7, calculation_version: 'service_month_v2', partner_name: '测试渠道', customer_id: 1, customer_name: '测试客户', payment_id: 1, entry_type: 'first_order', status: 'pending_confirmation', service_month: '2026-10', occurred_at: '2026-10-01', currency: 'USD', gross_receipt_amount: 100, eligible_service_amount: 100, contract_rate: 0.1, inactivity_months: 0, activity_multiplier: 1, commission_amount: 10 }] : [] };
+  if (path.endsWith('/commissions/statements')) data = { month: new URL(route.request().url()).searchParams.get('month'), issues: [], items: populated ? [{
+    id: 5, month: '2026-10', partner_id: 7, partner_name: '测试渠道', currency: 'USD', issue_date: '2026-11-01', due_date: '2026-11-15', status: 'ready',
+    revision: 'a', entry_count: 1, total_amount: 10, deferred_count: 0, deferred_amount: 0, issues: [],
+  }] : [] };
   if (path.endsWith('/commissions/options')) data = { employees: [], customers: [{ id: 1, name: '测试客户' }], products: [], engagements: [], business_lines: [] };
   await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
  });

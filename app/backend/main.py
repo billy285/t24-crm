@@ -26,6 +26,7 @@ from services.emp_auth import decode_access_token as decode_employee_access_toke
 from services.deal_payment_sync import backfill_missing_payments_from_deals
 from services.customer_lifecycle import sync_lifecycle_from_payments
 from services.automation_monitor import start_automation_scheduler, stop_automation_scheduler
+from services import commission_statement_worker
 from services.stripe_history_daily_scan import start_daily_scan, stop_daily_scan
 from services.stripe_auto_posting import start_auto_posting, stop_auto_posting
 from services.google_business_scheduler import start_scheduler as start_google_business_scheduler, stop_scheduler as stop_google_business_scheduler
@@ -121,6 +122,7 @@ async def lifespan(app: FastAPI):
     await initialize_default_employee_admin()
     await initialize_admin_user()
     automation_scheduler = start_automation_scheduler()
+    statement_worker = commission_statement_worker.start_worker()
     stripe_history_daily_scan = start_daily_scan()
     stripe_automatic_posting = start_auto_posting()
     google_business_scheduler = start_google_business_scheduler()
@@ -134,6 +136,7 @@ async def lifespan(app: FastAPI):
     yield
     # MODULE_SHUTDOWN_START
     await stop_automation_scheduler(automation_scheduler)
+    await commission_statement_worker.stop_worker(statement_worker)
     await stop_daily_scan(stripe_history_daily_scan)
     await stop_auto_posting(stripe_automatic_posting)
     await stop_google_business_scheduler(google_business_scheduler)
