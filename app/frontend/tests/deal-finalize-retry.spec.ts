@@ -116,7 +116,9 @@ test('成交已保存但 finalize 未完成时逐项提示并可手动重试且�
   await expect(page.getByRole('listbox', { name: 'Suggestions' }).getByRole('option')).toHaveCount(1);
   await page.getByRole('option', { name: 'Finalize 测试客户' }).click();
   await expect(dialog.getByRole('combobox').first()).toContainText('Finalize 测试客户');
-  await dialog.getByLabel('基础套餐').check();
+  await dialog.getByLabel('产品类型', { exact: true }).selectOption('social_media');
+  await dialog.getByLabel('代运营套餐', { exact: true }).selectOption('basic_package');
+  await dialog.getByLabel('Facebook', { exact: true }).check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('switch').first().click();
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
@@ -204,7 +206,9 @@ test('成交 POST 响应丢失时查询恢复已提交记录并继续 finalize �
   await dialog.getByRole('combobox').first().click();
   await page.getByPlaceholder('搜索商家名称或编号').fill('FINAL-032');
   await page.getByRole('option', { name: '响应丢失测试客户' }).click();
-  await dialog.getByLabel('基础套餐').check();
+  await dialog.getByLabel('产品类型', { exact: true }).selectOption('social_media');
+  await dialog.getByLabel('代运营套餐', { exact: true }).selectOption('basic_package');
+  await dialog.getByLabel('Facebook', { exact: true }).check();
   await dialog.getByPlaceholder('0.00').fill('198');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
 

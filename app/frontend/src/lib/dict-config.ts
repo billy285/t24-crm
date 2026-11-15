@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { dealMediaPlatforms, withSystemProductDefaults } from './deal-product-scope';
 import { APP_CONFIG_UPDATED_EVENT, readCachedAppConfig, writeCachedAppConfig } from './app-config';
 
 export interface BusinessDictConfig {
@@ -135,13 +136,7 @@ export function classifyPackageDisplay(
 }
 
 export const platformLabels: Record<string, string> = {
-  google_business: 'Google商家',
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-  yelp: 'Yelp',
-  tiktok: 'TikTok',
-  xiaohongshu: '小红书',
-  x: 'X',
+  ...dealMediaPlatforms,
   ads_campaign: '广告投放',
   brand_website: '品牌官网',
 };
@@ -213,7 +208,9 @@ export interface BusinessDictMaps {
 }
 
 export function normalizeDictConfig(config?: Partial<BusinessDictConfig>): BusinessDictConfig {
-  return { ...defaultBusinessDictConfig, ...(config || {}) };
+  const result = { ...defaultBusinessDictConfig, ...(config || {}) };
+  result.products = serializeDictEntries(withSystemProductDefaults(parseDictEntries(result.products)));
+  return result;
 }
 
 export function parseDictEntries(value: string): Record<string, string> {

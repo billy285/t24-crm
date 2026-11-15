@@ -15,6 +15,7 @@ import { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../lib/api';
 import { invokeWithAuth } from '@/lib/tokenStore';
+import { customerBusinessLabels, useCustomerBusinessFilter } from '@/lib/customer-business-filter';
 import { useRole } from '../lib/role-context';
 import { countries, getStatesForCountry, getCitiesForState, getCountryLabel, getStateLabel } from '../lib/country-state-data';
 import { logOperation } from '../lib/operation-log-helper';
@@ -766,6 +767,9 @@ export default function Customers() {
   const [customersLoadedAt, setCustomersLoadedAt] = useState<string | null>(null);
   const [search, setSearch] = useRetainedView('Customers:search', '');
   const [filterStatus, setFilterStatus] = useRetainedView('Customers:filterStatus', 'all');
+  const [filterBusiness, setFilterBusiness] = useRetainedView('Customers:filterBusiness', 'all');
+  const businessMatch = useCustomerBusinessFilter(filterBusiness, customerActor + ':' + customerQueueScope, customersLoadedAt);
+  const waitingForBusiness = filterBusiness !== 'all' && !businessMatch.entries && !businessMatch.error;
   const [filterIndustry, setFilterIndustry] = useRetainedView('Customers:filterIndustry', 'all');
   const [filterLevel, setFilterLevel] = useRetainedView('Customers:filterLevel', 'all');
   const [filterSource, setFilterSource] = useRetainedView('Customers:filterSource', 'all');
@@ -774,7 +778,7 @@ export default function Customers() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advFilters, setAdvFilters] = useRetainedView('Customers:advFilters', emptyAdvancedFilters);
   const advFilterCount = Object.values(advFilters).filter(v => v.trim()).length;
-  const primaryFilterCount = [filterStatus, filterIndustry, filterLevel, filterSource].filter(value => value !== 'all').length;
+  const primaryFilterCount = [filterBusiness, filterStatus, filterIndustry, filterLevel, filterSource].filter(value => value !== 'all').length;
   const activeFilterCount = primaryFilterCount + advFilterCount;
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -1661,8 +1665,20 @@ export default function Customers() {
         () => client.entities.customers.query(CUSTOMER_SHELL_LIST_QUERY),
       );
       if (!current()) return;
-      const items = (res?.data?.items || []).map(displayCustomerStatus);
-      setCustomers(items);
+      const rows = [...(res?.data?.items || [])];
+      const total = Number(res?.data?.total || 0);
+      let offset = rows.length;
+      while (offset > 0 && offset < total) {
+        const page = await loadWithRetry(() => client.entities.customers.query({ ...CUSTOMER_SHELL_LIST_QUERY, skip: offset }));
+        if (!current()) return;
+        const batch = page?.data?.items;
+        if (!Array.isArray(batch)) throw new Error('客户目录分页读取失败');
+        if (!batch.length) break;
+        rows.push(...batch);
+        offset += batch.length;
+      }
+      const unique = new Map(rows.map(row => [row.id, row]));
+      setCustomers(Array.from(unique.values()).map(displayCustomerStatus));
       setLoadError(null);
       setCustomersLoadedAt(new Date().toISOString());
     } catch (err) {
@@ -1734,6 +1750,7 @@ export default function Customers() {
 
   const filtered = useMemo(() => {
     return customers.filter(c => {
+      if (filterBusiness !== 'all' && !businessMatch.entries?.has(Number(c.id))) return false;
       let ms = true;
       if (search) {
         const q = search.toLowerCase().trim();
@@ -1760,7 +1777,7 @@ export default function Customers() {
         && (!af.state || c.state === af.state);
       return ms && mst && mi && ml && mso && ma;
     });
-  }, [customers, search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters]);
+  }, [customers, search, filterStatus, filterIndustry, filterLevel, filterSource, filterBusiness, businessMatch.entries, advFilters]);
   const paginatedCustomers = useMemo(
     () => paginateList(filtered, customerPage, customerPageSize),
     [filtered, customerPage, customerPageSize],
@@ -1778,7 +1795,7 @@ export default function Customers() {
   useEffect(() => {
     if (firstCustomerFilterRender.current) { firstCustomerFilterRender.current = false; return; }
     setCustomerPage(1);
-  }, [search, filterStatus, filterIndustry, filterLevel, filterSource, advFilters, customerPageSize]);
+  }, [search, filterStatus, filterIndustry, filterLevel, filterSource, filterBusiness, advFilters, customerPageSize]);
 
   useEffect(() => {
     setFollowUpPage(1);
@@ -3526,10 +3543,16 @@ export default function Customers() {
     );
   }
 
+  const customerBusinessSummary = (id: number) => {
+    if (filterBusiness !== 'multiple') return null;
+    const labels = businessMatch.entries?.get(Number(id))?.map(code => customerBusinessLabels[code]).filter(Boolean);
+    return labels?.length ? <span className="block text-xs font-normal leading-5 text-slate-500">{labels.join(' · ')}</span> : null;
+  };
   const previewCustomer = currentPagePreview(paginatedCustomers.items, previewCustomerId);
   const advancedFilterNames: Record<string, string> = { customer_code: '编号', business_name: '商家', contact_name: '联系人', phone: '电话', industry: '行业', status: '状态', level: '等级', sales_person: '负责人', source: '来源', wechat: '微信', email: '邮箱', country: '国家', state: '州/省', city: '城市' };
   const advancedFilterDictionaries: Record<string, Record<string, string>> = { industry: industryLabels, status: statusLabels, level: levelLabels, source: sourceLabels };
   const activeCustomerFilterLabels = [
+    filterBusiness !== 'all' ? customerBusinessLabels[filterBusiness] : '',
     filterStatus !== 'all' ? `状态：${statusLabels[filterStatus] || filterStatus}` : '',
     filterIndustry !== 'all' ? `行业：${industryLabels[filterIndustry] || filterIndustry}` : '',
     filterLevel !== 'all' ? `等级：${levelLabels[filterLevel] || filterLevel}` : '',
@@ -3621,6 +3644,11 @@ export default function Customers() {
             <SlidersHorizontal className="w-4 h-4" /> 高级{advFilterCount > 0 && <Badge className="ml-1 bg-white text-blue-600 hover:bg-white h-5 min-w-[20px] px-1.5 text-xs">{advFilterCount}</Badge>}
           </Button>
         </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="customer-business-filter" className="shrink-0 text-sm font-medium">合作业务</label>
+          <NativeSelect id="customer-business-filter" aria-label="合作业务" value={filterBusiness} onChange={setFilterBusiness}
+            className="w-36" options={Object.entries(customerBusinessLabels).map(([value, label]) => ({ value, label }))} />
+        </div>
         {!isMobile && showAdvanced && renderAdvancedFilters()}
       </div>
 
@@ -3633,7 +3661,7 @@ export default function Customers() {
 
       {activeCustomerFilterLabels.length > 0 && <div className="mfc-customer-active-filters" aria-label="当前生效的客户筛选">
         <span>{activeCustomerFilterLabels.join(' · ')}</span>
-        <Button type="button" variant="ghost" size="sm" onClick={() => { setFilterStatus('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除筛选</Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setFilterStatus('all'); setFilterBusiness('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除筛选</Button>
       </div>}
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
@@ -3650,8 +3678,8 @@ export default function Customers() {
               <div><Label className="text-xs text-slate-500">来源</Label><NativeSelect value={filterSource} onChange={setFilterSource} className="mt-1 w-full" options={[{ value: 'all', label: '全部来源' }, ...Object.entries(sourceLabels).map(([k, v]) => ({ value: k, label: v }))]} /></div>
             </div>
             <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-medium">精确筛选{advFilterCount > 0 ? `（${advFilterCount}）` : ''}</summary><div className="mt-3">{renderAdvancedFilters()}</div></details>
-            {activeFilterCount > 0 && <Button variant="ghost" className="text-slate-600" onClick={() => { setFilterStatus('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除全部筛选</Button>}
-            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setMobileFiltersOpen(false)}>查看 {filtered.length} 位客户</Button>
+            {activeFilterCount > 0 && <Button variant="ghost" className="text-slate-600" onClick={() => { setFilterStatus('all'); setFilterBusiness('all'); setFilterIndustry('all'); setFilterLevel('all'); setFilterSource('all'); setAdvFilters(emptyAdvancedFilters); }}>清除全部筛选</Button>}
+            <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setMobileFiltersOpen(false)}>查看{waitingForBusiness || businessMatch.error ? '客户' : ` ${filtered.length} 位客户`}</Button>
           </div>
         </SheetContent>
       </Sheet>
@@ -3659,12 +3687,13 @@ export default function Customers() {
       <div className="customer-360-workspace">
         <section className="min-w-0 space-y-3">
           <div className="mfc-customer-list-meta flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-            <span className="font-medium text-slate-700">客户目录 · 共 {filtered.length} 条{filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
+            <span className="font-medium text-slate-700">客户目录 · {waitingForBusiness || businessMatch.error ? '业务分类待核对' : `共 ${filtered.length} 条`}{!waitingForBusiness && !businessMatch.error && filtered.length !== customers.length ? `（筛选自 ${customers.length} 条）` : ''}</span>
             <span className={`mfc-customer-sync inline-flex items-center gap-1.5${loadError ? ' is-error' : ''}`} role={loadError ? 'alert' : undefined}><span className={`h-1.5 w-1.5 rounded-full ${loadError ? 'bg-rose-500' : loading ? 'bg-amber-500' : 'bg-emerald-500'}`} />{loading ? '正在同步客户资料' : loadError ? '同步失败，保留上次结果' : `数据更新 ${formatCustomerTimestamp(customersLoadedAt)}`}{loadError && <Button type="button" variant="ghost" size="sm" onClick={() => void loadCustomers()}>重试</Button>}</span>
           </div>
 
       <Card className="app-card customer-360-directory crm-order-results"><CardContent className="p-0">
-        {loading ? <CustomerListLoadingState />
+        {businessMatch.error ? <div role="alert" className="flex items-center justify-center gap-3 px-4 py-8 text-sm">合作业务暂时无法读取。<Button size="sm" variant="outline" onClick={businessMatch.retry}>重试</Button></div>
+        : loading || waitingForBusiness ? <CustomerListLoadingState />
         : filtered.length === 0 ? <p className="text-center text-slate-400 py-12">暂无匹配的客户</p>
         : (
           <>
@@ -3674,6 +3703,7 @@ export default function Customers() {
                 <div className="flex items-start justify-between gap-2">
                   <button type="button" className="customer-mobile-identity min-w-0 text-left" onClick={() => openDetail(c)}>
                     <p className="line-clamp-2 break-words text-[15px] font-semibold text-blue-700">{c.business_name || '-'}</p>
+                    {customerBusinessSummary(c.id)}
                   </button>
                   <div className="mfc-customer-status flex shrink-0 flex-wrap justify-end gap-1">
                     <Badge className={`px-2 py-1 text-[10px] ${statusColors[c.status] || ''}`}>{statusLabels[c.status] || c.status || '-'}</Badge>
@@ -3726,7 +3756,7 @@ export default function Customers() {
             <tr key={c.id} className={`border-b border-slate-100 cursor-pointer transition-colors hover:bg-blue-50/60 ${previewCustomer?.id === c.id ? 'bg-blue-50/50' : ''}`}>
               {isOwner && <td data-customer-column="selection" className="px-4 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`选择客户 ${c.business_name}`} checked={selectedCustomerIds.includes(c.id)} onChange={event => setSelectedCustomerIds(current => event.target.checked ? [...current, c.id] : current.filter(id => id !== c.id))} /></td>}
               {visibleCols.includes('customer_code') && <td data-customer-column="customer_code" className="px-4 py-3 text-slate-500 text-xs font-mono" onClick={() => openDetail(c)}>{c.customer_code || '-'}</td>}
-              {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name}><button type="button" className="min-h-8 max-w-full break-words text-left font-medium text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => openDetail(c)}>{c.business_name}</button></td>}
+              {visibleCols.includes('business_name') && <td data-customer-column="business_name" className="px-4 py-3 font-medium text-blue-600" title={c.business_name}><button type="button" className="min-h-8 max-w-full break-words text-left font-medium text-blue-600 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={() => openDetail(c)}>{c.business_name}</button>{customerBusinessSummary(c.id)}</td>}
               {visibleCols.includes('contact_name') && <td data-customer-column="contact_name" className="px-4 py-3" onClick={() => openDetail(c)}>{c.contact_name}</td>}
               {visibleCols.includes('phone') && <td data-customer-column="phone" className="px-4 py-3 text-slate-500" onClick={() => openDetail(c)}>{formatPhoneNumber(c.phone, c.country)}</td>}
               {visibleCols.includes('state') && <td data-customer-column="state" className="px-4 py-3 text-slate-500 hidden md:table-cell" onClick={() => openDetail(c)}>{c.state || '-'}</td>}

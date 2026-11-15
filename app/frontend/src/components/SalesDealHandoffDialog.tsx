@@ -11,12 +11,15 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { businessDateKey } from '@/lib/business-date';
 import { useHardNavigationBlock, useUnsavedChanges } from '@/lib/use-unsaved-changes';
-import { dealHandoffApi, salesCollectionMethods, salesDealCycles, salesDealPeriodEnd, salesDealPlatforms, salesHandoffError, salesHandoffHistoryUrl, salesHandoffMoney, salesPaymentCadence, type SalesDealCatalog, type SalesDealHandoff, type SalesDealLeadState } from '@/lib/sales-deal-handoff';
+import { dealHandoffApi, salesCollectionMethods, salesDealCycles, salesDealPeriodEnd, salesDealPlatforms, salesHandoffError, salesHandoffHistoryUrl, salesHandoffMoney, salesPaymentCadence, type SalesDealCatalog, type SalesDealHandoff, type SalesDealLeadState, type SalesDealPlan } from '@/lib/sales-deal-handoff';
 import './sales-deal-handoff.css';
 import { salesHandoffCustomerHref, salesHandoffQueueHref } from './sales-handoff-navigation';
 import './owner-handoff-entry.css';
 
 type Props = { leadId: number | null; onClose: () => void; onRegistered?: (handoff: SalesDealHandoff) => void | Promise<void>; onOpenDossier?: (leadId: number) => void };
+function isSystemPlan(plan: SalesDealPlan) {
+  return [plan.business_line_code, plan.scope_type].some(code => code === 'restaurant_os' || code === 'beauty_os');
+}
 const newForm = () => ({ plan_id: '', selected_platforms: [] as string[], service_start_date: businessDateKey(), service_end_date: '', collection_method: 'check', operations_owner_employee_id: '', customer_goal: '', handoff_notes: '', special_commitments: '', confirmation_notes: '', existing_customer_id: '' });
 const quoteStatuses: Record<string, string> = { approved: '历史已批准', submitted: '历史待审批', rejected: '历史已驳回', superseded: '历史已失效' };
 
@@ -45,6 +48,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
   const draft = useUnsavedChanges(dirty);
   const transaction = useHardNavigationBlock(saving);
   const selectedPlan = catalog?.plans.find(plan => String(plan.id) === form.plan_id);
+  const showPlatformOptions = selectedPlan && !isSystemPlan(selectedPlan);
   const groupedPlans = useMemo(() => (catalog?.plans || []).map(plan => {
     const product = catalog?.products.find(item => item.id === plan.product_id);
     return { value: String(plan.id), label: [product?.name, plan.name, salesDealCycles[plan.default_billing_cycle] || plan.default_billing_cycle, salesHandoffMoney(plan.standard_price, plan.default_currency)].filter(Boolean).join(' · ') };
@@ -83,7 +87,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
       setForm(current => {
         const plan = next.plans.find(item => String(item.id) === current.plan_id);
         if (!plan) return current;
-        return { ...current, collection_method: plan.required_collection_method === 'stripe_auto' ? 'stripe_auto' : current.collection_method === 'stripe_auto' ? 'check' : current.collection_method, service_end_date: plan.default_billing_cycle === 'one_time' ? current.service_end_date : salesDealPeriodEnd(current.service_start_date, plan) };
+        return { ...current, selected_platforms: isSystemPlan(plan) ? [] : current.selected_platforms, collection_method: plan.required_collection_method === 'stripe_auto' ? 'stripe_auto' : current.collection_method === 'stripe_auto' ? 'check' : current.collection_method, service_end_date: plan.default_billing_cycle === 'one_time' ? current.service_end_date : salesDealPeriodEnd(current.service_start_date, plan) };
       });
     } catch (problem) { if (activeLead.current === id) setCatalogError(salesHandoffError(problem, '统一套餐读取失败。')); }
   };
@@ -119,7 +123,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
     if (!form.service_start_date) return '请填写服务开始日期。';
     if (selectedPlan.default_billing_cycle !== 'one_time' && !form.service_end_date) return '周期服务请填写服务结束日期。';
     if (form.service_end_date && form.service_end_date <= form.service_start_date) return '服务结束日期必须晚于开始日期。';
-    if (selectedPlan.platform_limit && form.selected_platforms.length > selectedPlan.platform_limit) return `这个套餐最多选择 ${selectedPlan.platform_limit} 个平台。`;
+    if (showPlatformOptions && selectedPlan.platform_limit && form.selected_platforms.length > selectedPlan.platform_limit) return `这个套餐最多选择 ${selectedPlan.platform_limit} 个平台。`;
     if (nextStep > 1 && !form.operations_owner_employee_id) return '请选择运营接收负责人。';
     if (nextStep > 1 && form.customer_goal.trim().length < 3) return '请写明客户希望达成的目标。';
     return '';
@@ -131,7 +135,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
     if (problem || !confirmed) { setError(problem || '请确认成交与收款分别登记。'); return; }
     const id = leadId;
     const payload = {
-      plan_id: selectedPlan.id, catalog_token: selectedPlan.catalog_token, selected_platforms: form.selected_platforms,
+      plan_id: selectedPlan.id, catalog_token: selectedPlan.catalog_token, selected_platforms: showPlatformOptions ? form.selected_platforms : [],
       service_start_date: form.service_start_date, service_end_date: form.service_end_date || null,
       collection_method: form.collection_method, operations_owner_employee_id: Number(form.operations_owner_employee_id),
       ...(existingMode && catalog?.can_manage_catalog === true ? { existing_customer_id: Number(form.existing_customer_id) } : {}),
@@ -176,7 +180,7 @@ export default function SalesDealHandoffDialog({ leadId, onClose, onRegistered, 
             <label className="sdh-field sdh-wide">统一套餐 *<NativeSelect aria-label="统一套餐" value={form.plan_id} onChange={value => { const plan = catalog?.plans.find(item => String(item.id) === value); update({ plan_id: value, selected_platforms: [], collection_method: plan?.required_collection_method === 'stripe_auto' ? 'stripe_auto' : form.collection_method === 'stripe_auto' ? 'check' : form.collection_method, service_end_date: plan ? salesDealPeriodEnd(form.service_start_date, plan) : '' }); }} options={[{ value: '', label: catalog ? catalog.plans.length ? '请选择已发布套餐' : '暂无已发布套餐，请老板维护后再登记' : '正在读取统一套餐…' }, ...groupedPlans]}/></label>
             <Button type="button" className="self-start sdh-wide" size="sm" variant="ghost" onClick={() => void readCatalog()}>刷新已发布套餐（保留交接输入）</Button>
             {selectedPlan && <div className="sdh-price sdh-wide"><span className="text-xs text-blue-700"><LockKeyhole size={12} className="mr-1 inline"/>{selectedPlan.required_collection_method === 'stripe_auto' ? 'Stripe 自动订阅统一价' : '人工收款统一价'}</span><span className="mt-2 block text-sm font-semibold text-blue-900">{selectedPlan.name}</span><strong>{salesHandoffMoney(selectedPlan.standard_price, selectedPlan.default_currency)}</strong><p>{selectedPlan.default_billing_cycle === 'one_time' ? '一次性服务 · 本次费用' : `周期服务 · ${salesDealCycles[selectedPlan.default_billing_cycle] || selectedPlan.default_billing_cycle}每期费用`}；金额与账期由已发布套餐确定，不按月均价推算其他周期。</p>{selectedPlan.required_collection_method === 'stripe_auto' && <><p className="sdh-price-billing">{selectedPlan.payment_link?.cadence_label || salesPaymentCadence(selectedPlan.default_billing_cycle)} · 每期一次收取上述服务费 · 适用税额另计</p><p>登记后可直接获取关联本单的付款链接。现有客户请先核对原订阅，避免重复订阅；原订阅和价格不会改变。</p>{!selectedPlan.payment_link && <p className="sdh-payment-unavailable">该套餐付款链接尚未就绪，登记后请联系老板核对，勿使用其他套餐链接。</p>}</>}</div>}
-            {selectedPlan && <div className="sdh-field sdh-wide"><span>交付平台{selectedPlan.platform_limit ? `（最多 ${selectedPlan.platform_limit} 个）` : ''}</span><div className="sdh-platforms">{(catalog?.platform_options || salesDealPlatforms).map(platform => <label key={platform}><input type="checkbox" checked={form.selected_platforms.includes(platform)} onChange={event => update({ selected_platforms: event.target.checked ? [...form.selected_platforms, platform] : form.selected_platforms.filter(value => value !== platform) })}/>{platform}</label>)}</div></div>}
+            {showPlatformOptions && <div className="sdh-field sdh-wide"><span>交付平台{selectedPlan.platform_limit ? `（最多 ${selectedPlan.platform_limit} 个）` : ''}</span><div className="sdh-platforms">{(catalog?.platform_options || salesDealPlatforms).map(platform => <label key={platform}><input type="checkbox" checked={form.selected_platforms.includes(platform)} onChange={event => update({ selected_platforms: event.target.checked ? [...form.selected_platforms, platform] : form.selected_platforms.filter(value => value !== platform) })}/>{platform}</label>)}</div></div>}
             <label className="sdh-field">服务开始 *<Input aria-label="服务开始" type="date" value={form.service_start_date} onChange={event => update({ service_start_date: event.target.value, ...(selectedPlan && selectedPlan.default_billing_cycle !== 'one_time' ? { service_end_date: salesDealPeriodEnd(event.target.value, selectedPlan) } : {}) })}/></label><label className="sdh-field">服务结束<Input aria-label="服务结束" type="date" value={form.service_end_date} min={form.service_start_date} readOnly={selectedPlan?.default_billing_cycle !== 'one_time'} onChange={event => update({ service_end_date: event.target.value })}/>{selectedPlan && selectedPlan.default_billing_cycle !== 'one_time' && <span className="text-xs font-normal text-slate-500">按套餐账期自动计算。</span>}</label>
             <label className="sdh-field sdh-wide">约定收款方式{selectedPlan?.required_collection_method === 'stripe_auto' ? <Input aria-label="约定收款方式" readOnly value="Stripe 自动订阅（该套餐固定）"/> : <NativeSelect aria-label="约定收款方式" value={form.collection_method} onChange={value => update({ collection_method: value })} options={salesCollectionMethods.filter(option => option.value !== 'stripe_auto')}/>}<span className="text-xs font-normal text-slate-500">人工收款价与 Stripe 自动订阅价分别锁定；这里只记录约定，不创建扣款、不代表款项到账。</span></label>
           </div>}

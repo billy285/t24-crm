@@ -56,3 +56,27 @@
   .deal-editor-actions { margin-top: 0; }
   .deal-editor-actions button { flex: 1; min-height: 48px; }
 }
+
+.deal-media-field {
+  margin-inline: 0;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.deal-media-field legend { padding: 0; font-size: 14px; font-weight: 600; }
+.deal-media-field > p,.deal-scope-summary { margin: 4px 0; font-size: 12px; color: var(--crm-muted, #64748b); }
+.deal-scope-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.deal-scope-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--crm-border, #dbe3ee);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.deal-scope-options input { flex: none; accent-color: var(--crm-blue, #245ce8); }
+.deal-scope-options label:has(input:checked) { border-color: var(--crm-blue, #245ce8); }
+.deal-scope-options label:has(input:disabled) { color: var(--crm-muted, #64748b); cursor: default; }

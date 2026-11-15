@@ -29,7 +29,6 @@ import {
   platformLabels,
   sanitizeDictLabel,
   serializeDictEntries,
-  serializePackagePlatformEntries,
   useBusinessDicts,
   useDictConfig,
 } from '../lib/dict-config';
@@ -41,6 +40,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 import { useSalesListPosition } from '@/lib/use-sales-list-position';
 import { invokeWithAuth } from '@/lib/tokenStore';
+import { dealMediaPlatforms, dealPackagePlatformLimit, dealProductOptions, dealProductScope, dealProductValue, isManagedDealPackage, readDealPlatforms } from '@/lib/deal-product-scope';
 import './deal-editor-refined.css';
 import { businessDateKey } from '@/lib/business-date';
 import './delivery-workspace.css';
@@ -51,7 +51,7 @@ function parseMultiValue(value?: string | null) {
   return (value || '').split(',').map(item => item.trim()).filter(Boolean);
 }
 
-type PackageDraft = { key: string; label: string; platforms: string[] };
+type PackageDraft = { key: string; label: string };
 
 type PendingFinalizeStep = {
   key: string;
@@ -150,7 +150,7 @@ function appendPackageDrafts(baseDrafts: PackageDraft[], rawInput: string) {
       return;
     }
     seenLabels.add(normalizedKey);
-    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label, platforms: inferPackagePlatforms(label) });
+    nextDrafts.push({ key: buildUniquePackageKey(label, usedKeys), label });
   });
 
   return {
@@ -415,9 +415,11 @@ function getTodayDateInput() {
 function buildEmptyDealForm() {
   return {
     customer_id: '',
-    product_type: 'ordering_system',
+    product_type: '',
     package_name: '',
     package_keys: [] as string[],
+    platforms: [] as string[],
+    scopeChanged: false,
     billing_cycle: 'monthly',
     deal_amount: '',
     deal_date: getTodayDateInput(),
@@ -431,6 +433,12 @@ function buildEmptyDealForm() {
     is_transferred_ops: false,
     notes: '',
   };
+}
+
+function DealPlatforms({ value }: { value?: string | null }) {
+  const platforms = readDealPlatforms(value);
+  if (platforms.length === 0) return null;
+  return <p className="deal-scope-summary">实际平台：{platforms.map(key => platformLabels[key] || key).join('、')}</p>;
 }
 
 function DealHandoffProgress({ handedOver, transferred }: { handedOver: boolean; transferred: boolean }) {
@@ -447,7 +455,7 @@ export default function Deals() {
   const isMobile = useIsMobile();
   const dictConfig = useDictConfig();
   const {
-    products: productLabels,
+    products: dictionaryProducts,
     billingCycles: cycleLabels,
     customerPackages: customerPackageLabels,
     customerPackagePlatforms,
@@ -511,8 +519,22 @@ export default function Deals() {
   }, [search, filterProduct, filterPaid, filterCycle, filterDateFrom, filterDateTo, filterDatePreset, showDuplicatesOnly, page, pageSize]);
   const formGuard = useUnsavedChanges(showForm && JSON.stringify(form) !== formBaseline.current);
   const handoffGuard = useUnsavedChanges(Boolean(handoffDeal) && JSON.stringify(handoffForm) !== handoffBaseline.current);
+  const productLabels = dealProductOptions(dictionaryProducts);
+  const scope = dealProductScope(form.product_type, productLabels[form.product_type]);
+  const systemProduct = scope === 'restaurant_os' || scope === 'beauty_os';
   const dealPackageLabels = { ...customerPackageLabels, ...packageOverrideLabels };
   const dealPackageOptions = Object.entries(dealPackageLabels).map(([value, label]) => ({ value, label }));
+  const managedPackageOptions = dealPackageOptions.filter(option =>
+    isManagedDealPackage(option.value, option.label) || form.package_keys.includes(option.value)
+  );
+  const platformOptions = { ...dealMediaPlatforms };
+  for (const key of form.platforms) {
+    if (!platformOptions[key]) platformOptions[key] = platformLabels[key] || key;
+  }
+  const getProductLabel = (value: string) => productLabels[dealProductValue(value, dictionaryProducts)] || value || '-';
+  const platformLimit = scope === 'managed' && form.package_keys.length === 1
+    ? dealPackagePlatformLimit(form.package_keys[0], dealPackageLabels[form.package_keys[0]] || '')
+    : null;
   const getPackageClassification = (packageName?: string | null) => (
     classifyPackageDisplay(packageName, dealPackageLabels)
   );
@@ -581,6 +603,10 @@ export default function Deals() {
   };
   useEffect(() => { void loadBoards(); }, [employee?.id, dataScope]);
   const existingBoard = (deal: any) => serviceProgresses.find(board => Number(board.customer_id) === Number(deal.customer_id) && (new RegExp(`成交记录 #${Number(deal.id)}(?![0-9])`).test(String(board.notes || '')) || board.service_stage !== 'ended' && !String(board.notes || '').includes('成交记录 #') && normalizeSearchText(board.package_name) === normalizeSearchText(deal.package_name)));
+  const showBoardAction = (deal: any) => {
+    const productScope = dealProductScope(deal.product_type, dictionaryProducts[deal.product_type]);
+    return (productScope !== 'restaurant_os' && productScope !== 'beauty_os') || Boolean(existingBoard(deal));
+  };
   const openBoard = (deal: any) => { const board = existingBoard(deal); if (board) navigate(`/service-board?progress_id=${board.id}&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`); else void handleGenerateServiceBoardForDeal(deal); };
   const openHandoff = (deal: any) => {
     const next = { needs_group: Boolean(deal.needs_group), is_handed_over: Boolean(deal.is_handed_over), is_transferred_ops: Boolean(deal.is_transferred_ops), notes: deal.notes || '' };
@@ -741,8 +767,11 @@ export default function Deals() {
   };
 
   const ensureOnboardingBoardForDeal = async (deal: any, cust: any, dealId?: number | null) => {
-    const platforms = parseMultiValue(deal.package_platforms).length > 0
-      ? parseMultiValue(deal.package_platforms)
+    const productScope = dealProductScope(deal.product_type, dictionaryProducts[deal.product_type]);
+    if (productScope === 'restaurant_os' || productScope === 'beauty_os') return { platforms: [], createdCount: 0 };
+    const recordedPlatforms = readDealPlatforms(deal.package_platforms);
+    const platforms = recordedPlatforms.length || productScope === 'managed'
+      ? recordedPlatforms
       : inferPackagePlatforms(deal.package_name, dealPackageLabels, customerPackagePlatforms);
     const steps = buildOnboardingSteps(platforms);
     if (!cust || steps.length === 0) {
@@ -761,15 +790,16 @@ export default function Deals() {
       sort: '-created_at',
     });
     const existingProgresses = progressRes?.data?.items || [];
-    let progress = existingProgresses.find((item: any) =>
-      item.service_stage !== 'ended' && normalizeSearchText(item.package_name) === normalizedPackageName
-    );
+    const marker = dealId && new RegExp(`成交记录 #${Number(dealId)}(?![0-9])`);
+    let progress = existingProgresses.find((item: any) => marker && marker.test(item.notes || ''))
+      || existingProgresses.find((item: any) => item.service_stage !== 'ended' && !String(item.notes || '').includes('成交记录 #')
+        && normalizeSearchText(item.package_name) === normalizedPackageName);
 
     if (!progress) {
       const progressPayload = {
         customer_id: customerId,
         customer_name: customerName,
-        service_type: 'social_media',
+        service_type: deal.product_type || 'social_media',
         service_stage: 'deal_handover',
         progress_percent: 10,
         sales_person: cust.sales_person || deal.sales_name || '',
@@ -808,6 +838,9 @@ export default function Deals() {
           last_update_time: now,
           last_update_person: actor,
           last_work_summary: '成交后同步检查前期运营流程',
+          ...(dealId && !String(progress.notes || '').includes('成交记录 #')
+            ? { notes: [progress.notes, `由成交记录 #${dealId} 按开关生成前期工作看板。`].filter(Boolean).join('\n') }
+            : {}),
         },
       });
     }
@@ -869,7 +902,7 @@ export default function Deals() {
       } else if (result.platforms.length > 0) {
         toast.info('服务看板已存在，前期任务无需重复生成');
       } else {
-        toast.warning('当前套餐没有配置可生成的平台流程，请先在套餐管理里选择平台');
+        toast.warning('这笔成交尚无可生成任务的交付平台，请打开编辑成交核对');
       }
       await loadBoards();
     } catch (err) {
@@ -900,7 +933,7 @@ export default function Deals() {
       if (!matchSearch) return false;
     }
     // Product type filter
-    if (filterProduct !== 'all' && d.product_type !== filterProduct) return false;
+    if (filterProduct !== 'all' && dealProductValue(d.product_type, dictionaryProducts) !== dealProductValue(filterProduct, dictionaryProducts)) return false;
     // Payment status filter
     if (filterPaid !== 'all') {
       if (filterPaid === 'paid' && !d.is_paid) return false;
@@ -1001,11 +1034,7 @@ export default function Deals() {
   }, [showForm, editingId]);
 
   const openPackageManager = () => {
-    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({
-      key,
-      label,
-      platforms: customerPackagePlatforms[key] || inferPackagePlatforms(label, customerPackageLabels, customerPackagePlatforms),
-    })));
+    setPackageDrafts(Object.entries(customerPackageLabels).map(([key, label]) => ({ key, label })));
     setNewPackageName('');
     setShowPackageManager(true);
   };
@@ -1025,27 +1054,19 @@ export default function Deals() {
     if (new Set(labels.map(label => label.toLowerCase())).size !== labels.length) {
       throw new Error('套餐名称不能重复');
     }
-    const platformEntries = draftsToSave.reduce<Record<string, string[]>>((acc, item) => {
-      if (!normalizedEntries[item.key]) return acc;
-      const selectedPlatforms = Array.from(new Set((item.platforms || []).filter(platform => Boolean(platformLabels[platform]))));
-      const fallbackPlatforms = inferPackagePlatforms(normalizedEntries[item.key], normalizedEntries, customerPackagePlatforms);
-      const platforms = selectedPlatforms.length > 0 ? selectedPlatforms : fallbackPlatforms;
-      if (platforms.length > 0) acc[item.key] = platforms;
-      return acc;
-    }, {});
-
+    // Product-wide package names and the platforms purchased by one customer are separate.
     await saveRemoteAppConfig('dict_config', {
       ...dictConfig,
       customerPackages: serializeDictEntries(normalizedEntries),
-      customerPackagePlatforms: serializePackagePlatformEntries(platformEntries),
     });
     const availableKeys = new Set(Object.keys(normalizedEntries));
-    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label, platforms: platformEntries[key] || [] }));
+    const savedDrafts = Object.entries(normalizedEntries).map(([key, label]) => ({ key, label }));
     setPackageDrafts(savedDrafts);
-    setForm(prev => ({
-      ...prev,
-      package_keys: prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]),
-    }));
+    setForm(prev => {
+      const retained = prev.package_keys.filter(key => availableKeys.has(key) || packageOverrideLabels[key]);
+      if (retained.length === prev.package_keys.length) return prev;
+      return { ...prev, package_keys: retained, platforms: [], scopeChanged: true };
+    });
     return savedDrafts;
   };
 
@@ -1094,19 +1115,6 @@ export default function Deals() {
     }
     const remaining = packageDrafts.filter(item => item.key !== key);
     setPackageDrafts(remaining);
-    if (form.package_keys.includes(key)) {
-      setForm(prev => ({ ...prev, package_keys: prev.package_keys.filter(item => item !== key) }));
-    }
-  };
-
-  const togglePackageDraftPlatform = (packageKey: string, platform: string) => {
-    setPackageDrafts(prev => prev.map(item => {
-      if (item.key !== packageKey) return item;
-      const nextPlatforms = item.platforms.includes(platform)
-        ? item.platforms.filter(existing => existing !== platform)
-        : [...item.platforms, platform];
-      return { ...item, platforms: nextPlatforms };
-    }));
   };
 
   const handleSavePackages = async () => {
@@ -1142,6 +1150,7 @@ export default function Deals() {
   const togglePackageKey = (key: string) => {
     setForm(prev => ({
       ...prev,
+      scopeChanged: true,
       package_keys: prev.package_keys.includes(key)
         ? prev.package_keys.filter(item => item !== key)
         : [...prev.package_keys, key],
@@ -1166,9 +1175,11 @@ export default function Deals() {
     setPackageOverrideLabels(customLabels);
     const nextForm = {
       customer_id: String(d.customer_id || ''),
-      product_type: d.product_type || 'ordering_system',
+      product_type: dealProductValue(d.product_type || '', dictionaryProducts),
       package_name: d.package_name || '',
       package_keys: packageKeys,
+      platforms: readDealPlatforms(d.package_platforms),
+      scopeChanged: false,
       billing_cycle: d.billing_cycle || 'monthly',
       deal_amount: String(d.deal_amount || ''),
       deal_date: d.deal_date?.slice(0, 10) || getTodayDateInput(),
@@ -1190,15 +1201,28 @@ export default function Deals() {
 
   const handleSave = async () => {
     if (saving || !hasPermission(editingId ? 'deal_edit' : 'deal_create')) return;
-    if (!form.customer_id || form.package_keys.length === 0 || !form.deal_amount) {
+    const original = editingId ? deals.find(deal => deal.id === editingId) : null;
+    const keepOriginalScope = Boolean(original && !form.scopeChanged);
+    if (!form.customer_id || !form.deal_amount || (!keepOriginalScope && (!form.product_type || (!systemProduct && form.package_keys.length === 0)))) {
       toast.error('请填写必填字段');
       return;
     }
-    const original = editingId ? deals.find(deal => deal.id === editingId) : null;
+    if (!keepOriginalScope && scope === 'managed' && (form.platforms.length === 0 || (platformLimit !== null && form.platforms.length > platformLimit))) {
+      toast.error(form.platforms.length === 0 ? '请选择这笔成交实际运营的平台' : `本套餐最多可选 ${platformLimit} 个平台`);
+      return;
+    }
+    if (scope === 'managed' && form.create_service_board && !form.platforms.some(key => dealMediaPlatforms[key])) {
+      toast.error('请先选择实际运营平台，再生成服务看板');
+      return;
+    }
+    const productType = keepOriginalScope ? original.product_type : form.product_type;
+    const packageName = keepOriginalScope ? original.package_name : systemProduct
+      ? productLabels[form.product_type]
+      : form.package_keys.map(key => dealPackageLabels[key] || key).join('、');
     const financialChanges = original ? [
       ['客户', String(original.customer_id), form.customer_id],
-      ['产品', original.product_type || '', form.product_type],
-      ['套餐', original.package_name || '', form.package_keys.map(key => dealPackageLabels[key] || key).join('、')],
+      ['产品', original.product_type || '', productType || ''],
+      ['套餐', original.package_name || '', packageName || ''],
       ['周期', original.billing_cycle || 'monthly', form.billing_cycle],
       ['成交金额', String(Number(original.deal_amount || 0)), String(Number(form.deal_amount))],
       ['成交日期', original.deal_date?.slice(0,10) || '', form.deal_date],
@@ -1211,16 +1235,24 @@ export default function Deals() {
     try {
       const cust = customers.find(c => c.id === Number(form.customer_id));
       const now = new Date().toISOString();
-      const packageName = form.package_keys.map(key => dealPackageLabels[key] || key).filter(Boolean).join('、');
+      let packagePlatforms = original?.package_platforms;
+      if (!keepOriginalScope) {
+        if (systemProduct) packagePlatforms = '';
+        else if (scope === 'managed') packagePlatforms = form.platforms.join(',');
+        else {
+          const defaults = form.package_keys.flatMap(key => customerPackagePlatforms[key] ||
+            inferPackagePlatforms(dealPackageLabels[key] || key, dealPackageLabels, customerPackagePlatforms));
+          packagePlatforms = [...new Set(defaults)].join(',');
+        }
+      }
+      const sameCustomer = original && Number(original.customer_id) === Number(form.customer_id);
       const payload = {
         customer_id: Number(form.customer_id),
-        customer_name: cust?.business_name || '',
-        sales_name: cust?.sales_person || '',
-        product_type: form.product_type,
+        customer_name: sameCustomer ? original.customer_name : cust?.business_name || '',
+        sales_name: sameCustomer ? original.sales_name : cust?.sales_person || '',
+        product_type: productType,
         package_name: packageName,
-        package_platforms: Array.from(new Set(form.package_keys.flatMap(key => (
-          customerPackagePlatforms[key] || inferPackagePlatforms(dealPackageLabels[key] || key, dealPackageLabels, customerPackagePlatforms)
-        )))).join(','),
+        package_platforms: packagePlatforms,
         billing_cycle: form.billing_cycle,
         deal_amount: Number(form.deal_amount),
         deal_date: form.deal_date || null,
@@ -1232,8 +1264,6 @@ export default function Deals() {
         is_transferred_ops: form.is_transferred_ops,
         notes: form.notes,
       };
-
-      delete (payload as any).package_keys;
 
       const currentDeal = editingId ? deals.find(deal => Number(deal.id) === Number(editingId)) : null;
       const duplicateSignatureChanged = !currentDeal || getDealDuplicateKey(currentDeal) !== getDealDuplicateKey(payload);
@@ -1247,7 +1277,10 @@ export default function Deals() {
       }
 
       if (editingId) {
-        const updatedDealRes = await client.entities.deals.update({ id: String(editingId), data: payload });
+        // Shared records can contain a redacted or legacy-encoded scope. An unrelated
+        // edit must not overwrite any part of the stored scope with its read projection.
+        const { product_type, package_name, package_platforms, ...otherFields } = payload;
+        const updatedDealRes = await client.entities.deals.update({ id: String(editingId), data: keepOriginalScope ? otherFields : payload });
         const updatedDeal = updatedDealRes?.data || { ...payload, id: editingId, updated_at: now };
         setDeals(prev => prev.map(item => (item.id === editingId ? { ...item, ...updatedDeal } : item)));
         if (form.create_service_board && cust) {
@@ -1367,13 +1400,13 @@ export default function Deals() {
           <h2 className="text-xl font-semibold text-slate-800">成交管理</h2>
           <p className="text-sm text-slate-500">核对成交记录与交接进展；成交金额按原始记录展示。</p>
         </div>
-        <div className="hidden gap-2 md:flex">
-          <ExportButton
+        <div className="flex gap-2">
+          {!isMobile && <ExportButton
             data={filtered.map(d => ({
               ...d,
               package_classification: getPackageClassification(d.package_name).currentLabel,
               package_historical_name: getPackageClassification(d.package_name).changed ? d.package_name : '',
-              product_type_label: productLabels[d.product_type] || d.product_type,
+              product_type_label: getProductLabel(d.product_type),
               billing_cycle_label: cycleLabels[d.billing_cycle] || d.billing_cycle,
               is_paid_label: d.is_paid ? '已付' : '未付',
               is_handed_over_label: d.is_handed_over ? '已交接' : '待交接',
@@ -1400,10 +1433,10 @@ export default function Deals() {
             ]}
             filename={`成交记录_${businessDateKey()}`}
             sheetName="成交记录"
-          />
-          <Button onClick={() => { setPackageOverrideLabels({}); const next = buildEmptyDealForm(); formBaseline.current = JSON.stringify(next); setForm(next); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
+          />}
+          {hasPermission('deal_create') && <Button onClick={() => { setPackageOverrideLabels({}); const next = buildEmptyDealForm(); formBaseline.current = JSON.stringify(next); setForm(next); setEditingId(null); setShowForm(true); }} className="bg-blue-600 hover:bg-blue-700">
             <Plus className="w-4 h-4 mr-1" /> 录入成交
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -1598,7 +1631,8 @@ export default function Deals() {
                   <div className="crm-order-record-block mt-3 rounded-lg bg-slate-50 p-3">
                     <div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-800">{packageClassification.currentLabel}</p><p className="font-semibold text-emerald-600">${Number(d.deal_amount || 0).toLocaleString()}</p></div>
                     {packageClassification.changed && <p className="mt-1 text-xs text-slate-400">历史成交原名：{packageClassification.historicalLabel}</p>}
-                    <p className="mt-1 text-xs text-slate-500">{productLabels[d.product_type] || d.product_type || '-'} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
+                    <p className="mt-1 text-xs text-slate-500">{getProductLabel(d.product_type)} · {cycleLabels[d.billing_cycle] || d.billing_cycle || '-'}</p>
+                    <DealPlatforms value={d.package_platforms} />
                   </div>
                   <div className="deal-mobile-handoff">
                     <DealHandoffProgress handedOver={d.is_handed_over} transferred={d.is_transferred_ops} />
@@ -1608,7 +1642,7 @@ export default function Deals() {
                       <Button size="sm" className="min-h-11 min-w-0 flex-1" onClick={() => openHandoff(d)}><Edit className="mr-1 h-4 w-4" />交接安排</Button>
                       <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 gap-1.5" aria-label={`更多成交操作：${d.customer_name}`}><MoreHorizontal className="h-4 w-4" />更多</Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => navigate(`/customers?detail=${d.customer_id}&tab=deals&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}><ExternalLink className="mr-2 h-4 w-4" />客户详情</DropdownMenuItem>
-                        <DropdownMenuItem disabled={generatingBoardId === d.id || boardsLoading || boardsError} onSelect={() => openBoard(d)}><ClipboardCheck className="mr-2 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '看板暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}</DropdownMenuItem>
+                        {showBoardAction(d) && <DropdownMenuItem disabled={generatingBoardId === d.id || boardsLoading || boardsError} onSelect={() => openBoard(d)}><ClipboardCheck className="mr-2 h-4 w-4" />{generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '看板暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}</DropdownMenuItem>}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={() => openEditDeal(d)}><Edit className="mr-2 h-4 w-4" />编辑成交</DropdownMenuItem>
                       </DropdownMenuContent></DropdownMenu>
@@ -1653,8 +1687,9 @@ export default function Deals() {
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-700">{getPackageClassification(d.package_name).currentLabel}</div>
                         {getPackageClassification(d.package_name).changed && <div className="mt-1 text-xs text-slate-400">历史：{getPackageClassification(d.package_name).historicalLabel}</div>}
+                        <DealPlatforms value={d.package_platforms} />
                       </td>
-                      <td className="px-4 py-3"><Badge variant="secondary" className="text-xs">{productLabels[d.product_type] || d.product_type}</Badge></td>
+                      <td className="px-4 py-3"><Badge variant="secondary" className="text-xs">{getProductLabel(d.product_type)}</Badge></td>
                       <td className="px-4 py-3 font-bold text-green-600">${d.deal_amount}</td>
                       <td className="px-4 py-3 text-slate-500">{cycleLabels[d.billing_cycle] || d.billing_cycle}</td>
                       <td className="px-4 py-3 text-slate-500 hidden md:table-cell">{d.deal_date?.slice(0, 10)}</td>
@@ -1662,7 +1697,7 @@ export default function Deals() {
                       <td className="px-4 py-3"><DealHandoffProgress handedOver={d.is_handed_over} transferred={d.is_transferred_ops} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-                          <Button
+                          {showBoardAction(d) && <Button
                             size="sm"
                             variant="outline"
                             className="min-h-8 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
@@ -1672,7 +1707,7 @@ export default function Deals() {
                           >
                             <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
                             {generatingBoardId === d.id ? '生成中' : boardsLoading ? '查看中' : boardsError ? '暂不可用' : existingBoard(d) ? '查看看板' : '生成看板'}
-                          </Button>
+                          </Button>}
                           <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-slate-500" title="更多成交操作" aria-label={`更多成交操作：${d.customer_name}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
                             <DropdownMenuItem onSelect={() => openHandoff(d)}>交接安排</DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => openEditDeal(d)}><Edit className="mr-2 h-4 w-4" />编辑成交</DropdownMenuItem>
@@ -1700,7 +1735,7 @@ export default function Deals() {
               <Input
                 value={newPackageName}
                 onChange={e => setNewPackageName(e.target.value)}
-                placeholder="新增套餐，例如：Google商家管理"
+                placeholder="新增套餐名称"
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !savingPackages) {
                     e.preventDefault();
@@ -1723,7 +1758,6 @@ export default function Deals() {
                         className="h-8 text-sm"
                         placeholder="套餐名称，例如：A套餐"
                       />
-                      <p className="mt-1 truncate text-xs text-slate-400">{item.key}</p>
                     </div>
                     <Button
                       type="button"
@@ -1734,19 +1768,6 @@ export default function Deals() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {Object.entries(platformLabels).map(([platform, label]) => (
-                      <label key={platform} className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={item.platforms.includes(platform)}
-                          onChange={() => togglePackageDraftPlatform(item.key, platform)}
-                          className="h-3 w-3 rounded"
-                        />
-                        <span>{label}</span>
-                      </label>
-                    ))}
                   </div>
                 </div>
               ))}
@@ -1790,11 +1811,19 @@ export default function Deals() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label>产品类型</Label>
+                <Label htmlFor="deal-product-type">产品类型 *</Label>
                 <NativeSelect
+                  id="deal-product-type"
+                  aria-label="产品类型"
+                  placeholder="请选择产品类型"
                   value={form.product_type}
-                  onChange={v => setForm({ ...form, product_type: v })}
-                  options={Object.entries(productLabels).map(([k, v]) => ({ value: k, label: v }))}
+                  onChange={value => {
+                    setPackageOverrideLabels({});
+                    setForm(prev => ({ ...prev, product_type: value, package_name: '', package_keys: [], platforms: [], scopeChanged: true, create_service_board: false }));
+                  }}
+                  options={Object.entries(form.product_type && !productLabels[form.product_type]
+                    ? { ...productLabels, [form.product_type]: form.product_type }
+                    : productLabels).map(([value, label]) => ({ value, label }))}
                 />
               </div>
               <div>
@@ -1806,38 +1835,51 @@ export default function Deals() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
+            {form.product_type && !systemProduct && <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Label>套餐名称 *</Label>
-                {!isMobile && <Button type="button" variant="outline" size="sm" onClick={openPackageManager}>
-                  管理套餐
-                </Button>}
+                <Label htmlFor={scope === 'managed' ? 'deal-managed-package' : undefined}>{scope === 'managed' ? '代运营套餐' : '套餐名称'} *</Label>
+                {!isMobile && <Button type="button" variant="outline" size="sm" onClick={openPackageManager}>管理套餐</Button>}
               </div>
-              <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-3">
-                {dealPackageOptions.length === 0 ? (
-                  <p className="text-sm text-slate-500">暂无可选套餐，请先添加套餐。</p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {dealPackageOptions.map(option => (
-                      <label key={option.value} className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={form.package_keys.includes(option.value)}
-                          onChange={() => togglePackageKey(option.value)}
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
+              {scope === 'managed' ? (
+                <NativeSelect
+                  id="deal-managed-package"
+                  aria-label="代运营套餐"
+                  value={form.package_keys.length > 1 ? 'legacy:' : form.package_keys[0] || ''}
+                  placeholder="请选择代运营套餐"
+                  options={form.package_keys.length > 1
+                    ? [{ value: 'legacy:', label: form.package_name }, ...managedPackageOptions]
+                    : managedPackageOptions}
+                  onChange={key => setForm(prev => ({ ...prev, package_name: '', package_keys: [key], platforms: [], scopeChanged: true }))}
+                />
+              ) : (
+                <div className="deal-scope-options" role="group" aria-label="套餐名称">
+                  {dealPackageOptions.map(option => <label key={option.value}>
+                    <input type="checkbox" checked={form.package_keys.includes(option.value)} onChange={() => togglePackageKey(option.value)} />
+                    {option.label}
+                  </label>)}
+                </div>
+              )}
+            </div>}
+            {scope === 'managed' && form.package_keys.length > 0 && <fieldset className="deal-media-field">
+              <legend>实际运营平台 *</legend>
+              <p>{platformLimit === null ? `已选 ${form.platforms.length} 个` : `已选 ${form.platforms.length} / ${platformLimit} 个`}</p>
+              <div className="deal-scope-options">
+                {Object.entries(platformOptions).map(([key, label]) => {
+                  const checked = form.platforms.includes(key);
+                  return <label key={key}>
+                    <input type="checkbox" checked={checked} disabled={!checked && platformLimit !== null && form.platforms.length >= platformLimit}
+                      onChange={event => {
+                        const selected = event.target.checked;
+                        setForm(prev => ({ ...prev, scopeChanged: true, platforms: selected ? [...prev.platforms, key] : prev.platforms.filter(value => value !== key) }));
+                      }} />
+                    {label}
+                  </label>;
+                })}
               </div>
-              <p className="text-xs text-slate-500">
-                已选套餐：
-                {form.package_keys.length > 0
-                  ? ` ${form.package_keys.map(key => dealPackageLabels[key] || key).join('、')}`
-                  : ' 暂未选择'}
-              </p>
-            </div>
+            </fieldset>}
+            {systemProduct && editingId && !form.scopeChanged && form.package_name && form.package_name !== productLabels[form.product_type] && (
+              <p className="text-sm text-slate-500">原成交套餐：{form.package_name}</p>
+            )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div><Label>成交金额 *</Label><Input type="number" value={form.deal_amount} onChange={e => setForm({ ...form, deal_amount: e.target.value })} placeholder="0.00" /></div>
               <div><Label>成交日期</Label><Input type="date" value={form.deal_date} onChange={e => setForm({ ...form, deal_date: e.target.value })} /></div>
@@ -1846,17 +1888,17 @@ export default function Deals() {
               <div><Label>服务开始日期</Label><Input type="date" value={form.service_start_date} onChange={e => setForm({ ...form, service_start_date: e.target.value })} /></div>
               <div><Label>服务到期日期</Label><Input type="date" value={form.service_end_date} onChange={e => setForm({ ...form, service_end_date: e.target.value })} /></div>
             </div>
-            <div className={`rounded-lg border p-3 ${form.create_service_board ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+            {form.product_type && !systemProduct && <div className={`rounded-lg border p-3 ${form.create_service_board ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <Label className="text-sm font-semibold text-slate-800">生成服务看板</Label>
                   <p className="mt-1 text-xs text-slate-500">
-                    默认关闭，适合补录旧系统成交。只有新客户需要正式交付时再打开，系统会按套餐平台生成前期运营流程。
+                    开启后按这笔成交的交付平台生成前期运营任务。
                   </p>
                 </div>
                 <Switch checked={form.create_service_board} onCheckedChange={v => setForm({ ...form, create_service_board: v })} />
               </div>
-            </div>
+            </div>}
             <div className="flex flex-wrap gap-6">
               <div className="flex items-center gap-2"><Switch checked={form.is_paid} onCheckedChange={v => setForm({ ...form, is_paid: v })} /><Label>已付款 · 保存后同步收款记录</Label></div>
               <div className="flex items-center gap-2"><Switch checked={form.auto_renew} onCheckedChange={v => setForm({ ...form, auto_renew: v })} /><Label>开启续费开关</Label></div>
