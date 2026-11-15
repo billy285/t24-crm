@@ -7,7 +7,7 @@ from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import and_, case, delete, func, or_, select
+from sqlalchemy import and_, case, delete, func, literal, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -20,7 +20,7 @@ from models.deals import Deals
 from models.subscriptions import Subscriptions
 from models.customer_access_grants import CustomerAccessGrant, CustomerAccessAudit
 from models.employees import Employees
-from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog
+from models.management_decisions import BusinessLine, CustomerEngagement, ProductCatalog, ProductPlan
 from services.commissions import auto_assign_new_customer
 from services.management_decision_workflow import save_customer_classification_review
 from services.operation_logs import Operation_logsService, build_server_operation_log_data
@@ -645,6 +645,53 @@ async def query_customerss_all(
 DIRECTORY_BUSINESS_LINES = ("restaurant_os", "beauty_os", "managed_service")
 
 
+def _directory_package_line(package_name, candidate):
+    # Legacy deals/renewals store either the saved display name or the old dictionary key.
+    name = func.replace(func.lower(func.trim(package_name)), " ", "")
+    managed_plan = (
+        r"(^|[、,，;+])([a-e]?(基础|进阶|专业|旗舰|定制)套餐([(（][^()（）]*[)）])?"
+        r"|(basic|advanced|professional|flagship|custom)_package)($|[、,，;+])"
+    )
+    restaurant = name.regexp_match(r"餐饮os|restaurant[ _]?os|t24menu|点餐|ordering[ _]?system")
+    beauty = name.regexp_match(r"美业os|beauty[ _]?os")
+    managed = or_(name.regexp_match(r"代运营|socialmedia|社媒运营"), name.regexp_match(managed_plan))
+    combined = name.regexp_match(r"[、,，;+]")
+    return case(
+        (and_(combined, candidate == "restaurant_os", restaurant), "restaurant_os"),
+        (and_(combined, candidate == "beauty_os", beauty), "beauty_os"),
+        (and_(combined, candidate == "managed_service", managed), "managed_service"),
+        (restaurant, "restaurant_os"), (beauty, "beauty_os"), (managed, "managed_service"),
+    )
+
+
+def _directory_catalog_query(model, *linked_lines):
+    # Some sales/renewals only carry the catalog product or plan reference.
+    return select(
+        model.id.label("record_id"), model.customer_id.label("customer_id"),
+        func.coalesce(BusinessLine.code, *linked_lines).label("explicit_line"), model.package_name,
+    ).select_from(model).outerjoin(ProductPlan, ProductPlan.id == model.product_plan_id).outerjoin(
+        ProductCatalog, ProductCatalog.id == func.coalesce(model.product_id, ProductPlan.product_id),
+    ).outerjoin(
+        BusinessLine, BusinessLine.id == func.coalesce(model.business_line_id, ProductCatalog.business_line_id),
+    )
+
+
+def _directory_lines_for_records(query, candidates):
+    records = query.cte()
+    known = select(records.c.record_id, records.c.customer_id, records.c.explicit_line.label("line")).where(
+        records.c.explicit_line.is_not(None),
+    )
+    legacy = select(records.c.record_id, records.c.customer_id, candidates.c.line).select_from(records).join(
+        candidates, true(),
+    ).where(records.c.explicit_line.is_(None), candidates.c.line == _directory_package_line(records.c.package_name, candidates.c.line))
+    return known.union_all(legacy).cte()
+
+
+def _same_customer_record(records, foreign_id, customer_id):
+    return and_(records.c.record_id == foreign_id, records.c.customer_id == customer_id)
+
+
+
 @router.get("/business-memberships")
 async def customer_business_memberships(
     business: Literal["restaurant_os", "beauty_os", "managed_service", "multiple"],
@@ -661,7 +708,7 @@ async def customer_business_memberships(
     await _require_customer_page(db, current_user)
     config = (await read_config_value(db, "dict_config")).value
     deal_codes = {
-        "restaurant_os": "restaurant_os", "ordering_system": "restaurant_os",
+        "restaurant_os": "restaurant_os",
         "beauty_os": "beauty_os", "social_media": "managed_service", "managed_service": "managed_service",
     }
     # Previous versions allowed admins to add OS options with generated identifiers.
@@ -674,41 +721,53 @@ async def customer_business_memberships(
     for entry in str((config or {}).get("products") or "").split(","):
         key, _, name = entry.partition(":")
         code = aliases.get("".join(name.lower().split()))
-        if code and key.strip():
-            deal_codes.setdefault(key.strip(), code)
+        key = "".join(key.lower().split())
+        if code and key and key != "ordering_system":
+            deal_codes.setdefault(key, code)
 
-    # Structured deal classification takes priority over the older product type.
-    classified_deal = func.coalesce(BusinessLine.code, case(deal_codes, value=Deals.product_type))
-    deals = select(Deals.customer_id.label("customer_id"), classified_deal.label("line")).select_from(Deals).outerjoin(
-        BusinessLine, BusinessLine.id == Deals.business_line_id
-    ).where(Deals.customer_id > after_id, classified_deal.in_(DIRECTORY_BUSINESS_LINES))
-    deals = apply_customer_scope(deals, Deals, current_user, module="deals")
+    # Older forms preselected ordering_system even when a managed package was sold.
+    # That key and its old display name cannot independently establish restaurant OS.
+    deal_codes.update(aliases)
+    deal_codes.update({"website": "other", "ads": "other", "网站设计": "other", "广告投放": "other"})
+    explicit_product = case(deal_codes, value=func.replace(func.lower(func.trim(Deals.product_type)), " ", ""))
+    candidates = select(literal(DIRECTORY_BUSINESS_LINES[0]).label("line")).union_all(
+        *(select(literal(line)) for line in DIRECTORY_BUSINESS_LINES[1:]),
+    ).cte()
 
-    projects = select(CustomerEngagement.customer_id.label("customer_id"), BusinessLine.code.label("line")).select_from(
-        CustomerEngagement
-    ).join(BusinessLine, BusinessLine.id == CustomerEngagement.business_line_id).where(
-        CustomerEngagement.customer_id > after_id, BusinessLine.code.in_(DIRECTORY_BUSINESS_LINES),
+    projects = select(
+        CustomerEngagement.id.label("record_id"), CustomerEngagement.customer_id, BusinessLine.code.label("line"),
+    ).select_from(CustomerEngagement).join(BusinessLine, BusinessLine.id == CustomerEngagement.business_line_id).where(
+        CustomerEngagement.customer_id > after_id,
         or_(CustomerEngagement.status.in_(ACTIVE_PROJECT_STATUSES | {"completed"}),
             and_(CustomerEngagement.status == "stopped", or_(CustomerEngagement.trial_started_at.is_not(None),
                                                                CustomerEngagement.paid_started_at.is_not(None)))),
     )
-    projects = apply_customer_scope(projects, CustomerEngagement, current_user, module="delivery")
+    projects = apply_customer_scope(projects, CustomerEngagement, current_user, module="delivery").cte()
 
-    subscriptions = select(Subscriptions.customer_id.label("customer_id"), BusinessLine.code.label("line")).select_from(
-        Subscriptions
-    ).join(BusinessLine, BusinessLine.id == Subscriptions.business_line_id).where(
-        Subscriptions.customer_id > after_id, BusinessLine.code.in_(DIRECTORY_BUSINESS_LINES),
+    deals = _directory_catalog_query(Deals, projects.c.line, explicit_product).outerjoin(
+        projects, _same_customer_record(projects, Deals.engagement_id, Deals.customer_id),
+    ).where(Deals.customer_id > after_id)
+    deals = _directory_lines_for_records(apply_customer_scope(deals, Deals, current_user, module="deals"), candidates)
+
+    subscriptions = _directory_catalog_query(Subscriptions, projects.c.line, deals.c.line).outerjoin(
+        projects, _same_customer_record(projects, Subscriptions.engagement_id, Subscriptions.customer_id),
+    ).outerjoin(deals, _same_customer_record(deals, Subscriptions.deal_id, Subscriptions.customer_id)).where(
+        Subscriptions.customer_id > after_id,
         or_(Subscriptions.status.in_(CLOSABLE_SUBSCRIPTION_STATUSES | {"renewed", "upgraded"}),
             Subscriptions.last_payment_date <= datetime.now(timezone.utc)),
     )
-    subscriptions = apply_customer_scope(subscriptions, Subscriptions, current_user, module="renewals")
+    subscriptions = _directory_lines_for_records(
+        apply_customer_scope(subscriptions, Subscriptions, current_user, module="renewals"), candidates,
+    )
 
     # Repeated records across modules still represent one business for this customer.
-    evidence = deals.union(projects, subscriptions).subquery()
+    evidence = select(deals.c.customer_id, deals.c.line).union(
+        select(projects.c.customer_id, projects.c.line), select(subscriptions.c.customer_id, subscriptions.c.line),
+    ).subquery()
     flags = {line: func.max(case((evidence.c.line == line, 1), else_=0)) for line in DIRECTORY_BUSINESS_LINES}
     grouped = select(evidence.c.customer_id, *(value.label(line) for line, value in flags.items())).join(
         Customers, Customers.id == evidence.c.customer_id
-    ).group_by(evidence.c.customer_id)
+    ).where(evidence.c.line.in_(DIRECTORY_BUSINESS_LINES)).group_by(evidence.c.customer_id)
     condition = func.count() >= 2 if business == "multiple" else flags[business] == 1
     rows = (await db.execute(grouped.having(condition).order_by(evidence.c.customer_id).limit(limit + 1))).mappings().all()
     visible = rows[:limit]
