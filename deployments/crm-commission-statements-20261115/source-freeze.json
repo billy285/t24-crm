@@ -1,0 +1,32 @@
+{
+  "additive_migration_only": true,
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "fc839f82e9e0e6d704ba7d07d059ef7d0ee0b92b",
+  "baseline_source_sha": "c833347b4212fe7e232bf251ffab07cfcafb6177",
+  "build_receipt_sha256": "637b4bb9160f8bdebb0c183d0e40a58c7ccdb33d9c4ec8409b7476e8616dc446",
+  "changed_source_files": {
+    "app/backend/alembic/versions/k76cd890c136_monthly_commission_statements.py": "dac05c33db0fddeca53d6487ea296428498acdb08811bf122a97668ab6cfb808",
+    "app/backend/main.py": "7a5f7c754df44e2d999785cf80ef2eecc1cafbf538c91b5a992250e02197425c",
+    "app/backend/models/commissions.py": "0afdb213d637295664e53ffc2dd82c5774fa00dd2856f82c6ce8be39c14966a8",
+    "app/backend/routers/commissions.py": "407416d1c3219ae79cd597b331cfc586053b6142eab4534e3d53c599cd617005",
+    "app/backend/services/commission_statement_worker.py": "0cfba0553f56932edb7d7a66a78af594a171e2d953a1235f93c8d531a9c70f1a",
+    "app/backend/services/commission_statements.py": "f5054953da3c3df9a9db720b4cb9fc5959021ecd5a7e89ca1e30b3e1d07e7514",
+    "app/frontend/src/components/CommissionStatementReminder.tsx": "cd1b0a7e7a5dbe246451147f4a4bee86f655262cdf292ac9c60cece655b17c15",
+    "app/frontend/src/components/CommissionStatements.tsx": "b3c325708bcd54e3a7929322ce1b20563e949b27f91f7d3d888369eaa65f45dc",
+    "app/frontend/src/pages/Commissions.tsx": "56988297ad4d306710b47f214fe37d3f56803ab0e5bfba9fa9f8b7a292875e28",
+    "app/frontend/src/pages/Dashboard.tsx": "8112732496636b04f9fea2a0b4e3fbe30af18af141058c43c8de9a2ea68dcf2f",
+    "app/frontend/src/pages/commissions.css": "ccab96708d27c7603a184fa947a7b64701f2b48c44b674d8e7063231c95b2538"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_commission_statement_worker.py": "5286b345c414c81ebf6badbd30063af9ca004bc5ac958604afa602855c15d51a",
+    "app/backend/tests/test_commission_statements.py": "7263254f43fd7bb25ce5955d889ddb2af1938d30d4477fbc2e4eabd9ab50f385",
+    "app/frontend/tests/commission-layout.spec.ts": "f064c8abedb31a02b87b09ed3dc7d553f564857fd297142c455618d031077b8a",
+    "app/frontend/tests/commission-monthly-statements.spec.ts": "0995f016f7c28b28329e3f81d0f47d1736ed442cd098275cc661f6c3d93d7556"
+  },
+  "dist_inventory_sha256": "86807baa1b1dc850aecfdd127282fbe492f040cc5102691913289694b898da23",
+  "fresh_build_passed": true,
+  "frontend_version": "82125934f19c",
+  "source_commit_bytes_verified": true,
+  "source_sha": "25c1aea5c979d33addcc65a75b0a7f8f653e541f",
+  "stage": "CRM_COMMISSION_STATEMENTS_SOURCE_FREEZE"
+}

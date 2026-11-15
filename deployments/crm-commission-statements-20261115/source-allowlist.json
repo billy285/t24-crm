@@ -1,0 +1,13 @@
+[
+  "app/backend/alembic/versions/k76cd890c136_monthly_commission_statements.py",
+  "app/backend/main.py",
+  "app/backend/models/commissions.py",
+  "app/backend/routers/commissions.py",
+  "app/backend/services/commission_statement_worker.py",
+  "app/backend/services/commission_statements.py",
+  "app/frontend/src/components/CommissionStatementReminder.tsx",
+  "app/frontend/src/components/CommissionStatements.tsx",
+  "app/frontend/src/pages/Commissions.tsx",
+  "app/frontend/src/pages/Dashboard.tsx",
+  "app/frontend/src/pages/commissions.css"
+]

@@ -1,0 +1,59 @@
+{
+  "backend_files": {
+    "routers/customers.py": {
+      "bytes": 63363,
+      "sha256": "9d9bb7302922b5f84ec9587b1784ed7cec6b104210d1abf4b717f2274c0adf07"
+    }
+  },
+  "backend_matches_baseline_source": true,
+  "base_image_config_sha256": "35f5207aa8b8d3ef7761ea59ee38df4c5a80d47181651ba9c3ac3f8031c27d43",
+  "base_image_id": "sha256:92776eff8ecd9fffd7031c6e8db58b94b8027e86ffbdea792ee1fb2d285cb7ed",
+  "base_image_repo_digests": [
+    "t24-crm@sha256:92776eff8ecd9fffd7031c6e8db58b94b8027e86ffbdea792ee1fb2d285cb7ed"
+  ],
+  "code_overlay_destinations": [],
+  "database_reads": false,
+  "eligible_for_image_only_backend_patch": true,
+  "environment_values_output": false,
+  "expected_backend_sha256": {
+    "routers/customers.py": "9d9bb7302922b5f84ec9587b1784ed7cec6b104210d1abf4b717f2274c0adf07"
+  },
+  "host_metadata": {
+    "auto_remove": false,
+    "network_mode": "app_default",
+    "read_only_rootfs": false
+  },
+  "lifecycle_operations": false,
+  "migration_host": {
+    "database_pages_bytes": 48848896,
+    "database_rows_read": false,
+    "production_space_sufficient": true,
+    "release_space_sufficient": true,
+    "single_container_write_mount": true,
+    "sqlite_backup_available": true,
+    "sqlite_journal_mode": "wal"
+  },
+  "mount_metadata": [
+    {
+      "destination": "/app/backend/logs",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/run/secrets/t24_crm_stripe_history_readonly",
+      "rw": false,
+      "type": "bind"
+    },
+    {
+      "destination": "/app/backend/data",
+      "rw": true,
+      "type": "bind"
+    }
+  ],
+  "mount_sources_output": false,
+  "provider_requests": false,
+  "read_only": true,
+  "runtime_id": "d52e2a0dad5a94cc2419f230b6b7ae739d0dc9e9b530ad7123b5d8378fe891b2",
+  "runtime_image": "sha256:92776eff8ecd9fffd7031c6e8db58b94b8027e86ffbdea792ee1fb2d285cb7ed",
+  "stage": "CRM_COMMISSION_STATEMENTS_TARGET_PROBE"
+}
