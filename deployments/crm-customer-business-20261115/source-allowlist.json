@@ -1,0 +1,11 @@
+[
+  "app/backend/routers/customers.py",
+  "app/frontend/src/components/SalesDealHandoffDialog.tsx",
+  "app/frontend/src/lib/customer-business-filter.ts",
+  "app/frontend/src/lib/deal-product-scope.ts",
+  "app/frontend/src/lib/dict-config.ts",
+  "app/frontend/src/lib/sales-deal-handoff.ts",
+  "app/frontend/src/pages/Customers.tsx",
+  "app/frontend/src/pages/Deals.tsx",
+  "app/frontend/src/pages/deal-editor-refined.css"
+]

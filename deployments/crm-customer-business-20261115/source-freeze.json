@@ -1,0 +1,28 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "e2926548a67968c990dc1dc2dc587f10cf8d9c8e",
+  "baseline_source_sha": "38c63158b7afeeffa89b87031f45d7c1bb2d77b6",
+  "build_receipt_sha256": "805b9d5c331ee7ad772d7d907fed1c2de273faf21c0daa82a82c4e2a2cbb97a8",
+  "changed_source_files": {
+    "app/backend/routers/customers.py": "be17c32bc82772f5b19e81f02a40b31e91abb031799d97eebec54da423c3a86e",
+    "app/frontend/src/components/SalesDealHandoffDialog.tsx": "3017afffc68e29b3ef24d576edcdf7492acfe9f0f940b54998cb53bc4d4f8f82",
+    "app/frontend/src/lib/customer-business-filter.ts": "5c41455ee41564e10d24744770b6d40b2b525cbbbf8d720541b38fcee9928dd7",
+    "app/frontend/src/lib/deal-product-scope.ts": "b10313c65c5f2eabf6f129eeb06e8b14970ffaaa4809f977985a7cd74a2e48ac",
+    "app/frontend/src/lib/dict-config.ts": "441704261b0671682728f6ef12e8b529bec9a5342542ee64a0e5c25d11da22be",
+    "app/frontend/src/lib/sales-deal-handoff.ts": "76537e52067fd5b05e97742099bbe8932641200e74212a74a8a975e4596f0ad3",
+    "app/frontend/src/pages/Customers.tsx": "21f4fee92f31edff5138668cd41ae6bfb26f25c5d21c422b5f6229450cdbe55f",
+    "app/frontend/src/pages/Deals.tsx": "b224bce8e365fd35e4907fe5fa931714b76e6ee33193e1a3738746c24c274212",
+    "app/frontend/src/pages/deal-editor-refined.css": "097c73c9879c3a48fb518ddf54387661ddc001fd285facdb653f65c0cb71fe90"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_customer_business_memberships.py": "1150f2fd728ccaec0ac10c2da5572eef7de005eb7ec7a7ac42597c5793f4445f",
+    "app/frontend/tests/deal-finalize-retry.spec.ts": "e5e8ecda3a4b8161901aa9418aa79a081010f0a180baff29bd958ed07c6e1b3b"
+  },
+  "dist_inventory_sha256": "07bf24bc09aeb4d45d6ea87bbf82b4f40dcde5c09ca5f5f5943722d770a44d8d",
+  "fresh_build_passed": true,
+  "frontend_version": "b56a627ff519",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "b8744b9b1f5f5472a3b4880e215fe41ae97bbd9c",
+  "stage": "CRM_CUSTOMER_BUSINESS_SOURCE_FREEZE"
+}
