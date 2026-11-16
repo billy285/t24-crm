@@ -36,8 +36,15 @@ async function seed(page:Page,options:{role?:'owner'|'viewer'|'collaborator'|'re
   if(path.endsWith('/emp-auth/me'))return json(route,emp);
   if(path==='/api/v1/sales-lead-dossiers/91')return json(route,data);
   if(path==='/api/v1/sales-lead-dossiers')return json(route,{items:[{id:91,business_name:data.enrichment.business_name,industry:'餐厅',state:'CA',owner_name:'主要销售 A',access:options.role==='collaborator'?'collaborate':'view'}],total:1});
-  if(path==='/api/v1/merchant-pool')return json(route,{items:[{...data.original,business_name:data.enrichment.business_name,pool_status:'converted',converted_lead_id:91}],total:1});
+  if(path==='/api/v1/merchant-pool')return json(route,{items:[{...data.original,business_name:data.enrichment.business_name,pool_status:'converted',converted_lead_id:91,current_lead_id:91}],total:1});
   if(path==='/api/v1/merchant-pool/stats')return json(route,{total:1,pending:0,converted:1,isolated:0,duplicates:0,archived:0});
+  if(path.endsWith('/dashboard/call-report'))return json(route,{
+    period:{days:7,start_date:'2026-10-09',end_date:'2026-10-15'},
+    source:{status:'waiting_provider_data',provider:'ringcentral',label:'尚无官方通话'},
+    summary:{provider_calls:0,connected:0,not_connected:0,connection_rate:0,total_talk_seconds:0,average_talk_seconds:0,
+      crm_records:0,linked_records:0,link_rate:0,interested:0,appointments:0,conversions:0,assigned:0,completed:0,completion_rate:0},
+    employees:[],recent_calls:[],daily:[],result_breakdown:[],
+  });
   if(path.includes('/stats'))return json(route,{total:0,assigned:0,unassigned:0,blacklisted:0,do_not_contact:0});
   if(path.includes('/app-config'))return json(route,{items:{}});
   if(path.endsWith('/assignees'))return json(route,[{id:2,name:'主要销售 A',role:'sales'}]);
@@ -47,7 +54,7 @@ async function seed(page:Page,options:{role?:'owner'|'viewer'|'collaborator'|'re
 }
 async function open(page:Page,mode:'pool'|'shared'='pool'){
  await page.goto(`${baseUrl}/${mode==='pool'?'merchant-pool':'sales-leads?view=shared'}`);
- if(mode==='pool'){await page.getByRole('navigation',{name:'商家工作视图'}).getByRole('button',{name:/已转线索/}).click();await page.getByRole('button',{name:'查看资料：核实后的洛杉矶餐厅',exact:true}).click();}
+ if(mode==='pool'){await page.getByRole('navigation',{name:'商家工作视图'}).getByRole('button',{name:/已转线索/}).click();await page.getByRole('button',{name:'查看跟进：核实后的洛杉矶餐厅',exact:true}).click();}
  else await page.getByRole('button',{name:'打开协作档案：核实后的洛杉矶餐厅',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'核实后的洛杉矶餐厅',exact:true});await expect(dialog).toBeVisible();return dialog;
 }

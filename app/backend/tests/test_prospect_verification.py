@@ -20,6 +20,7 @@ from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_leads import SalesLeads
 from routers.prospect_verification import router
 from routers.operation_logs import router as log_router
+from routers.merchant_pool import router as pool_router
 from schemas.auth import UserResponse
 from services.prospect_verification import ensure_quality_history_retained, quality_for_many, quality_status_expression, source_metadata_from_raw
 
@@ -43,6 +44,7 @@ async def verification_api(tmp_path):
     app = FastAPI()
     app.include_router(router)
     app.include_router(log_router)
+    app.include_router(pool_router)
     engine = create_async_engine('sqlite+aiosqlite:///' + str(tmp_path / 'quality.sqlite'))
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -235,3 +237,32 @@ async def test_quality_history_blocks_single_and_bulk_id_reuse_without_deleting(
 def test_explicit_source_date_rejects_invalid_dates_without_guessing_url():
     source = source_metadata_from_raw({'source_date': '2026-13-99'}, {'data_source': '华人招聘待核验|2026-08-21|60594', 'business_name': '店名待核验'})
     assert source['source_url'] is None and source['source_date'] is None
+
+@pytest.mark.asyncio
+async def test_converted_pool_uses_sales_marks_only_with_current_lead_access(verification_api):
+    client, sessions = verification_api
+    # Historical pool data may predate the copy-on-assignment mechanism.
+    assert (await client.patch(f'{API}/pool/101', headers=auth(10), json=body())).status_code == 200
+    async with sessions.begin() as db:
+        pool = await db.get(MerchantPool, 101)
+        pool.pool_status, pool.converted_lead_id = 'converted', 201
+
+    async def listing(actor, **filters):
+        response = await client.get('/api/v1/merchant-pool', headers=auth(actor),
+                                    params={'pool_status': 'converted', **filters})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    before = await listing(1, quality_status='valid')
+    assert [row['id'] for row in before['items']] == [101]
+    assert (await client.patch(f'{API}/lead/201', headers=auth(11), json=body(status='closed'))).status_code == 200
+    assert (await client.patch(f'{API}/lead/202', headers=auth(12), json=body(status='valid'))).status_code == 200
+    current = await listing(1)
+    assert current['quality_facets']['closed'] == current['quality_facets']['valid'] == 1
+    [marked] = (await listing(1, quality_status='closed'))['items']
+    assert (marked['id'], marked['current_lead_id'], marked['prospect_quality']['status']) == (101, 201, 'closed')
+    previous_manager = await listing(10)
+    assert previous_manager['quality_facets']['valid'] == 0
+    historical = next(row for row in previous_manager['items'] if row['id'] == 103)
+    assert historical['current_lead_id'] is None and historical['prospect_quality']['status'] == 'pending'
+    assert (await listing(10, quality_status='valid'))['total'] == 0

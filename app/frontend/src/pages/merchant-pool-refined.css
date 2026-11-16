@@ -584,3 +584,17 @@
 .mp-quality-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px;color:#64748b}.mp-quality-meta small{font-size:10px}.mp-quality-meta .inline-flex{font-size:10px;line-height:16px;padding:0 5px}
 
 .mp-quality-summary{margin:4px 0 0;font-size:12px;line-height:1.8;color:#64748b;overflow-wrap:anywhere}
+
+@media (max-width: 767px) {
+  .t24-system .merchant-pool-refined-page .mp-merchant-card > .mp-card-phone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .mp-card-phone .mp-inspect-action { min-height: 44px; }
+  .mp-merchant-card .mp-row-actions:empty { display: none; }
+}

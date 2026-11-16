@@ -72,9 +72,9 @@ async function seed(page: Page, options: { conflict?: boolean; readOnly?: boolea
 }
 async function openRecord(page: Page, name = originalName) {
   await page.getByRole('button', { name: `查看资料：${name}`, exact: true }).click();
-  const section = page.getByRole('region', { name: '首拨核验', exact: true });
+  const section = page.getByRole('region', { name: '门店标记', exact: true });
   await expect(section).toContainText('招聘联系点 · 店名及地址待确认');
-  await section.getByRole('button', { name: '核验门店资料', exact: true }).click();
+  await section.getByRole('button', { name: '标记门店', exact: true }).click();
   await expect(section.getByLabel('首拨核验结果', { exact: true })).toBeVisible();
   return section;
 }
@@ -91,14 +91,14 @@ test('池首拨待核验保存为有效，刷新后保留来源、原核验人�
   await section.getByLabel('核验联系人', { exact: true }).fill('合成店长');
   await section.getByLabel('核验中文服务', { exact: true }).selectOption('yes');
   await section.getByLabel('首拨核验依据', { exact: true }).fill('已接通公开电话，店长确认店名、地址与中文服务。');
-  await section.getByRole('button', { name: '保存核验', exact: true }).click();
+  await section.getByRole('button', { name: '保存标记', exact: true }).click();
   await expect(section).toContainText('核验结果已保存');
   const patch = state.writes.filter(x => x.method === 'PATCH'); expect(patch).toHaveLength(1);
   expect(patch[0].body).toMatchObject({ expected_revision: 0, status: 'valid', method: 'call', corrected_fields: { chinese_service: 'yes', business_name: '合成美容店 Synthetic Nails' } });
   await page.reload(); const persisted = await openRecord(page, '合成美容店 Synthetic Nails');
   await expect(persisted.getByLabel('首拨核验结果', { exact: true })).toHaveValue('valid');
   await expect(persisted.getByLabel('核验实际地址', { exact: true })).toHaveValue('123 Synthetic Ave, New York, NY');
-  await expect(persisted).toContainText('来源日期 2024-07-10'); await expect(persisted).toContainText(`最近核验：${manager.name}`);
+  await expect(persisted).toContainText('来源日期 2024-07-10'); await expect(persisted).toContainText(`最近标记：${manager.name}`);
   await persisted.getByText('核验修改历史（1）', { exact: true }).click(); await expect(persisted).toContainText('已接通公开电话，店长确认店名、地址与中文服务。');
   expect(state.writes.every(x => x.path === '/api/v1/prospect-verification/pool/1')).toBeTruthy();
 });
@@ -106,23 +106,23 @@ test('池首拨待核验保存为有效，刷新后保留来源、原核验人�
 test('409保留全部输入，显式读取最新修订后才能再次保存', async ({ page }) => {
   const state = await seed(page, { conflict: true }); await page.goto(`${baseUrl}/merchant-pool`); const section = await openRecord(page);
   await section.getByLabel('首拨核验结果', { exact: true }).selectOption('valid'); await section.getByLabel('核验实际店名', { exact: true }).fill('本次保留店名'); await section.getByLabel('首拨核验依据', { exact: true }).fill('本次输入必须保留，等待核对他人修订。');
-  const beforeReads = state.qualityReads.length; await section.getByRole('button', { name: '保存核验', exact: true }).click();
+  const beforeReads = state.qualityReads.length; await section.getByRole('button', { name: '保存标记', exact: true }).click();
   await expect(section.getByRole('alert')).toContainText('核验已被其他人更新'); await expect(section.getByLabel('核验实际店名', { exact: true })).toHaveValue('本次保留店名'); await expect(section.getByLabel('首拨核验依据', { exact: true })).toHaveValue('本次输入必须保留，等待核对他人修订。');
-  await expect(section.getByRole('button', { name: '保存核验', exact: true })).toBeDisabled(); expect(state.qualityReads.length).toBe(beforeReads); expect(state.writes.filter(x => x.method === 'PATCH')).toHaveLength(1);
+  await expect(section.getByRole('button', { name: '保存标记', exact: true })).toBeDisabled(); expect(state.qualityReads.length).toBe(beforeReads); expect(state.writes.filter(x => x.method === 'PATCH')).toHaveLength(1);
   await section.getByRole('button', { name: '读取最新记录', exact: true }).click(); await expect(section).toContainText('已读取最新记录并保留本次输入');
   await expect(section.getByLabel('首拨核验依据', { exact: true })).toHaveValue('本次输入必须保留，等待核对他人修订。'); await expect(section.getByLabel('首拨核验结果', { exact: true })).toHaveValue('valid');
-  await section.getByRole('button', { name: '保存核验', exact: true }).click(); await expect(section).toContainText('核验结果已保存');
+  await section.getByRole('button', { name: '保存标记', exact: true }).click(); await expect(section).toContainText('核验结果已保存');
   expect(state.writes.filter(x => x.method === 'PATCH').map(x => x.body.expected_revision)).toEqual([0, 1]);
 });
 
 test('服务端只读核验资料可读，字段与保存全部禁用且不发送PATCH', async ({ page }) => {
   const state = await seed(page, { readOnly: true }); await page.goto(`${baseUrl}/merchant-pool`); const section = await openRecord(page);
-  await expect(section).toContainText('该商家已离开待分配池'); await expect(section.getByLabel('首拨核验结果', { exact: true })).toBeDisabled(); await expect(section.getByLabel('首拨核验依据', { exact: true })).toBeDisabled(); await expect(section.getByRole('button', { name: '保存核验', exact: true })).toBeDisabled(); expect(state.writes).toEqual([]);
+  await expect(section).toContainText('该商家已离开待分配池'); await expect(section.getByLabel('首拨核验结果', { exact: true })).toBeDisabled(); await expect(section.getByLabel('首拨核验依据', { exact: true })).toBeDisabled(); await expect(section.getByRole('button', { name: '保存标记', exact: true })).toBeDisabled(); expect(state.writes).toEqual([]);
 });
 
 for (const width of [320, 390, 1093]) test(`${width}px来源身份、日期和核验表单无横向溢出`, async ({ page }) => {
   await seed(page); await page.setViewportSize({ width, height: 900 }); await page.goto(`${baseUrl}/merchant-pool`); await noOverflow(page); const section = await openRecord(page);
-  await expect(section).toContainText('招聘联系点 · 店名及地址待确认'); await expect(section).toContainText('来源日期 2024-07-10'); await expect(section.getByRole('link', { name: '查看原始来源', exact: true })).toHaveAttribute('href', source.source_url); await expect(section).toContainText('招聘广告日期不代表当前营业状态'); await noOverflow(page);
+  await expect(section).toContainText('招聘联系点 · 店名及地址待确认'); await expect(section).toContainText('来源日期 2024-07-10'); await expect(section.getByRole('link', { name: '查看原始来源', exact: true })).toHaveAttribute('href', source.source_url); await expect(section).toContainText('招聘广告日期不代表当前营业状态'); await expect(section).toContainText('未接、意向和回访请记在通话结果中'); await noOverflow(page);
   const bounds = await section.boundingBox(); expect(bounds).not.toBeNull(); expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
   await page.screenshot({ path: test.info().outputPath(`prospect-verification-${width}.png`), fullPage: true, animations: 'disabled' });
 });
@@ -131,9 +131,9 @@ test('quality_status使用服务端facets并清除跨页选择、回第一页、
   const state = await seed(page, { many: true }); await page.goto(`${baseUrl}/merchant-pool?batch_id=synthetic-quality-batch`);
   await page.getByRole('navigation', { name: '行业分类' }).getByRole('button', { name: /^美业/ }).click(); await page.getByRole('button', { name: /^更多筛选/ }).click(); await page.getByRole('combobox', { name: '筛选资料来源', exact: true }).selectOption('csv');
   await page.getByRole('checkbox', { name: '选择 合成核验联系点1', exact: true }).check(); await page.getByRole('button', { name: '下一页', exact: true }).click(); await page.getByRole('checkbox', { name: '选择 合成核验联系点21', exact: true }).check(); await expect(page.getByRole('region', { name: '商家批量操作' })).toContainText('跨页已选 2 家商家');
-  const quality = page.getByRole('combobox', { name: '筛选首拨核验', exact: true }); await expect(quality.locator('option[value="pending"]')).toHaveText('待核验 21'); await expect(quality.locator('option[value="valid"]')).toHaveText('有效门店 1'); await quality.selectOption('valid');
+  const quality = page.getByRole('combobox', { name: '筛选商家标记', exact: true }); await expect(quality.locator('option[value="pending"]')).toHaveText('未标记 21'); await expect(quality.locator('option[value="valid"]')).toHaveText('有效门店 1'); await quality.selectOption('valid');
   await expect(page.getByRole('button', { name: '查看资料：合成核验联系点22', exact: true })).toBeVisible(); await expect(page.getByRole('region', { name: '商家批量操作' })).toHaveCount(0); await expect.poll(() => state.queries.at(-1)?.get('quality_status')).toBe('valid');
-  const query = state.queries.at(-1)!; expect(query.get('skip')).toBe('0'); expect(query.get('industry')).toBe('美业'); expect(query.get('source')).toBe('csv'); expect(query.get('batch_id')).toBe('synthetic-quality-batch'); await expect(page.locator('.mp-quality-summary')).toContainText('待核验 21'); await expect(page.locator('.mp-quality-summary')).toContainText('有效门店 1'); expect(state.writes).toEqual([]);
+  const query = state.queries.at(-1)!; expect(query.get('skip')).toBe('0'); expect(query.get('industry')).toBe('美业'); expect(query.get('source')).toBe('csv'); expect(query.get('batch_id')).toBe('synthetic-quality-batch'); await expect(page.getByRole('navigation', {name:'商家标记队列'}).getByRole('button',{name:/未标记/}).locator('strong')).toHaveText('21'); await expect(page.getByRole('navigation', {name:'商家标记队列'}).getByRole('button',{name:/有效门店/}).locator('strong')).toHaveText('1'); expect(state.writes).toEqual([]);
 });
 
 test('导入默认行业随preview发送，扩展来源可审阅且确认前不提交入池', async ({ page }) => {
@@ -147,7 +147,7 @@ test('导入默认行业随preview发送，扩展来源可审阅且确认前不�
 
 test('320px均衡派单预览不改变商家，明确确认后才提交计划并清除选择', async ({ page }) => {
   const state = await seed(page); await page.setViewportSize({ width: 320, height: 900 }); await page.goto(`${baseUrl}/merchant-pool`);
-  await page.getByRole('button', { name: `分配：${originalName}`, exact: true }).click();
+  await page.getByRole('button', { name: `分配给销售：${originalName}`, exact: true }).click();
   await page.getByRole('region', { name: '商家批量操作' }).getByRole('button', { name: '均衡派单', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '按剩余容量均衡派单', exact: true });
   await expect(dialog).toBeVisible(); await expect(dialog.getByRole('button', { name: /^确认分配0条/ })).toBeDisabled();

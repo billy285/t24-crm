@@ -287,6 +287,10 @@ async def isolate_phone_sales_access(request: Request, call_next):
     if path.startswith("/api/") and role in PHONE_SALES_ROLES:
         is_allowed = any(path.startswith(prefix) for prefix in PHONE_SALES_ALLOWED_API_PREFIXES)
         is_allowed = is_allowed or (role == "sales_manager" and (path == "/api/v1/merchant-imports" or path.startswith("/api/v1/merchant-imports/")))
+        if request.method in {"GET", "PATCH"} and path.startswith("/api/v1/prospect-verification/"):
+            entity, separator, entity_id = path.removeprefix("/api/v1/prospect-verification/").partition("/")
+            if separator and entity_id.isascii() and entity_id.isdecimal():
+                is_allowed = entity == "lead" or (entity == "pool" and role == "sales_manager")
         is_invited_customer_read = request.method == "GET" and any(
             path.startswith(prefix) for prefix in PHONE_SALES_READONLY_CUSTOMER_API_PREFIXES
         )

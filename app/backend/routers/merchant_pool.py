@@ -220,6 +220,7 @@ class MerchantResponse(BaseModel):
     duplicate_of_id: Optional[int] = None
     existing_customer_id: Optional[int] = None
     converted_lead_id: Optional[int] = None
+    current_lead_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     prospect_source: dict = Field(default_factory=dict)
@@ -701,7 +702,12 @@ async def list_merchant_pool(
                    .join(resolved_scope, timezone_join).group_by(current["industry"]))
     if conditions:
         facet_query = facet_query.where(*conditions)
-    quality_expression = quality_status_expression("pool", MerchantPool.id, db.get_bind().dialect.name)
+    dialect = db.get_bind().dialect.name
+    pool_quality = quality_status_expression("pool", MerchantPool.id, dialect)
+    # A visible lead owns subsequent sales marks. Older conversions can still
+    # have only their original pool mark. The scoped join also protects facets.
+    lead_quality = quality_status_expression("lead", SalesLeads.id, dialect, default=None)
+    quality_expression = func.coalesce(lead_quality, pool_quality)
     if quality_status:
         facet_query = facet_query.where(quality_expression == quality_status)
     facets = merchant_industry_facets((await db.execute(facet_query)).all())
@@ -729,15 +735,18 @@ async def list_merchant_pool(
     total = (await db.execute(count_query)).scalar() or 0
     rows = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).all()
     quality_by_id = await quality_for_many(db, "pool", [row[0].id for row in rows])
+    visible_lead_quality = await quality_for_many(db, "lead", [lead.id for _, lead, *_ in rows if lead is not None])
     items = []
     for original, lead, *zone_values in rows:
         item = MerchantResponse.model_validate(original).model_dump()
         if lead is not None:
             item.update({field: getattr(lead, field) for field in current_fields})
             item["updated_at"] = lead.updated_at
+            item["current_lead_id"] = lead.id
         item.update(dict(zip(timezone_fields, zone_values)))
         item["prospect_source"] = source_metadata_from_raw(original.raw_payload, record=original)
-        item["prospect_quality"] = quality_by_id[original.id]
+        quality = visible_lead_quality.get(lead.id) if lead is not None else None
+        item["prospect_quality"] = quality if quality and quality["revision"] else quality_by_id[original.id]
         items.append(item)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
             "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets),

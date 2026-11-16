@@ -194,6 +194,50 @@ export default function SalesWorkbench() {
   return <SalesWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}`} />;
 }
 
+function StartAssignedContact({ leadId, employeeId, date, onReady }: {
+  leadId: number; employeeId: number; date: string; onReady: () => Promise<void>;
+}) {
+  const [merchant, setMerchant] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+  const mounted = useRef(false);
+  const pending = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    let current = true;
+    void invokeWithAuth({ url: `/api/v1/sales-leads/${leadId}`, method: 'GET' }).then(({ data }) => {
+      if (!current) return;
+      if (data?.id === leadId && data.assigned_sales_id === employeeId && !data.converted_customer_id &&
+          !data.do_not_contact && !data.is_blacklisted && !['won', 'lost', 'blocked', 'converted'].includes(data.status)) {
+        setMerchant(data.business_name);
+      }
+    }).catch(() => {
+      if (current) setError('未能确认商家归属，请返回联系进展核对。');
+    });
+    return () => { current = false; mounted.current = false; };
+  }, [leadId, employeeId]);
+  async function start() {
+    if (!merchant || pending.current) return;
+    pending.current = true;
+    setStarting(true);
+    setError('');
+    try {
+      const { data } = await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/manual-task/${leadId}?target_date=${date}`, method: 'POST' });
+      if (!mounted.current) return;
+      if (data?.lead_id !== leadId || data.sales_employee_id !== employeeId || data.task_date !== date || !data.task_id) {
+        throw new Error('返回的联系任务与当前商家不符，请刷新核对。');
+      }
+      await onReady();
+    } catch (cause) {
+      if (mounted.current) setError(enrichmentError(cause));
+    } finally {
+      pending.current = false;
+      if (mounted.current) setStarting(false);
+    }
+  }
+  return <>{merchant && <Button disabled={starting} onClick={() => void start()}>{starting ? '正在准备…' : `开始联系 · ${merchant}`}</Button>}{error && <p role="alert">{error}</p>}</>;
+}
+
 function SalesWorkspace() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -811,7 +855,7 @@ function SalesWorkspace() {
       </aside>
       <div className="sc-call-center sw-current">
         {focusedTask && canShowFocusedTask && !matchingQueue.some(task => task.task_id === focusedTask.task_id) && <p className="sw-filter-context" role="status">当前商家保留在工作区；筛选仅影响客户队列，可继续记录本次沟通。</p>}
-        {requestedLead !== null && !canShowFocusedTask ? <div className="sc-empty" role="status" aria-label="指定商家定位结果"><h3>{requestedSelection.kind === 'invalid' ? '商家编号无效' : requestedSelection.kind === 'filtered' ? '指定商家被当前筛选隐藏' : requestedSelection.kind === 'ready' ? '正在定位指定商家…' : loading ? '正在核对指定商家…' : '指定商家未在当前任务中'}</h3><p>{requestedSelection.kind === 'filtered' ? '清除队列状态、资料状态与搜索条件后，可准确定位这位商家。' : requestedSelection.kind === 'invalid' ? '请返回联系进展，从商家的首次拨打入口重新进入。' : '当前日期与销售的任务中尚未找到该商家，可能尚未安排或不在当前访问范围；不会自动切换到其他商家。'}</p><div className="flex flex-wrap justify-center gap-2">{requestedSelection.kind === 'filtered' && <Button variant="outline" disabled={saving} onClick={clearQueueFilters}>清除筛选并定位</Button>}{requestedSelection.kind !== 'invalid' && <Button variant="outline" disabled={saving || loading} onClick={() => void loadWorkbench()}>刷新当前队列</Button>}<Button variant="outline" disabled={saving} onClick={() => navigate(safeReturn || '/sales-leads')}>返回联系进展核对</Button><Button variant="ghost" disabled={saving} onClick={() => { setRequestedLead(null); clearQueueFilters(); }}>查看当前任务</Button></div></div> : loading && !workbench ? <div className="sc-empty">正在准备今天的任务…</div> : canManage && !selectedSalesId ? <section className="sc-empty sw-select-sales" aria-label="选择销售查看客户任务"><h3>{assigneesLoaded && assignees.length === 0 ? '暂无可用销售人员' : '先选择一位销售'}</h3><p>{assigneesLoaded && assignees.length === 0 ? '请先新增或启用销售员工，再安排客户任务。' : '客户任务按销售人员分别显示。选定销售后，可查看或安排该销售的拨打任务。'}</p>{assignees.length > 0 && <NativeSelect aria-label="选择销售查看客户任务" value="" disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} onChange={value => { if (value) openSalesTasks(Number(value)); }} options={[{value:'',label:'选择销售人员'},...assignees.map(item => ({value:String(item.id),label:item.name}))]} />}<Button variant="ghost" onClick={() => setTeamView(true)}>返回团队任务</Button></section> : !focusedTask ? <div className="sc-empty"><CheckCircle2 size={28} /><h3>{loadError ? '今日任务暂不可用' : filter !== 'all' ? '当前筛选暂无任务' : '当前队列暂无任务'}</h3>{!loadError && (filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>查看全部任务</Button> : prepareButton)}</div> : <>
+        {requestedLead !== null && !canShowFocusedTask ? <div className="sc-empty" role="status" aria-label="指定商家定位结果"><h3>{requestedSelection.kind === 'invalid' ? '商家编号无效' : requestedSelection.kind === 'filtered' ? '指定商家被当前筛选隐藏' : requestedSelection.kind === 'ready' ? '正在定位指定商家…' : loading ? '正在核对指定商家…' : '指定商家未在当前任务中'}</h3><p>{requestedSelection.kind === 'filtered' ? '清除队列状态、资料状态与搜索条件后，可准确定位这位商家。' : requestedSelection.kind === 'invalid' ? '请返回联系进展，从商家的首次拨打入口重新进入。' : '当前日期与销售的任务中尚未找到该商家，可能尚未安排或不在当前访问范围；不会自动切换到其他商家。'}</p><div className="flex flex-wrap justify-center gap-2">{requestedSelection.kind === 'missing' && typeof requestedLead === 'number' && role === 'sales' && employee?.id && date === today() && !loadError && !loading && <StartAssignedContact key={`${employee.id}:${requestedLead}:${date}`} leadId={requestedLead} employeeId={employee.id} date={date} onReady={async () => { clearQueueFilters(); await loadWorkbench(); }} />}{requestedSelection.kind === 'filtered' && <Button variant="outline" disabled={saving} onClick={clearQueueFilters}>清除筛选并定位</Button>}{requestedSelection.kind !== 'invalid' && <Button variant="outline" disabled={saving || loading} onClick={() => void loadWorkbench()}>刷新当前队列</Button>}<Button variant="outline" disabled={saving} onClick={() => navigate(safeReturn || '/sales-leads')}>返回联系进展核对</Button><Button variant="ghost" disabled={saving} onClick={() => { setRequestedLead(null); clearQueueFilters(); }}>查看当前任务</Button></div></div> : loading && !workbench ? <div className="sc-empty">正在准备今天的任务…</div> : canManage && !selectedSalesId ? <section className="sc-empty sw-select-sales" aria-label="选择销售查看客户任务"><h3>{assigneesLoaded && assignees.length === 0 ? '暂无可用销售人员' : '先选择一位销售'}</h3><p>{assigneesLoaded && assignees.length === 0 ? '请先新增或启用销售员工，再安排客户任务。' : '客户任务按销售人员分别显示。选定销售后，可查看或安排该销售的拨打任务。'}</p>{assignees.length > 0 && <NativeSelect aria-label="选择销售查看客户任务" value="" disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} onChange={value => { if (value) openSalesTasks(Number(value)); }} options={[{value:'',label:'选择销售人员'},...assignees.map(item => ({value:String(item.id),label:item.name}))]} />}<Button variant="ghost" onClick={() => setTeamView(true)}>返回团队任务</Button></section> : !focusedTask ? <div className="sc-empty"><CheckCircle2 size={28} /><h3>{loadError ? '今日任务暂不可用' : filter !== 'all' ? '当前筛选暂无任务' : '当前队列暂无任务'}</h3>{!loadError && (filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>查看全部任务</Button> : prepareButton)}</div> : <>
           <section className="sc-customer" aria-label="当前客户与拨号">
             <div className="sw-customer-heading"><div><div className="sw-customer-context">{!isMobile && <span>当前客户</span>}<Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge></div><h2>{focusedTask.lead.business_name}</h2><p>{[focusedTask.lead.industry, focusedTask.lead.city || focusedTask.lead.state, focusedTask.lead.contact_name].filter(Boolean).join(' · ') || '资料待补充'}</p>{focusedTask.lead.next_follow_up_at && <p className="sw-followup-plan">回访 · <time>{formatDate(focusedTask.lead.next_follow_up_at)}</time></p>}</div><div className="sw-customer-navigation">{!isMobile && <Button type="button" variant="outline" size="sm" className="sw-enrichment-trigger" disabled={saving || !enrichment.key} onClick={() => enrichment.setOpen(true)}><PencilLine size={14} />完善资料</Button>}<div className="sw-customer-paging"><Button variant="ghost" size="icon" aria-label="上一位客户" disabled={saving || currentPosition <= 1} onClick={() => moveCustomer(-1)}><ChevronRight className="rotate-180" size={17} /></Button><Button variant="ghost" size="icon" aria-label="下一位客户" disabled={saving || currentPosition >= filteredTasks.length} onClick={() => moveCustomer(1)}><ChevronRight size={17} /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多客户操作"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{isMobile && <DropdownMenuItem disabled={saving || !enrichment.key} onSelect={() => enrichment.setOpen(true)}>完善资料</DropdownMenuItem>}<DropdownMenuItem onSelect={() => void openHistory(focusedTask)}>历史联系</DropdownMenuItem><DropdownMenuItem onSelect={() => setDossierId(focusedTask.lead.id)}>累计档案</DropdownMenuItem><DropdownMenuItem onSelect={() => void openAnalysis(focusedTask)}>AI 分析卡</DropdownMenuItem>{focusedTask.task_status === 'completed' && !focusedTask.lead.do_not_contact && !focusedTask.lead.is_blacklisted && !focusedTask.lead.converted_customer_id && <DropdownMenuItem onSelect={() => openSupplementalFollowUp(focusedTask)}>追加跟进</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></div></div>
             <div className="sw-focus-contact-safety">{focusedTask.lead.contact_protection?.can_contact === false && <div className="sw-enrichment-notice" role="status">{focusedTask.lead.contact_protection.reason}<Button size="sm" variant="ghost" onClick={() => setDossierId(focusedTask.lead.id)}>查看档案与交接</Button></div>}<SalesLocalTime {...contactWindow} />{qualityBlocksDial && <p className="sw-enrichment-notice" role="status">此商家核验为号码无效、非目标或已停业，请先重新核实资料。</p>}</div>

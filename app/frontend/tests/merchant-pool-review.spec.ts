@@ -94,8 +94,8 @@ test('未分配为默认工作视图且省略重复状态，切换视图查询�
   await expect(views.getByRole('button', { name: /^未分配\s*2$/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('columnheader', { name: '当前状态', exact: true })).toHaveCount(0);
   await expect(page.locator('.mp-pool-status')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true })).toHaveText('选择');
+  await expect(page.getByRole('button', { name: '分配给销售：Golden Dragon Restaurant', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '分配给销售：Golden Dragon Restaurant', exact: true })).toHaveText('分配');
   await expect(page.getByRole('button', { name: '查看资料：Golden Dragon Restaurant', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '查看资料：已转入销售的商家', exact: true })).toHaveCount(0);
   expect(listQueries.length).toBeGreaterThan(0);
@@ -119,7 +119,14 @@ for (const width of [1440, 390]) {
     const { writes } = await seedPool(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${baseUrl}/merchant-pool`);
-    await page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true }).click();
+    if (width < 768) {
+      const card = page.getByTestId('merchant-mobile-card').filter({ hasText: 'Golden Dragon Restaurant' });
+      await expect(card.locator('.mp-card-phone')).toContainText('+1 (626) 555 0123');
+      await expect(card.locator('.mp-card-phone').getByRole('button', { name: '分配给销售：Golden Dragon Restaurant' })).toBeVisible();
+      await expect(card.locator('.mp-quality-meta')).toHaveCount(0);
+      await expect(card.locator('a[href^="tel:"], a[href*="ringcentral"]')).toHaveCount(0);
+    }
+    await page.getByRole('button', { name: '分配给销售：Golden Dragon Restaurant', exact: true }).click();
     await expect(page.getByRole('checkbox', { name: '已核对名称、电话和地区', exact: true })).toHaveCount(0);
     await expect(page.getByRole('complementary', { name: '商家资料', exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -147,24 +154,28 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^未分配\s*1$/ })).toBeVisible();
     await expect(page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^已转线索\s*2$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '查看资料：Golden Dragon Restaurant', exact: true })).toHaveCount(0);
+    const receipt = page.getByRole('button', { name: '查看该商家的拨打任务' });
+    await expect(receipt).toBeVisible();
+    await receipt.click();
+    await expect(page).toHaveURL(/sales-workbench\?sales_employee_id=11&lead_id=1021/);
     expect(writes).toEqual([{ method: 'POST', path: '/api/v1/merchant-pool/bulk-convert-to-lead', body: { merchant_ids: [pendingMerchant.id], assigned_sales_id: salesperson.id } }]);
   });
 }
 
-test('已转线索详情只读，不能重新保存或分配', async ({ page }) => {
+test('只有历史线索ID时保留只读原资料，不进入当前销售档案', async ({ page }) => {
   const { writes } = await seedPool(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/merchant-pool`);
   await page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^已转线索\s*1$/ }).click();
   await expect(page.getByRole('columnheader', { name: '当前状态', exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: '选择 已转入销售的商家', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '分配：已转入销售的商家', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: '商家详情：已转入销售的商家', exact: true }).click();
+  await expect(page.getByRole('button', { name: '分配给销售：已转入销售的商家', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '详情：已转入销售的商家', exact: true }).click();
   const detail = page.getByRole('complementary', { name: '商家资料' });
   await expect(detail).toBeVisible();
   await expect(detail.getByRole('checkbox')).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: /加入待分配|编辑|补充资料|保存/ })).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: '累计档案', exact: true })).toBeVisible();
+  await expect(detail.getByRole('button', { name: /分配给销售|编辑|补充资料|保存/ })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: '累计档案', exact: true })).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 
@@ -197,7 +208,7 @@ test('桌面视图与搜索各占一行，独立地区和行分隔清楚，电�
         await expect(row.locator('.mp-region-code')).toHaveText('CA');
       }
     }
-    await page.getByRole('button', { name: '分配：Golden Dragon Restaurant', exact: true }).click();
+    await page.getByRole('button', { name: '分配给销售：Golden Dragon Restaurant', exact: true }).click();
     const batch = page.getByRole('region', { name: '商家批量操作' });
     await expect(batch).toBeVisible();
     await expect(batch.getByLabel(/^选择销售负责人/)).toBeVisible();
@@ -232,7 +243,7 @@ test('390px 资料按需查看，完整地址来源保留且加入待分配无�
   await expect(detail.getByText(originalAddress, { exact: true })).toBeVisible();
   await expect(detail.getByText(originalSource, { exact: true })).toBeVisible();
   await expect(detail.getByRole('checkbox')).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: '加入待分配', exact: true })).toBeEnabled();
+  await expect(detail.getByRole('button', { name: '分配给销售', exact: true })).toBeEnabled();
   await noOverflow(page);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-review-mobile.png`, fullPage: true, animations: 'disabled' });
   await page.keyboard.press('Escape');
@@ -246,7 +257,7 @@ test('普通销售没有商家池权限，不显示资料或分配操作', async
   await page.goto(`${baseUrl}/merchant-pool`);
   await expect(page.getByRole('heading', { name: '无权限访问', exact: true })).toBeVisible();
   await expect(page.getByRole('checkbox', { name: '已核对名称、电话和地区', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /查看资料：|分配：|加入待分配|确认分配/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /查看资料：|分配给销售：|加入待分配|确认分配/ })).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 
@@ -261,7 +272,7 @@ test('管理员可查看归档和保留删除菜单，隔离商家补资料打�
   let detail = page.getByRole('complementary', { name: '商家资料' });
   await expect(detail.getByText('已归档历史商家', { exact: true })).toBeVisible();
   await expect(detail.getByRole('checkbox')).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: /补充资料|加入待分配|保存/ })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: /补充资料|分配给销售|保存/ })).toHaveCount(0);
   await expect(page.getByRole('checkbox', { name: '选择 已归档历史商家', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: '更多商家操作：已归档历史商家', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: '永久删除', exact: true })).toBeVisible();
@@ -273,7 +284,7 @@ test('管理员可查看归档和保留删除菜单，隔离商家补资料打�
   detail = page.getByRole('complementary', { name: '商家资料' });
   await expect(detail.getByText('未提供可用电话，暂不进入线索库', { exact: true })).toBeVisible();
   await expect(detail.getByRole('checkbox')).toHaveCount(0);
-  await expect(detail.getByRole('button', { name: '加入待分配', exact: true })).toHaveCount(0);
+  await expect(detail.getByRole('button', { name: '分配给销售', exact: true })).toHaveCount(0);
   await detail.getByRole('button', { name: '补充资料', exact: true }).click();
   const editor = page.getByRole('dialog');
   await expect(editor.getByRole('heading', { name: '补充商家资料并重新清洗', exact: true })).toBeVisible();
@@ -398,7 +409,7 @@ test('长列表仅在内容区滚动，分页后不出现外层空白页', async
   // Mobile keeps room for its fixed navigation and safe-area padding.
   await assertScrollBoundary(224);
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/merchant-scroll-mobile.png`, fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: '分配：长列表核对商家20', exact: true }).click();
+  await page.getByRole('button', { name: '分配给销售：长列表核对商家20', exact: true }).click();
   const batch = page.getByRole('region', { name: '商家批量操作' });
   await expect(batch).toHaveCSS('position', 'sticky');
   await expect(batch.getByLabel(/^选择销售负责人/)).toBeInViewport();

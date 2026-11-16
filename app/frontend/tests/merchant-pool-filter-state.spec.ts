@@ -34,6 +34,7 @@ for (const width of [855, 390]) test(`筛选失败清除旧列表并在当前时
     return json(route, { items: [], total: 0 });
   });
   await page.goto(`${baseUrl}/merchant-pool`);
+  if (width < 768) await page.locator('summary').filter({ hasText: '行业与拨打时区' }).click();
   const zones = page.getByRole('navigation', { name: '拨打时区' });
   await zones.getByRole('button', { name: '中部', exact: true }).click();
   await expect(page.getByRole('button', { name: '查看资料：合成中部门店', exact: true })).toBeVisible();

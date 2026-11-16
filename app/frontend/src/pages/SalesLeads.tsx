@@ -653,7 +653,7 @@ function SalesLeadWorkspace() {
     const protectedLead = isLeadContactStopped(lead);
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => openDealControl(lead)}>查看成交</Button>;
-    if (lead.status === 'new') return <Button className="sl-order-followup" size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首拨核验</Button>;
+    if (lead.status === 'new') return <Button className="sl-order-followup" size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首次联系</Button>;
     return <Button className="sl-order-followup" size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>跟进</Button>;
   };
 

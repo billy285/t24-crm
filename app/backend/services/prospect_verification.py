@@ -130,7 +130,7 @@ async def inherit_pool_quality(db, merchant, lead, actor):
     await db.flush()
 
 
-def quality_status_expression(entity_kind, id_column, dialect_name):
+def quality_status_expression(entity_kind, id_column, dialect_name, *, default="pending"):
     """Correlated latest server audit, never client-supplied raw quality JSON."""
     action = f'{QUALITY_ACTION_PREFIX}{entity_kind}:' + cast(id_column, String)
     # Aggregate the quality ledger once. The unindexed legacy log table must
@@ -140,7 +140,7 @@ def quality_status_expression(entity_kind, id_column, dialect_name):
     latest = select(Operation_logs.action_detail).join(latest_ids, latest_ids.c.latest_id == Operation_logs.id).where(
         latest_ids.c.action_type == action).correlate(id_column.table).scalar_subquery()
     status = cast(latest, JSON)['after']['status'].as_string() if dialect_name == 'postgresql' else func.json_extract(latest, '$.after.status')
-    return func.coalesce(status, 'pending')
+    return func.coalesce(status, default) if default is not None else status
 
 
 async def authorize_prospect(db, kind, entity_id, user):

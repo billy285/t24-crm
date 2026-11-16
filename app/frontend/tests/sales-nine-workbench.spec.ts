@@ -12,7 +12,7 @@ const records = (salesId = 27): Task[] => [0, 1].map(index => ({
   lead: { id: (salesId === 27 ? 501 : 601) + index, business_name: `${salesId === 27 ? '甲' : '乙'}商家${index + 1}`, phone: '+1 202 555 0123', country: 'US', status: 'new', do_not_contact: false, is_blacklisted: false },
 }));
 
-async function fixture(page: Page, options: { user?: Employee; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
+async function fixture(page: Page, options: { user?: Employee; manualLead?: boolean; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
   let user = options.user || employee;
   const data = new Map([[27, options.empty ? [] : records()], [28, records(28)]]);
   if (options.protected) {
@@ -37,6 +37,15 @@ async function fixture(page: Page, options: { user?: Employee; empty?: boolean; 
       writes.push({ path, body: request.postDataJSON() });
       if (path.endsWith('/emp-auth/login')) return route.fulfill({ json: { token: 'sales-nine-local-token', employee: user } });
       if (path.endsWith('/emp-auth/logout') || path.endsWith('/emp-auth/set_refresh')) return route.fulfill({ json: {} });
+      if (options.manualLead && path.endsWith('/workbench/manual-task/503')) {
+        const tasks = data.get(27)!;
+        const task = { ...records()[0], task_id: 903, lead: { ...records()[0].lead, id: 503, business_name: '名下待联系商家' } };
+        if (!tasks.some(item => item.task_id === task.task_id)) tasks.push(task);
+        return route.fulfill({ json: { lead_id: 503, task_id: 903, sales_employee_id: 27, task_date: url.searchParams.get('target_date') } });
+      }
+      if (options.manualLead && path.endsWith('/workbench/tasks/903/dial-started')) {
+        return route.fulfill({ json: { lead_id: 503, phone: '+12025550123', dial_attempt_id: 44 } });
+      }
       const result = path.match(/\/workbench\/tasks\/(\d+)\/result$/);
       const task = result && data.get(lastSalesId)?.find(item => item.task_id === Number(result[1]));
       if (!task || task.task_status !== 'pending' || task.lead.do_not_contact || task.lead.converted_customer_id) return route.fulfill({ status: 409, json: { detail: '本地测试拒绝额外写入' } });
@@ -53,6 +62,7 @@ async function fixture(page: Page, options: { user?: Employee; empty?: boolean; 
     reads.push(path + url.search);
     let response: unknown = { items: [], total: 0 };
     if (path.endsWith('/emp-auth/me')) response = user;
+    else if (options.manualLead && path.endsWith('/sales-leads/503')) response = { ...records()[0].lead, id: 503, business_name: '名下待联系商家', assigned_sales_id: 27 };
     else if (path.endsWith('/sales-leads/assignees')) response = [{ id: 27, name: '模拟销售甲' }, { id: 28, name: '模拟销售乙' }];
     else if (path.endsWith('/sales-leads/workbench/today')) {
       if (failRead) return route.fulfill({ status: 503, json: { detail: '模拟任务读取失败' } });
@@ -372,3 +382,32 @@ test('主管仍默认只读团队，明确打开个人任务后使用实际销�
   await notes(page).fill('仅主管1和销售28的客户范围');
   expect(data.writes).toEqual([]);
 });
+
+for (const width of [390, 1440]) {
+  test(`本人配额外商家可开始联系、返回后只选未接即保存（${width}）`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const data = await fixture(page, { manualLead: true });
+    const dialUrl = 'https://app.ringcentral.com/r/call?number=12025550123';
+    await page.route('https://app.ringcentral.com/**', route => route.fulfill({ contentType: 'text/html', body: '<p>本地拦截拨号器</p>' }));
+    await page.goto(`${base}/sales-workbench?lead_id=503&sales_employee_id=27`);
+    const start = page.getByRole('button', { name: '开始联系 · 名下待联系商家', exact: true });
+    await expect(start).toBeVisible();
+    expect(data.writes).toEqual([]);
+    await start.click();
+    await expect(page.getByRole('heading', { name: '名下待联系商家', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '拨打电话', exact: true }).click();
+    await expect(page).toHaveURL(dialUrl);
+    await page.goBack();
+    const surface = page.getByTestId(width < 768 ? 'sales-workbench-mobile' : 'sales-workbench-desktop');
+    await expect(surface.getByRole('heading', { name: '名下待联系商家', exact: true })).toBeVisible();
+    expect(data.writes.map(item => item.path)).toEqual([
+      '/api/v1/sales-leads/workbench/manual-task/503', '/api/v1/sales-leads/workbench/tasks/903/dial-started',
+    ]);
+    await surface.getByRole('button', { name: '未接通', exact: true }).click();
+    await surface.getByRole('button', { name: '保存并下一位', exact: true }).click();
+    await expect(surface.getByLabel('上次保存结果')).toContainText('名下待联系商家');
+    expect(data.writes.at(-1)?.path).toBe('/api/v1/sales-leads/workbench/tasks/903/result');
+    expect(data.writes.at(-1)?.body.outcome).toBe('no_answer');
+    expect(data.writes).toHaveLength(3);
+  });
+}

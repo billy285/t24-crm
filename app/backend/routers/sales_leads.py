@@ -54,6 +54,7 @@ from services.sales_enrichment import (apply_enrichment, get_enrichment, enrichm
 from services.sales_lead_cycle import (
     automation_overview as sales_automation_overview,
     ensure_daily_batch,
+    queue_category,
     run_sales_lead_cycle,
 )
 
@@ -881,6 +882,50 @@ async def prepare_daily_call_workbench(
     quota = await _daily_quota(db, salesperson.id, target_date)
     result = await ensure_daily_batch(db, salesperson.id, target_date, quota)
     return {"message": f"今日任务已准备，新增 {result['created']} 条", **result}
+
+
+@router.post("/workbench/manual-task/{lead_id}")
+async def start_assigned_lead_task(
+    lead_id: int,
+    target_date: date,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Open one owned lead for contact without assigning more leads or recording a call."""
+    if _role(current_user) != "sales":
+        raise HTTPException(403, "仅销售本人可开始联系名下商家")
+    employee_id = _employee_id(current_user)
+    await lock_sales_workflow(db, lead_ids=[lead_id], employee_ids=[employee_id])
+    from services.sales_dossiers import active_actor
+    await active_actor(db, current_user)
+    today = datetime.now(BUSINESS_TIMEZONE).date()
+    if target_date != today:
+        raise HTTPException(409, "日期已变更，请切换至今天再开始联系")
+    lead = await _get_scoped_lead(db, lead_id, current_user)
+    await ensure_lead_contact_allowed(db, lead)
+    ensure_enrichment_editable(lead)
+    if lead.status in {"lost", "won", "blocked"}:
+        raise HTTPException(409, "该商家已结束电话跟进")
+    if (await quality_for(db, "lead", lead.id))["status"] in {"invalid_phone", "not_target", "closed"}:
+        raise HTTPException(409, "该商家已标记为号码无效、非目标或停业")
+
+    existing = (await db.scalars(select(SalesDailyDialTasks).where(
+        SalesDailyDialTasks.lead_id == lead.id, SalesDailyDialTasks.task_date == today,
+    ))).all()
+    task = next((item for item in existing if item.sales_employee_id == employee_id), None)
+    if task is not None and task.status == "cancelled":
+        raise HTTPException(409, "今天的联系任务已取消，请核对交接或商家标记")
+    if task is None:
+        if any(item.status in {"pending", "completed"} for item in existing):
+            raise HTTPException(409, "这家商家今天已有其他销售的联系任务，请核对交接")
+        task = SalesDailyDialTasks(sales_employee_id=employee_id, lead_id=lead.id,
+                                   task_date=today, status="pending", queue_category=queue_category(lead))
+        db.add(task)
+        await db.flush()
+    receipt = {"task_id": task.id, "lead_id": lead.id, "sales_employee_id": employee_id,
+               "task_date": today, "task_status": task.status}
+    await db.commit()
+    return receipt
 
 
 @router.get("/workbench/today")

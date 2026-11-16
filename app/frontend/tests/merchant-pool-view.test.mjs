@@ -73,9 +73,9 @@ const listCalls=app=>app.requests.filter(r=>r.url.startsWith('/api/v1/merchant-p
 for(const mobile of [false,true])test(`${mobile?'mobile':'desktop'}: failed new timezone hides previous rows/facets/selection; retry keeps current filters`,async()=>{
   let failed=true;const app=fixture(handlerFor(query=>query.get('timezone_group')==='eastern'&&failed?Promise.reject(mobile?new Error('Request timed out after 15000ms'):{response:{status:500,data:{detail:'synthetic failure'}}}):Promise.resolve(payload(query.get('timezone_group')||'all'))),{mobile,batch:mobile});
   app.render();await app.settle();app.chooseZone('中部');await app.settle();assert.match(app.content(),/合成中部商家/);assert.match(app.content(),/共 152 条/);
-  app.byLabel('分配：合成中部商家').props.onClick();app.render();assert.match(app.content(),/跨页已选 1 家商家/);
-  app.button(/^更多筛选/).props.onClick();app.render();app.select('筛选资料来源','csv');await app.settle();app.select('筛选商家行业','美业');await app.settle();app.select('筛选首拨核验','pending');await app.settle();
-  app.chooseZone('东部',{effects:false});assert.doesNotMatch(app.content(),/合成中部商家|共 152 条|美业152|首拨核验 · 待核验 152/);app.runEffects();await app.settle();
+  app.byLabel('分配给销售：合成中部商家').props.onClick();app.render();assert.match(app.content(),/跨页已选 1 家商家/);
+  app.button(/^更多筛选/).props.onClick();app.render();app.select('筛选资料来源','csv');await app.settle();app.select('筛选商家行业','美业');await app.settle();app.select('筛选商家标记','pending');await app.settle();
+  app.chooseZone('东部',{effects:false});assert.doesNotMatch(app.content(),/合成中部商家|共 152 条|美业152|未标记152/);app.runEffects();await app.settle();
   assert.match(app.content(),/当前筛选加载失败，请重新加载后再分配商家/);assert.match(app.content(),/当前筛选数量暂不可用/);assert.doesNotMatch(app.content(),/合成中部商家|共 152 条|当前筛选下没有商家|跨页已选/);if(!mobile)assert.match(app.content(),/未分配5069/);
   assert.equal(app.button('下一页').props.disabled,true);assert.equal(app.find(n=>n.props?.['aria-label']==='选择本页可操作商家')?.props.disabled??true,true);assert.equal(app.find(n=>n.type==='button'&&text(n)==='确认分配'),undefined);
   const query=new URL('http://local'+listCalls(app).at(-1).url).searchParams;assert.equal(query.get('timezone_group'),'eastern');assert.equal(query.get('source'),'csv');assert.equal(query.get('industry'),'美业');assert.equal(query.get('quality_status'),'pending');assert.equal(query.get('batch_id'),mobile?'synthetic-current-view':null);
@@ -99,7 +99,7 @@ test('real useAutoRefresh focus uses the latest selected view before its callbac
 });
 
 test('stats-only failure keeps the valid list and does not report list/assignment failure',async()=>{
-  let failStats=false;const app=fixture(handlerFor(()=>Promise.resolve(payload('eastern')),()=>failStats?Promise.reject(new Error('stats unavailable')):Promise.resolve({data:stats})));app.render();await app.settle();failStats=true;app.focus();await app.settle();assert.match(app.content(),/合成东部商家|共 3535 条/);assert.doesNotMatch(app.content(),/当前筛选加载失败|当前筛选数量暂不可用/);assert.match(app.content(),/未分配5069/);assert.match(app.toasts.at(-1),/全局统计加载失败，当前商家列表仍可查看/);assert.equal(app.byLabel('分配：合成东部商家').props.disabled,false);
+  let failStats=false;const app=fixture(handlerFor(()=>Promise.resolve(payload('eastern')),()=>failStats?Promise.reject(new Error('stats unavailable')):Promise.resolve({data:stats})));app.render();await app.settle();failStats=true;app.focus();await app.settle();assert.match(app.content(),/合成东部商家|共 3535 条/);assert.doesNotMatch(app.content(),/当前筛选加载失败|当前筛选数量暂不可用/);assert.match(app.content(),/未分配5069/);assert.match(app.toasts.at(-1),/全局统计加载失败，当前商家列表仍可查看/);assert.equal(app.byLabel('分配给销售：合成东部商家').props.disabled,false);
 });
 
 test('page-two failure retries the same page instead of treating an unavailable count as zero',async()=>{
@@ -132,6 +132,6 @@ test('post-save refresh starts a fresh read instead of joining a pending pre-sav
 });
 
 test('same-view auto-refresh failure clears an existing assignment selection and keeps only global stats',async()=>{
-  let fail=false;const app=fixture(handlerFor(()=>fail?Promise.reject(new Error('Request timed out after 15000ms')):Promise.resolve(payload('central'))));app.render();await app.settle();app.byLabel('分配：合成中部商家').props.onClick();app.render();assert.match(app.content(),/跨页已选 1 家商家/);
-  fail=true;app.focus();await app.settle();assert.doesNotMatch(app.content(),/合成中部商家|跨页已选|共 152 条|首拨核验 · 待核验 152/);assert.match(app.content(),/全部行业—餐厅—美业—待分类—/);assert.match(app.content(),/未分配5069/);assert.match(app.content(),/当前筛选加载失败/);assert.equal(app.requests.some(r=>r.method!=='GET'),false);
+  let fail=false;const app=fixture(handlerFor(()=>fail?Promise.reject(new Error('Request timed out after 15000ms')):Promise.resolve(payload('central'))));app.render();await app.settle();app.byLabel('分配给销售：合成中部商家').props.onClick();app.render();assert.match(app.content(),/跨页已选 1 家商家/);
+  fail=true;app.focus();await app.settle();assert.doesNotMatch(app.content(),/合成中部商家|跨页已选|共 152 条|未标记152/);assert.match(app.content(),/全部行业—餐厅—美业—待分类—/);assert.match(app.content(),/未分配5069/);assert.match(app.content(),/当前筛选加载失败/);assert.equal(app.requests.some(r=>r.method!=='GET'),false);
 });
