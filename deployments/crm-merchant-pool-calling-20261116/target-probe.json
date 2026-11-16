@@ -1,0 +1,80 @@
+{
+  "backend_files": {
+    "main.py": {
+      "bytes": 24728,
+      "sha256": "7a5f7c754df44e2d999785cf80ef2eecc1cafbf538c91b5a992250e02197425c"
+    },
+    "routers/merchant_pool.py": {
+      "bytes": 54958,
+      "sha256": "9d966de2497b26399d53a4739f23d07ecbb2df4acab6fe27ddb9af1c7c288fab"
+    },
+    "routers/prospect_verification.py": {
+      "bytes": 1376,
+      "sha256": "14e03f9fb1645d77c87d664302df5a80aec427d3f0fa464adfa99bec7e714330"
+    },
+    "routers/sales_leads.py": {
+      "bytes": 135304,
+      "sha256": "fc47f18d2f53275210792bfed35ad66aa2c692f903bf24b8a3121a7a6ee77bf3"
+    },
+    "services/prospect_verification.py": {
+      "bytes": 14865,
+      "sha256": "602bfc15763b742fff3cd3f8796298a400d9bd3bf920d7078a313977051cefda"
+    },
+    "services/sales_lead_cycle.py": {
+      "bytes": 11796,
+      "sha256": "5c04c70a5911d1018924864570a402840f72f236abd990435c514a9e1917e5b6"
+    },
+    "services/sales_task_assignment.py": {
+      "bytes": 1588,
+      "sha256": "bece9ba0441150d168425f0ab8911ee7b800a39ba10093335da219ab865dcf78"
+    }
+  },
+  "backend_matches_baseline_source": true,
+  "base_image_config_sha256": "35f5207aa8b8d3ef7761ea59ee38df4c5a80d47181651ba9c3ac3f8031c27d43",
+  "base_image_id": "sha256:c85d2b5f7468f7d32db7f43579603f3b9bfbde95cd30921b9faff00c90f8dd0c",
+  "base_image_repo_digests": [
+    "t24-crm@sha256:c85d2b5f7468f7d32db7f43579603f3b9bfbde95cd30921b9faff00c90f8dd0c"
+  ],
+  "code_overlay_destinations": [],
+  "database_reads": false,
+  "eligible_for_image_only_backend_patch": true,
+  "environment_values_output": false,
+  "expected_backend_sha256": {
+    "main.py": "7a5f7c754df44e2d999785cf80ef2eecc1cafbf538c91b5a992250e02197425c",
+    "routers/merchant_pool.py": "9d966de2497b26399d53a4739f23d07ecbb2df4acab6fe27ddb9af1c7c288fab",
+    "routers/prospect_verification.py": "14e03f9fb1645d77c87d664302df5a80aec427d3f0fa464adfa99bec7e714330",
+    "routers/sales_leads.py": "fc47f18d2f53275210792bfed35ad66aa2c692f903bf24b8a3121a7a6ee77bf3",
+    "services/prospect_verification.py": "602bfc15763b742fff3cd3f8796298a400d9bd3bf920d7078a313977051cefda",
+    "services/sales_lead_cycle.py": "5c04c70a5911d1018924864570a402840f72f236abd990435c514a9e1917e5b6",
+    "services/sales_task_assignment.py": "bece9ba0441150d168425f0ab8911ee7b800a39ba10093335da219ab865dcf78"
+  },
+  "host_metadata": {
+    "auto_remove": false,
+    "network_mode": "app_default",
+    "read_only_rootfs": false
+  },
+  "lifecycle_operations": false,
+  "mount_metadata": [
+    {
+      "destination": "/app/backend/data",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/app/backend/logs",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/run/secrets/t24_crm_stripe_history_readonly",
+      "rw": false,
+      "type": "bind"
+    }
+  ],
+  "mount_sources_output": false,
+  "provider_requests": false,
+  "read_only": true,
+  "runtime_id": "1ab068b3fa6989f7f86a181892f996d6ba366144669a022281655396b8ee46b5",
+  "runtime_image": "sha256:c85d2b5f7468f7d32db7f43579603f3b9bfbde95cd30921b9faff00c90f8dd0c",
+  "stage": "CRM_MERCHANT_POOL_CALLING_TARGET_PROBE"
+}

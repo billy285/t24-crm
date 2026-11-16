@@ -1,0 +1,11 @@
+[
+  "app/backend/main.py",
+  "app/backend/routers/merchant_pool.py",
+  "app/backend/routers/sales_leads.py",
+  "app/backend/services/prospect_verification.py",
+  "app/frontend/src/components/ProspectVerification.tsx",
+  "app/frontend/src/pages/MerchantPool.tsx",
+  "app/frontend/src/pages/SalesLeads.tsx",
+  "app/frontend/src/pages/SalesWorkbench.tsx",
+  "app/frontend/src/pages/merchant-pool-refined.css"
+]
