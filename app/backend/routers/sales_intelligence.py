@@ -599,6 +599,8 @@ async def _update_profile_locked(lead_id, payload, current_user, db):
             payload.next_step_date, datetime.max.time().replace(microsecond=0), TZ
         ).astimezone(timezone.utc)
     data = payload.model_dump(exclude={"revision"})
+    if "prospect_source" in before:
+        data["prospect_source"] = before["prospect_source"]
     data.update(
         {
             "milestone": milestone,

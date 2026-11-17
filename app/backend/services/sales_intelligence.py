@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from services.sales_timezones import resolve_contact_timezone
+from services.sales_timezones import address_timezone_evidence, resolve_contact_timezone
 
 TZ = ZoneInfo("Asia/Shanghai")
 POSITIVE = {"interested", "appointment"}
@@ -203,6 +203,8 @@ def summarize_lead(
         d.rejection_reason for d in details.values() if d.rejection_reason
     )
     p = unpack(profile.payload_json) if profile else {}
+    evidence = address_timezone_evidence(p)
+    p.pop("prospect_source", None)
     potential = "unknown"
     rationale = ["尚无足够的需求与决策人证据"]
     if lead.is_blacklisted or lead.do_not_contact:
@@ -400,7 +402,7 @@ def summarize_lead(
         "contact_timezone": resolve_contact_timezone(
             country=getattr(lead, "country", None), state=getattr(lead, "state", None),
             city=getattr(lead, "city", None), address=getattr(lead, "address", None),
-            profile_timezone=p.get("timezone"),
+            profile_timezone=p.get("timezone"), address_evidence=evidence,
         ),
         "revision": profile.revision if profile else 0,
         "timeline": timeline,

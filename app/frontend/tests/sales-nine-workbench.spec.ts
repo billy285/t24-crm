@@ -5,7 +5,7 @@ const screenshots = process.env.T24_UI_SCREENSHOT_DIR;
 const day = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 type Employee = { id: number; name: string; role: string; status: string };
 type Lead = { id: number; business_name: string; phone: string; country: string; industry?: string; industry_group?: string; enrichment_summary?: { interest_product_names: string[] }; status: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number; next_follow_up_at?: string };
-type Task = { task_id: number; task_status: string; priority: string; queue_category: string; lead: Lead };
+type Task = { contact_queue?: { timezone_group: string; in_contact_window: boolean }; task_id: number; task_status: string; priority: string; queue_category: string; lead: Lead };
 const employee: Employee = { id: 27, name: '模拟销售甲', role: 'sales', status: 'active' };
 const records = (salesId = 27): Task[] => [0, 1].map(index => ({
   task_id: 901 + index, task_status: 'pending', priority: 'normal', queue_category: 'new',
@@ -47,9 +47,12 @@ async function fixture(page: Page, options: { user?: Employee; industryChoice?: 
       if (options.industryChoice && path.endsWith('/workbench/prepare-industry')) {
         expect(url.searchParams.get('industry')).toBe('restaurant');
         expect(url.searchParams.get('target_date')).toBe(day());
+        expect(url.searchParams.get('timezone_group')).toBe('mountain');
+        expect(url.searchParams.get('window_only')).toBe('true');
+        expect(url.searchParams.get('batch_size')).toBe('1');
         expect(url.searchParams.has('sales_employee_id')).toBe(false);
         const tasks = data.get(27)!;
-        tasks[2] = { ...tasks[2], task_id: 904, lead: { ...tasks[2].lead, id: 504, business_name: '新餐厅', industry: '中餐厅', industry_group: 'restaurant', enrichment_summary: { interest_product_names: ['新媒体代运营'] } } };
+        tasks[2] = { ...tasks[2], task_id: 904, contact_queue: { timezone_group: 'mountain', in_contact_window: true }, lead: { ...tasks[2].lead, id: 504, business_name: '新餐厅', industry: '中餐厅', industry_group: 'restaurant', enrichment_summary: { interest_product_names: ['新媒体代运营'] } } };
         return route.fulfill({ json: { industry: 'restaurant', created: 1, replaced: 1, total: 3, pending_in_industry: 1, message: '已补充 1 家餐厅' } });
       }
       if (options.manualLead && path.endsWith('/workbench/manual-task/503')) {
@@ -77,6 +80,10 @@ async function fixture(page: Page, options: { user?: Employee; industryChoice?: 
     reads.push(path + url.search);
     let response: unknown = { items: [], total: 0 };
     if (path.endsWith('/emp-auth/me')) response = user;
+    else if (options.industryChoice && path.endsWith('/workbench/industry-stock')) response = {
+      industry: 'restaurant', contact_start: 10, contact_end: 18, total: 40, in_window: 20,
+      zones: ['eastern', 'central', 'mountain', 'pacific'].map(group => ({
+        group, total: 10, in_window: 5, local_times: group === 'mountain' ? ['09:30', '10:30'] : ['12:30'] })) };
     else if (options.manualLead && path.endsWith('/sales-leads/503')) response = { ...records()[0].lead, id: 503, business_name: '名下待联系商家', assigned_sales_id: 27 };
     else if (path.endsWith('/sales-leads/assignees')) response = [{ id: 27, name: '模拟销售甲' }, { id: 28, name: '模拟销售乙' }];
     else if (path.endsWith('/sales-leads/workbench/today')) {
@@ -437,10 +444,15 @@ for (const width of [390, 1440]) {
     await notes(page).fill('店主的沟通草稿');
     const choices = page.getByRole('group', { name: '拨打行业' });
     await choices.getByRole('button', { name: '餐厅', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '当前没有餐厅任务' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '当前条件下没有餐厅任务' })).toBeVisible();
     await expect(page.getByText('到期回访（1）')).toBeVisible();
     expect(writes.filter(row => row.path.includes('/workbench/'))).toHaveLength(0);
-    await page.getByRole('button', { name: '补充餐厅名单' }).click();
+    const regions = page.getByRole('group', { name: '领取时区' });
+    await expect(regions.getByRole('button', { name:'山地' })).toContainText('09:30 / 10:30');
+    await regions.getByRole('button', { name:'山地' }).click();
+    await page.getByLabel('首拨名单目标数量').selectOption('1');
+    expect(writes.filter(row => row.path.includes('/workbench/'))).toHaveLength(0);
+    await page.getByRole('button', { name: '领取餐厅名单' }).click();
     await expect(page.getByRole('heading', { name: '新餐厅' })).toBeVisible();
     expect(writes.filter(row => row.path.includes('/workbench/'))).toEqual([
       { path: '/api/v1/sales-leads/workbench/prepare-industry', body: { preserve_task_ids: [901] } },

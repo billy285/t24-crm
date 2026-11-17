@@ -146,7 +146,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
           <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer font-medium">填写标准与示例</summary><div className="mt-3 space-y-3">
             <dl className="space-y-2"><div><dt className="font-medium text-slate-800">电话</dt><dd>一个单元格只填一个号码，格式设为文本；保留 + 国家码、前导零。分机写为 ext 009，勿加入 **、说明文字或遮罩。</dd></div><div><dt className="font-medium text-slate-800">地区</dt><dd>填写“城市, 州/省, 国家”，例如 New York, NY, US 或 Toronto, ON, CA。国家未知时保留原文；本地号码会待补齐，不默认美国。</dd></div><div><dt className="font-medium text-slate-800">名称与来源</dt><dd>商家名称必填、不超过 200 字；来源填写平台或文件名、不超过 50 字，留空记录为 CSV 导入。</dd></div></dl>
             <div className="overflow-x-auto rounded-lg border border-slate-200"><table aria-label="商家导入填写示例" className="w-full min-w-[560px] text-left text-xs"><thead className="bg-slate-50"><tr>{MERCHANT_IMPORT_HEADERS.map(header => <th key={header} className="p-2 font-medium">{header}</th>)}</tr></thead><tbody><tr>{MERCHANT_IMPORT_EXAMPLE.map((value, index) => <td key={index} className="p-2">{value}</td>)}</tr></tbody></table></div>
-            <p className="text-xs leading-5 text-slate-500">前五列表头顺序不变；扩展模板可追加行业、来源URL、来源日期、核验类型。来源日期用 YYYY-MM-DD，仅表示资料发布或刷新日；核验类型填写公开商家资料、招聘联系点或待核验。导入后仍需人工核验。</p>
+            <p className="text-xs leading-5 text-slate-500">扩展模板可填写行业、来源链接、资料日期和核验类型。资料日期格式为 YYYY-MM-DD。跨时区门店可按完整街道地址填写 IANA 时区（如 America/Chicago）并附来源链接，无法确定时留空。</p>
             <p className="text-xs leading-5 text-slate-500">示例不在下载模板中。建议用表格软件保存 CSV，让含逗号的地区、地址仍保持一个单元格。未知店名或街道可明确填写待核验；这些占位描述不作为同址重复依据。</p>
           </div></details>
           {!batch && <p className="mt-3 text-xs text-blue-700">预检只保存导入草稿，确认前不会写入商家池或分配销售。</p>}

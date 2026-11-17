@@ -222,7 +222,7 @@
 .sw-team-mobile-row:last-child { border-bottom: 0; }
 .sw-team-mobile-row > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .sw-team-mobile-row > div button { flex-shrink: 0; }
-.sw-team-mobile-row dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.sw-team-mobile-row dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
 .sw-team-mobile-row dt { font-size: var(--t24-aux-size); line-height: var(--t24-aux-line); color: #64748b; }
 .sw-team-mobile-row dd { margin: 4px 0 0; font-size: var(--t24-body-size); line-height: var(--t24-body-line); font-weight: 600; color: #24354e; }
 .sw-team-progress table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -408,4 +408,21 @@
 .sw-industry-callbacks button { display: flex; flex-wrap: wrap; gap: .4rem; text-align: start; }
 @media (max-width: 767px) {
   .sw-industry-options button, .sw-industry-actions button, .sw-industry-callbacks button { min-height: 44px; }
+}
+
+.sw-claim { display: grid; gap: .7rem; padding: .8rem; border: 1px solid var(--t24-border); border-radius: .65rem; background: var(--t24-surface); }
+.sw-claim-regions { display: grid; gap: .35rem; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sw-claim-regions button { min-width: 0; display: grid; align-content: center; text-align: center; gap: .05rem; border: 1px solid var(--t24-border); border-radius: .45rem; color: var(--t24-ink); padding: .35rem; }
+.sw-claim-regions button[aria-pressed="true"] { border-color: var(--t24-primary); background: var(--t24-primary-soft); color: var(--t24-primary); }
+.sw-claim-regions button time, .sw-claim-regions button span, .sw-claim-settings label span { font-size: .75rem; color: var(--t24-ink-muted); }
+.sw-claim-settings, .sw-claim-action { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; }
+.sw-claim-settings label { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .35rem; color: var(--t24-ink); font-size: .85rem; }
+.sw-claim-settings select { padding: .25rem; border: 1px solid var(--t24-border); border-radius: .3rem; background: var(--t24-surface); }
+.sw-claim-action { color: var(--t24-ink-muted); font-size: .85rem; }
+@media (max-width: 767px) {
+  .sw-claim-regions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sw-claim-regions button:first-child { grid-column: 1 / -1; }
+  .sw-claim-regions button, .sw-claim-action button, .sw-claim-settings label { min-height: 44px; }
+  .sw-claim-regions button time { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .sw-claim-action button:last-child { width: 100%; }
 }

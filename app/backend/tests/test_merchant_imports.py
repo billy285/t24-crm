@@ -766,3 +766,61 @@ async def test_assigned_lead_inherits_pool_quality_source_and_original_verifier(
         assert view['prospect_source']['source_date'] == '2026-11-01'
         assert view['prospect_source']['verification_type'] == 'public_business_profile'
         assert (await quality_for(session, 'pool', merchant_id)) == original
+
+
+@pytest.mark.asyncio
+async def test_imported_address_timezone_survives_claim_and_expires_when_business_moves(imports_client):
+    from models.employees import Employees
+    from models.sales_intelligence import SalesLeadProfiles
+    from services.sales_queue_policy import contact_queue_context
+
+    client, maker = imports_client
+    async with maker() as session:
+        session.add_all([
+            Employees(id=10, user_id="tz-manager", name="Manager 10", role="sales_manager", status="active"),
+            Employees(id=11, user_id="tz-sales", name="Sales", role="sales", status="active", supervisor="Manager 10"),
+        ])
+        await session.commit()
+    base = ["Cape Coral Test", GOOD[1], "1242 SW Pine Island Rd 33991", "Cape Coral, FL, US", "public directory"]
+    rows = [[*base, "https://example.com/source", "America/New_York"],
+            [*base, "", "America/New_York"], [*base, "https://example.com/source", "Europe/London"]]
+    content = source_csv(rows, ("来源URL", "IANA时区"))
+    preview_response = await client.post("/api/v1/merchant-imports/preview", headers=auth(),
+                                         files={"file": ("split-state.csv", content, "text/csv")})
+    assert preview_response.status_code == 200, preview_response.text
+    batch = preview_response.json()
+    assert [entry["status"] for entry in batch["rows"]] == ["pending", "error", "error"]
+    confirmed = await client.post(f"/api/v1/merchant-imports/{batch['id']}/confirm", headers=auth())
+    assert confirmed.status_code == 200
+    merchant_id = confirmed.json()["rows"][0]["merchant_id"]
+    params = {"timezone_group": "eastern", "pool_status": "pending"}
+    filtered = (await client.get("/api/v1/merchant-pool", headers=auth(), params=params)).json()
+    assert filtered["total"] == filtered["quality_facets"]["pending"] == 1
+    assert filtered["items"][0]["timezone"] == "America/New_York"
+    assert filtered["items"][0]["timezone_basis"] == "address_source"
+    assert filtered["items"][0]["timezone_needs_confirmation"] is True
+
+    claim = await client.post("/api/v1/merchant-pool/bulk-convert-to-lead", headers=auth(),
+                              json={"merchant_ids": [merchant_id], "assigned_sales_id": 11})
+    assert claim.status_code == 200, claim.text
+    lead_id = claim.json()["lead_ids"][0]
+    lead_api = f"/api/v1/sales-intelligence/leads/{lead_id}"
+    readback = (await client.get(lead_api, headers=auth("sales", 11))).json()
+    assert readback["contact_timezone"]["timezone_basis"] == "address_source"
+    assert "prospect_source" not in readback["profile"]
+    edited = await client.put(lead_api, headers=auth("sales", 11), json={
+        "revision": readback["revision"], "pipeline_key": "system", "stage_key": "needs",
+        "evidence": "Customer asked about booking", "need_summary": "Online booking",
+        "next_step": "Arrange a demo", "next_step_date": "2026-12-01",
+    })
+    assert edited.status_code == 200, edited.text
+    async with maker() as session:
+        lead = await session.get(SalesLeads, lead_id)
+        profile = json.loads((await session.get(SalesLeadProfiles, lead_id)).payload_json)
+        assert contact_queue_context(lead, profile=profile)["timezone_basis"] == "address_source"
+        lead.city = "Unreviewed City"
+        await session.commit()
+        assert contact_queue_context(lead, profile=profile)["timezone"] is None
+    unknown = await client.get("/api/v1/merchant-pool", headers=auth(),
+                               params={"timezone_group": "unknown", "pool_status": "converted"})
+    assert unknown.json()["total"] == 1 and unknown.json()["items"][0]["timezone"] is None

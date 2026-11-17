@@ -79,6 +79,7 @@ type DailyTeamRow = {
   id: number;
   name: string;
   quota: number | null;
+  claimed: number | null;
   completed: number | null;
   remaining: number | null;
 };
@@ -124,7 +125,7 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
     if (loadedScopeRef.current !== requestScope) { setSummary(null); setReadError(false); }
     setLoading(true);
     const read = async () => {
-      const rows: DailyTeamRow[] = employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
+      const rows: DailyTeamRow[] = employees.map(employee => ({ ...employee, quota: null, claimed: null, completed: null, remaining: null }));
       let cursor = 0;
       const readRows = async () => {
         while (current() && !accessDenied && cursor < employees.length) {
@@ -135,7 +136,7 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
             const response = await invokeWithAuth({ url: `/api/v1/sales-leads/workbench/today?${params}`, method: "GET" });
             const data = response.data;
             if (Number(data?.salesperson?.id) === employee.id && (!data.target_date || data.target_date === targetDate)) {
-              rows[index] = { ...employee, quota: dailyCount(data.quota), completed: dailyCount(data.completed_count), remaining: dailyCount(data.remaining_count) };
+              rows[index] = { ...employee, quota: dailyCount(data.quota), claimed: dailyCount(data.self_claimed_count), completed: dailyCount(data.completed_count), remaining: dailyCount(data.remaining_count) };
             }
           } catch (error) { if (isDenied(error)) withdraw(); /* Other unreadable rows stay unknown. */ }
         }
@@ -175,7 +176,7 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
   const value = (count: number | null | undefined) => loading && !summary ? "—" : count === null || count === undefined ? "待确认" : count;
   const dateLabel = targetDate === businessDateKey() ? "今日" : "当日";
   const recorded = summary && summary.rows.every(row => row.completed !== null) ? summary.rows.reduce((total, row) => total + (row.completed as number), 0) : null;
-  const taskRows = summary?.rows || employees.map(employee => ({ ...employee, quota: null, completed: null, remaining: null }));
+  const taskRows = summary?.rows || employees.map(employee => ({ ...employee, quota: null, claimed: null, completed: null, remaining: null }));
   const openProgress = (signal?: "overdue") => navigate(`/sales-leads?view=intelligence&panel=leads${signal ? `&signal=${signal}` : ""}`);
   return <div className="sw-team-today" aria-label="团队今日任务" aria-busy={loading}>
     <section className="sw-team-summary" aria-label="团队任务概况">
@@ -197,10 +198,11 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
       {summary?.industryReport && <details className="mb-3"><summary className="cursor-pointer py-2 text-sm">查看今日行业拨打统计</summary>
         <SalesIndustryReport report={summary.industryReport} scopeLabel={actorRole === 'sales_manager' ? '直属销售团队' : '全部销售'} />
       </details>}
-      <div className="sw-team-table-scroll"><table><thead><tr><th>销售</th><th>{dateLabel}目标</th><th>已记录</th><th>待处理</th><th>操作</th></tr></thead><tbody>
+      <div className="sw-team-table-scroll"><table><thead><tr><th>销售</th><th>{dateLabel}目标</th><th title="按北京时间，每位销售自行领取的商家按门店去重">自主领取</th><th>已记录</th><th>待处理</th><th>操作</th></tr></thead><tbody>
         {taskRows.map(row => <tr key={row.id}>
           <td><span className="sw-team-person"><span className="sw-team-avatar" aria-hidden="true">{row.name.slice(0, 1)}</span><strong>{row.name}</strong></span></td>
           <td>{value(row.quota)}</td>
+          <td>{value(row.claimed)}</td>
           <td><div className="sw-team-completion"><span>{value(row.completed)}</span>{row.completed !== null && row.quota !== null && row.quota > 0 && <div role="progressbar" aria-label={`${row.name}任务进度`} aria-valuemin={0} aria-valuemax={row.quota} aria-valuenow={row.completed}><span style={{ width: `${Math.min(100, row.completed / row.quota * 100)}%` }} /></div>}</div></td>
           <td>{value(row.remaining)}</td>
           <td><Button variant="outline" onClick={() => onOpenWorkbench(row.id)} aria-label={`查看任务：${row.name}`}>查看任务</Button></td>
@@ -209,7 +211,7 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
       <div className="sw-team-mobile-list" role="list" aria-label="销售任务进度">
         {taskRows.map(row => <div className="sw-team-mobile-row" role="listitem" key={row.id}>
           <div><span className="sw-team-person"><strong>{row.name}</strong></span><Button variant="outline" onClick={() => onOpenWorkbench(row.id)} aria-label={`查看任务：${row.name}`}>查看任务</Button></div>
-          <dl><div><dt>{dateLabel}目标</dt><dd>{value(row.quota)}</dd></div><div><dt>已记录</dt><dd>{value(row.completed)}</dd></div><div><dt>待处理</dt><dd>{value(row.remaining)}</dd></div></dl>
+          <dl><div><dt>{dateLabel}目标</dt><dd>{value(row.quota)}</dd></div><div><dt>自主领取</dt><dd>{value(row.claimed)}</dd></div><div><dt>已记录</dt><dd>{value(row.completed)}</dd></div><div><dt>待处理</dt><dd>{value(row.remaining)}</dd></div></dl>
         </div>)}
       </div>
       {!employees.length && <p className="sw-team-empty">暂无可用销售人员</p>}

@@ -39,7 +39,7 @@ from services.sales_task_assignment import lead_has_active_closer, sync_pending_
 from services.sales_closing_queue import (ClosingAction, POSITIVE, closing_list, closing_dial_target, management_actor,
     previous_interest, record_manual_interest, retain_legacy_interest, update_closing)
 from services.merchant_industries import workbench_industry_group
-from services.sales_industry_queue import DEFERRED, prepare_industry_batch
+from services.sales_industry_queue import DEFERRED, industry_stock, prepare_industry_batch
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
 from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
@@ -938,18 +938,33 @@ class SalesIndustryPick(BaseModel):
     preserve_task_ids: list[int] = Field(default_factory=list, max_length=300)
 
 
+@router.get("/workbench/industry-stock")
+async def sales_industry_stock(
+    industry: Literal["restaurant", "beauty"],
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if _role(current_user) != "sales":
+        raise HTTPException(403, "仅销售本人可以查看可领取名单")
+    return await industry_stock(db, current_user, industry)
+
+
 @router.post("/workbench/prepare-industry")
 async def prepare_sales_industry(
     industry: Literal["restaurant", "beauty"],
     target_date: date,
     payload: Optional[SalesIndustryPick] = None,
+    timezone_group: Optional[Literal["eastern", "central", "mountain", "pacific"]] = None,
+    window_only: bool = False,
+    batch_size: int = Query(default=10, ge=1, le=10),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if _role(current_user) != "sales":
         raise HTTPException(403, "仅销售本人可以领取行业名单")
     return await prepare_industry_batch(db, current_user, industry, target_date, _daily_quota,
-                                        set(payload.preserve_task_ids) if payload else set())
+                                        set(payload.preserve_task_ids) if payload else set(), group=timezone_group,
+                                        window_only=window_only, batch_size=batch_size)
 
 
 @router.post("/workbench/manual-task/{lead_id}")
@@ -1072,6 +1087,16 @@ async def get_daily_call_workbench(
         select(SalesCallActivities).where(SalesCallActivities.sales_employee_id == salesperson.id)
     )).scalars().all()
     day_activities = [item for item in activities if _business_date(item.called_at) == target_date]
+    day_start = datetime.combine(target_date, datetime.min.time(), tzinfo=BUSINESS_TIMEZONE).astimezone(timezone.utc)
+    # A deferred first call can be restored several times on the same day.
+    # Count a salesperson's own claim once per merchant, from its audit event.
+    self_claimed_count = await db.scalar(select(func.count(func.distinct(SalesLeadAssignmentLogs.lead_id))).where(
+        SalesLeadAssignmentLogs.action == "industry_pick",
+        SalesLeadAssignmentLogs.to_sales_employee_id == salesperson.id,
+        SalesLeadAssignmentLogs.operated_by_id == salesperson.id,
+        SalesLeadAssignmentLogs.created_at >= day_start,
+        SalesLeadAssignmentLogs.created_at < day_start + timedelta(days=1),
+    ))
     connected = sum(_provider_connected(item) for item in day_activities)
     interested = sum(item.outcome in {"interested", "appointment"} for item in day_activities)
     appointments = sum(item.outcome == "appointment" for item in day_activities)
@@ -1088,6 +1113,7 @@ async def get_daily_call_workbench(
         "salesperson": {"id": salesperson.id, "name": salesperson.name},
         "quota": quota,
         "assigned_count": len(items),
+        "self_claimed_count": self_claimed_count,
         "completed_count": completed,
         "remaining_count": max(len(items) - completed, 0),
         "is_target_complete": completed >= quota or (len(items) > 0 and completed >= len(items)),

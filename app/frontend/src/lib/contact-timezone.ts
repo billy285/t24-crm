@@ -1,5 +1,5 @@
 export type ContactTimezoneGroup = 'eastern' | 'central' | 'mountain' | 'pacific' | 'alaska' | 'hawaii' | 'unknown';
-export type ContactTimezoneBasis = 'confirmed_profile' | 'address_state' | 'address_city' | 'unknown';
+export type ContactTimezoneBasis = 'confirmed_profile' | 'address_state' | 'address_city' | 'address_source' | 'unknown';
 export type ContactTimezone = {
   timezone?: string | null;
   timezone_group?: ContactTimezoneGroup;
@@ -21,6 +21,7 @@ export function validContactTimezone(value?: unknown): string | undefined {
 
 export function contactTimezoneBasisLabel(context: ContactTimezone): string {
   if (context.timezone_basis === 'confirmed_profile') return '人工确认';
+  if (context.timezone_basis === 'address_source') return '门店地址定位';
   if (context.timezone_basis === 'address_state' || context.timezone_basis === 'address_city') return '地址推定';
   return '待确认';
 }

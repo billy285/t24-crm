@@ -15,6 +15,7 @@ import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesCallRecord, { type SalesCallValues } from '@/components/SalesCallRecord';
 import SalesLeadQuickEdit from '@/components/SalesLeadQuickEdit';
 import SalesWorkbenchDial from '@/components/SalesWorkbenchDial';
+import SalesIndustryClaim, { type ClaimChoice } from '@/components/SalesIndustryClaim';
 import { useSalesLeadEnrichment, enrichmentError } from '@/lib/use-sales-lead-enrichment';
 import { validateEnrichmentUpdate, enrichmentWarningText } from '@/lib/sales-lead-enrichment';
 import { workbenchKnowledgeProduct, workbenchIndustry, workbenchIndustryLabels, type WorkbenchIndustry } from './sales-workbench-industry';
@@ -271,6 +272,8 @@ function SalesWorkspace() {
   const setAuxiliaryError = (section: string, failed: boolean) => setAuxiliaryErrors(current => failed ? current.includes(section) ? current : [...current, section] : current.filter(item => item !== section));
   const [filter, setFilter] = useState(initialView.filter);
   const [industry, setIndustry] = useState<WorkbenchIndustry>('all');
+  const [claimChoice, setClaimChoice] = useState<ClaimChoice>({ region: '', windowOnly: true, size: 10 });
+  const [stockRevision, setStockRevision] = useState(0);
   const [industryMessage, setIndustryMessage] = useState('');
   const [queueQuery, setQueueQuery] = useState('');
   const [qualityFilter, setQualityFilter] = useState('all');
@@ -437,21 +440,25 @@ function SalesWorkspace() {
         if (current()) toast.success(response.data?.message || '今日任务已准备');
       } else {
         params.set('industry', target);
+        if (claimChoice.region) params.set('timezone_group', claimChoice.region);
+        params.set('window_only', String(claimChoice.windowOnly));
+        params.set('batch_size', String(claimChoice.size));
         const pendingDial = readPendingDial(employee?.id, workbench?.salesperson.id, date);
         const preserveTaskIds = (workbench?.items || []).filter(task => {
-          if (task.task_status !== 'pending' || workbenchIndustry(task.lead) === target) return false;
+          if (task.task_status !== 'pending') return false;
           if (task.task_id === saveReviewTaskId || (task.task_id === pendingDial.taskId && task.lead.id === pendingDial.leadId)) return true;
           const draftScope = { userId: employee?.id, salesId: workbench?.salesperson.id, taskId: task.task_id, leadId: task.lead.id, date };
           const callDraft = readSalesCallDraft(salesCallDraftKey(draftScope), outcomeOptions, legacySalesCallDraftKey(draftScope));
           return callDraft.restored || callDraft.invalid || Boolean(readEnrichmentDraft(salesEnrichmentDraftKey(draftScope)));
         }).map(task => task.task_id);
         if (preserveTaskIds.length > 300) {
-          setIndustryMessage('有超过 300 家其他行业的未完成草稿，请先处理后再补充名单');
+          setIndustryMessage('有超过 300 家未完成草稿，请先处理后再领取名单');
           return;
         }
         const response = await invokeWithAuth({
           url: `/api/v1/sales-leads/workbench/prepare-industry?${params}`, method: 'POST', data: { preserve_task_ids: preserveTaskIds },
         });
+        if (current()) setStockRevision(value => value + 1);
         if (current()) setIndustryMessage(response.data?.industry === target && typeof response.data.message === 'string'
           ? response.data.message : '名单调整结果待核对，请查看刷新后的任务');
       }
@@ -611,7 +618,9 @@ function SalesWorkspace() {
     && isFollowUpOverdue(task.lead.next_follow_up_at)
   )).length, [workbench]);
   const filteredTasks = useMemo(() => (workbench?.items || []).filter(task => {
-    if (industry !== 'all' && workbenchIndustry(task.lead) !== industry) return false;
+    if (industry !== 'all' && (workbenchIndustry(task.lead) !== industry ||
+        (claimChoice.region && task.contact_queue?.timezone_group !== claimChoice.region) ||
+        (claimChoice.windowOnly && date === today() && !task.contact_queue?.in_contact_window))) return false;
     if (filter === 'overdue') return task.task_status !== 'completed' && isFollowUpOverdue(task.lead.next_follow_up_at);
     if (filter === 'unfinished') return task.task_status !== 'completed';
     if (filter === 'callback') return task.lead.status === 'follow_up';
@@ -628,10 +637,12 @@ function SalesWorkspace() {
     const aTime = parseBackendDate(a.lead.next_follow_up_at)?.getTime() ?? Number.POSITIVE_INFINITY;
     const bTime = parseBackendDate(b.lead.next_follow_up_at)?.getTime() ?? Number.POSITIVE_INFINITY;
     return aTime - bTime;
-  }), [filter, industry, workbench]);
+  }), [filter, industry, claimChoice.region, claimChoice.windowOnly, date, workbench]);
   const dueCallbacks = (workbench?.items || []).filter(task => task.task_status === 'pending' && Boolean(task.lead.next_follow_up_at) &&
     (task.contact_queue?.due_follow_up ?? ((parseBackendDate(task.lead.next_follow_up_at)?.getTime() ?? Infinity) <= Date.now())));
-  const industryPendingCount = (workbench?.items || []).filter(task => task.task_status === 'pending' && workbenchIndustry(task.lead) === industry).length;
+  const industryPendingCount = (workbench?.items || []).filter(task => task.task_status === 'pending' &&
+    workbenchIndustry(task.lead) === industry && (!claimChoice.region || task.contact_queue?.timezone_group === claimChoice.region) &&
+    (!claimChoice.windowOnly || task.contact_queue?.in_contact_window)).length;
   const qualityTasks = useMemo(() => filteredTasks.filter(task => qualityFilter === 'all' || qualityFilter === 'missing_contact' && !(task.lead.enrichment_summary?.has_contact ?? Boolean(task.lead.contact_name)) || qualityFilter === 'needs_review' && (task.lead.enrichment_summary?.needs_review ?? true) || qualityFilter === 'has_interest' && Boolean(task.lead.enrichment_summary?.has_interest)), [filteredTasks, qualityFilter]);
   const matchingQueue = useMemo(() => qualityTasks.filter(task => !queueQuery.trim() || `${task.lead.business_name} ${task.lead.city || ''} ${task.lead.state || ''}`.toLowerCase().includes(queueQuery.trim().toLowerCase()) || phoneSearchMatches(task.lead.phone, queueQuery, task.lead.country)), [qualityTasks, queueQuery]);
   const visibleTasks = useMemo(() => matchingQueue.slice(0, visibleCount), [matchingQueue, visibleCount]);
@@ -805,6 +816,7 @@ function SalesWorkspace() {
     setActiveTask(null);
     setSaveReviewTaskId(null);
     setIndustry('all');
+    setClaimChoice({ region: '', windowOnly: true, size: 10 });
     setIndustryMessage('');
     setLoading(true);
     return true;
@@ -835,6 +847,7 @@ function SalesWorkspace() {
     if (saving) return;
     setFilter('all');
     setIndustry('all');
+    setClaimChoice({ region: '', windowOnly: true, size: 10 });
     setIndustryMessage('');
     setQualityFilter('all');
     updateQueueQuery('');
@@ -936,11 +949,14 @@ function SalesWorkspace() {
           {(Object.keys(workbenchIndustryLabels) as WorkbenchIndustry[]).map(key =>
             <button type="button" key={key} aria-pressed={industry === key} disabled={saving} onClick={() => switchIndustry(key)}>{workbenchIndustryLabels[key]}</button>)}
         </div>
-        {industry !== 'all' && <div className="sw-industry-actions">
-          <span>{workbenchIndustryLabels[industry]}待拨 {industryPendingCount} 家</span>
-          {date === today() && <Button type="button" size="sm" variant="outline" disabled={saving || loading || Boolean(loadError)} onClick={() => void prepareWorkbench(industry)}>{preparing ? '正在补充…' : `补充${workbenchIndustryLabels[industry]}名单`}</Button>}
-        </div>}
       </div>
+      {industry !== 'all' && date === today() && <SalesIndustryClaim key={workspaceScope + industry}
+        industry={industry} choice={claimChoice} disabled={saving || loading || Boolean(loadError)}
+        pending={industryPendingCount} submitting={preparing} revision={stockRevision}
+        onChange={value => {
+          if (saving || ((value.region !== claimChoice.region || value.windowOnly !== claimChoice.windowOnly) && !confirmDiscardAllChanges())) return;
+          setClaimChoice(value); setIndustryMessage(''); setRequestedLead(null);
+        }} onClaim={() => void prepareWorkbench(industry)} />}
       {industry !== 'all' && industryMessage && <p className="sw-industry-message" role="status">{industryMessage}</p>}
       {industry !== 'all' && dueCallbacks.length > 0 && <details className="sw-industry-callbacks">
         <summary>到期回访（{dueCallbacks.length}）</summary>
@@ -957,7 +973,7 @@ function SalesWorkspace() {
       </aside>
       <div className="sc-call-center sw-current">
         {focusedTask && canShowFocusedTask && !matchingQueue.some(task => task.task_id === focusedTask.task_id) && <p className="sw-filter-context" role="status">当前商家保留在工作区；筛选仅影响客户队列，可继续记录本次沟通。</p>}
-        {requestedLead !== null && !canShowFocusedTask ? <div className="sc-empty" role="status" aria-label="指定商家定位结果"><h3>{requestedSelection.kind === 'invalid' ? '商家编号无效' : requestedSelection.kind === 'filtered' ? '指定商家被当前筛选隐藏' : requestedSelection.kind === 'ready' ? '正在定位指定商家…' : loading ? '正在核对指定商家…' : '指定商家未在当前任务中'}</h3><p>{requestedSelection.kind === 'filtered' ? '清除队列状态、资料状态与搜索条件后，可准确定位这位商家。' : requestedSelection.kind === 'invalid' ? '请返回联系进展，从商家的首次拨打入口重新进入。' : '当前日期与销售的任务中尚未找到该商家，可能尚未安排或不在当前访问范围；不会自动切换到其他商家。'}</p><div className="flex flex-wrap justify-center gap-2">{requestedSelection.kind === 'missing' && typeof requestedLead === 'number' && role === 'sales' && employee?.id && date === today() && !loadError && !loading && <StartAssignedContact key={`${employee.id}:${requestedLead}:${date}`} leadId={requestedLead} employeeId={employee.id} date={date} onReady={async () => { clearQueueFilters(); await loadWorkbench(); }} />}{requestedSelection.kind === 'filtered' && <Button variant="outline" disabled={saving} onClick={clearQueueFilters}>清除筛选并定位</Button>}{requestedSelection.kind !== 'invalid' && <Button variant="outline" disabled={saving || loading} onClick={() => void loadWorkbench()}>刷新当前队列</Button>}<Button variant="outline" disabled={saving} onClick={() => navigate(safeReturn || '/sales-leads')}>返回联系进展核对</Button><Button variant="ghost" disabled={saving} onClick={() => { setRequestedLead(null); clearQueueFilters(); }}>查看当前任务</Button></div></div> : loading && !workbench ? <div className="sc-empty">正在准备今天的任务…</div> : canManage && !selectedSalesId ? <section className="sc-empty sw-select-sales" aria-label="选择销售查看客户任务"><h3>{assigneesLoaded && assignees.length === 0 ? '暂无可用销售人员' : '先选择一位销售'}</h3><p>{assigneesLoaded && assignees.length === 0 ? '请先新增或启用销售员工，再安排客户任务。' : '客户任务按销售人员分别显示。选定销售后，可查看或安排该销售的拨打任务。'}</p>{assignees.length > 0 && <NativeSelect aria-label="选择销售查看客户任务" value="" disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} onChange={value => { if (value) openSalesTasks(Number(value)); }} options={[{value:'',label:'选择销售人员'},...assignees.map(item => ({value:String(item.id),label:item.name}))]} />}<Button variant="ghost" onClick={() => setTeamView(true)}>返回团队任务</Button></section> : !focusedTask ? <div className="sc-empty"><CheckCircle2 size={28} /><h3>{loadError ? '今日任务暂不可用' : industry !== 'all' ? `当前没有${workbenchIndustryLabels[industry]}任务` : filter !== 'all' ? '当前筛选暂无任务' : '当前队列暂无任务'}</h3>{!loadError && (industry !== 'all' ? <Button variant="ghost" onClick={() => switchIndustry('all')}>查看全部行业</Button> : filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>查看全部任务</Button> : prepareButton)}</div> : <>
+        {requestedLead !== null && !canShowFocusedTask ? <div className="sc-empty" role="status" aria-label="指定商家定位结果"><h3>{requestedSelection.kind === 'invalid' ? '商家编号无效' : requestedSelection.kind === 'filtered' ? '指定商家被当前筛选隐藏' : requestedSelection.kind === 'ready' ? '正在定位指定商家…' : loading ? '正在核对指定商家…' : '指定商家未在当前任务中'}</h3><p>{requestedSelection.kind === 'filtered' ? '清除队列状态、资料状态与搜索条件后，可准确定位这位商家。' : requestedSelection.kind === 'invalid' ? '请返回联系进展，从商家的首次拨打入口重新进入。' : '当前日期与销售的任务中尚未找到该商家，可能尚未安排或不在当前访问范围；不会自动切换到其他商家。'}</p><div className="flex flex-wrap justify-center gap-2">{requestedSelection.kind === 'missing' && typeof requestedLead === 'number' && role === 'sales' && employee?.id && date === today() && !loadError && !loading && <StartAssignedContact key={`${employee.id}:${requestedLead}:${date}`} leadId={requestedLead} employeeId={employee.id} date={date} onReady={async () => { clearQueueFilters(); await loadWorkbench(); }} />}{requestedSelection.kind === 'filtered' && <Button variant="outline" disabled={saving} onClick={clearQueueFilters}>清除筛选并定位</Button>}{requestedSelection.kind !== 'invalid' && <Button variant="outline" disabled={saving || loading} onClick={() => void loadWorkbench()}>刷新当前队列</Button>}<Button variant="outline" disabled={saving} onClick={() => navigate(safeReturn || '/sales-leads')}>返回联系进展核对</Button><Button variant="ghost" disabled={saving} onClick={() => { setRequestedLead(null); clearQueueFilters(); }}>查看当前任务</Button></div></div> : loading && !workbench ? <div className="sc-empty">正在准备今天的任务…</div> : canManage && !selectedSalesId ? <section className="sc-empty sw-select-sales" aria-label="选择销售查看客户任务"><h3>{assigneesLoaded && assignees.length === 0 ? '暂无可用销售人员' : '先选择一位销售'}</h3><p>{assigneesLoaded && assignees.length === 0 ? '请先新增或启用销售员工，再安排客户任务。' : '客户任务按销售人员分别显示。选定销售后，可查看或安排该销售的拨打任务。'}</p>{assignees.length > 0 && <NativeSelect aria-label="选择销售查看客户任务" value="" disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} onChange={value => { if (value) openSalesTasks(Number(value)); }} options={[{value:'',label:'选择销售人员'},...assignees.map(item => ({value:String(item.id),label:item.name}))]} />}<Button variant="ghost" onClick={() => setTeamView(true)}>返回团队任务</Button></section> : !focusedTask ? <div className="sc-empty"><CheckCircle2 size={28} /><h3>{loadError ? '今日任务暂不可用' : industry !== 'all' ? `当前条件下没有${workbenchIndustryLabels[industry]}任务` : filter !== 'all' ? '当前筛选暂无任务' : '当前队列暂无任务'}</h3>{!loadError && (industry !== 'all' ? <Button variant="ghost" onClick={() => switchIndustry('all')}>查看全部行业</Button> : filter !== 'all' ? <Button variant="outline" onClick={() => setFilter('all')}>查看全部任务</Button> : prepareButton)}</div> : <>
           <section className="sc-customer" aria-label="当前客户与拨号">
             <div className="sw-customer-heading"><div><div className="sw-customer-context">{!isMobile && <span>当前客户</span>}<Badge className={statusColor[focusedTask.lead.status] || statusColor.new}>{statusLabels[focusedTask.lead.status] || focusedTask.lead.status}</Badge></div><h2>{focusedTask.lead.business_name}</h2><p>{[focusedTask.lead.industry, focusedTask.lead.city || focusedTask.lead.state, focusedTask.lead.contact_name].filter(Boolean).join(' · ') || '资料待补充'}</p>{focusedTask.lead.next_follow_up_at && <p className="sw-followup-plan">回访 · <time>{formatDate(focusedTask.lead.next_follow_up_at)}</time></p>}</div><div className="sw-customer-navigation">{!isMobile && <Button type="button" variant="outline" size="sm" className="sw-enrichment-trigger" disabled={saving || !enrichment.key} onClick={() => enrichment.setOpen(true)}><PencilLine size={14} />完善资料</Button>}<div className="sw-customer-paging"><Button variant="ghost" size="icon" aria-label="上一位客户" disabled={saving || currentPosition <= 1} onClick={() => moveCustomer(-1)}><ChevronRight className="rotate-180" size={17} /></Button><Button variant="ghost" size="icon" aria-label="下一位客户" disabled={saving || currentPosition >= filteredTasks.length} onClick={() => moveCustomer(1)}><ChevronRight size={17} /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多客户操作"><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{isMobile && <DropdownMenuItem disabled={saving || !enrichment.key} onSelect={() => enrichment.setOpen(true)}>完善资料</DropdownMenuItem>}<DropdownMenuItem onSelect={() => void openHistory(focusedTask)}>历史联系</DropdownMenuItem><DropdownMenuItem onSelect={() => setDossierId(focusedTask.lead.id)}>累计档案</DropdownMenuItem><DropdownMenuItem onSelect={() => void openAnalysis(focusedTask)}>AI 分析卡</DropdownMenuItem>{focusedTask.task_status === 'completed' && !focusedTask.lead.do_not_contact && !focusedTask.lead.is_blacklisted && !focusedTask.lead.converted_customer_id && <DropdownMenuItem onSelect={() => openSupplementalFollowUp(focusedTask)}>追加跟进</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></div></div>
             <div className="sw-focus-contact-safety">{focusedTask.lead.contact_protection?.can_contact === false && <div className="sw-enrichment-notice" role="status">{focusedTask.lead.contact_protection.reason}<Button size="sm" variant="ghost" onClick={() => setDossierId(focusedTask.lead.id)}>查看档案与交接</Button></div>}<SalesLocalTime {...contactWindow} />{qualityBlocksDial && <p className="sw-enrichment-notice" role="status">此商家核验为号码无效、非目标或已停业，请先重新核实资料。</p>}</div>

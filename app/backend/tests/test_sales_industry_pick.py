@@ -131,3 +131,54 @@ async def test_concurrent_sellers_claim_distinct_merchants_and_retries_are_idemp
     leads = (await dispatch_db.scalars(select(SalesLeads))).all()
     assert len({lead.phone for lead in leads}) == len(leads) == 20
     assert {lead.assigned_sales_id for lead in leads} == {21, 22}
+
+
+@pytest.mark.asyncio
+async def test_zone_stock_and_claim_share_local_hours_identity_and_permissions(sales_app_client, monkeypatch):
+    from services import sales_industry_queue
+    from models.sales_contact_protection import SalesPhoneSuppression
+
+    class SummerClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 7, 8, 16, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(sales_industry_queue, "datetime", SummerClock)
+    day = SummerClock.now(ZoneInfo("Asia/Shanghai")).date()
+    async for db in app.dependency_overrides[get_db]():
+        def source(ident, state, city, owner=1, phone=None):
+            return MerchantPool(id=ident, business_name=f"Test {ident}", phone=phone or f"+1212555{ident:04d}",
+                                industry="餐厅", country="US", state=state, city=city, created_by_id=owner)
+        db.add_all([source(31, "CO", "Denver"), source(32, "AZ", "Phoenix"), source(33, "NY", "New York"),
+                    source(34, "CO", "Denver", phone="(212) 555-0031"), source(35, "CO", "Denver", owner=999),
+                    source(36, "CO", "Denver"), source(37, "CA", "Los Angeles"),
+                    SalesPhoneSuppression(phone_key="+12125550036", blocked=True, reason="test")])
+        await db.commit()
+    params = {"industry": "restaurant"}
+    assert (await sales_app_client.get(f"{WORK}/industry-stock", params=params, headers=ADMIN)).status_code == 403
+    async def read():
+        res = await sales_app_client.get(f"{WORK}/industry-stock", params=params, headers=SALES)
+        assert res.status_code == 200, res.text
+        return {zone["group"]: zone for zone in res.json()["zones"]}
+    stock = await read()
+    assert stock["mountain"] == {"group":"mountain", "total":2, "in_window":1, "local_times":["09:30", "10:30"]}
+    assert stock["pacific"]["total"] == 1 and stock["pacific"]["in_window"] == 0
+    async for db in app.dependency_overrides[get_db]():
+        assert not (await db.scalars(select(SalesDailyDialTasks))).all()
+
+    async def take(group, window_only=True, size=1):
+        res = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES, params={
+            **params, "target_date":day, "timezone_group":group, "window_only":window_only, "batch_size":size})
+        assert res.status_code == 200, res.text
+        return res.json()["created"]
+    assert await take("pacific") == 0
+    assert await take("mountain") == 1
+    assert await take("mountain") == 0
+    assert (await read())["mountain"]["in_window"] == 0
+    snapshot = await sales_app_client.get(f"{WORK}/today", headers=SALES, params={"target_date":day})
+    assert snapshot.json()["self_claimed_count"] == 1 and snapshot.json()["completed_count"] == 0
+    assert await take("eastern") == 1
+    assert await take("pacific", False) == 1
+    async for db in app.dependency_overrides[get_db]():
+        chosen = (await db.scalars(select(SalesLeads).where(SalesLeads.assigned_sales_id == 11))).all()
+        assert {lead.merchant_pool_id for lead in chosen} == {31, 33, 37}

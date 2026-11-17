@@ -6,7 +6,7 @@ const screenshotDir = process.env.T24_PHONE_IMPORT_SCREENSHOT_DIR;
 
 test('扩展模板保留原五列并区分来源资料与人工核验', () => {
   expect(MERCHANT_IMPORT_EXTENDED_HEADERS.slice(0, 5)).toEqual(MERCHANT_IMPORT_HEADERS);
-  expect(MERCHANT_IMPORT_EXTENDED_HEADERS.slice(5)).toEqual(['行业', '来源URL', '来源日期', '核验类型']);
+  expect(MERCHANT_IMPORT_EXTENDED_HEADERS.slice(5)).toEqual(['行业', '来源URL', '来源日期', '核验类型', 'IANA时区']);
   expect(merchantImportRepairAdvice({ status: 'error', reason: '来源URL须为完整链接' })).toContain('http 或 https');
   expect(merchantImportRepairAdvice({ status: 'error', reason: '来源日期不是有效日期' })).toContain('YYYY-MM-DD');
   expect(merchantImportRepairAdvice({ status: 'error', reason: '核验类型不能声明已核实' })).toContain('入池后另行记录');

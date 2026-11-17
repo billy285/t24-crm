@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from models.sales_intelligence import SalesLeadProfiles, SalesOperatingSettings
 from services.sales_intelligence import default_config, unpack
-from services.sales_timezones import resolve_contact_timezone
+from services.sales_timezones import address_timezone_evidence, resolve_contact_timezone
 from services.merchant_identity import has_concrete_name_and_address
 
 
@@ -33,7 +33,8 @@ def contact_queue_context(lead, *, now=None, profile=None, start=10, end=18):
     now = aware(now or datetime.now(timezone.utc))
     profile = profile or {}
     resolved = resolve_contact_timezone(country=lead.country, state=lead.state,
-        city=lead.city, address=lead.address, profile_timezone=profile.get('timezone'))
+        city=lead.city, address=lead.address, profile_timezone=profile.get('timezone'),
+        address_evidence=address_timezone_evidence(profile))
     local = now.astimezone(ZoneInfo(resolved['timezone'])) if resolved['timezone'] else None
     due = aware(lead.next_follow_up_at)
     overdue = bool(due and due <= now)

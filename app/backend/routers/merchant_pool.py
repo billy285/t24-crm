@@ -25,10 +25,11 @@ from services.phone_numbers import normalize_phone_country, parse_phone_number, 
 from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
 from services.merchant_identity import has_concrete_name_and_address
-from services.prospect_verification import inherit_pool_quality, quality_for, quality_for_many, quality_status_expression, source_metadata_from_raw
+from services.prospect_verification import inherit_pool_quality, quality_for, quality_for_many, quality_status_expression, source_metadata_from_raw, unpack
 from services.sales_contact_protection import ensure_phone_contact_allowed
 from services.sales_workflow_locks import lock_sales_workflow
-from services.sales_timezones import STATE_CODES, STATE_NAMES, resolve_contact_timezone, sql_contact_timezone, sql_timezone_group
+from services.sales_timezones import (GROUP_ZONES, STATE_CODES, STATE_NAMES, address_timezone_evidence,
+                                      import_address_timezone, resolve_contact_timezone, sql_matches_contact_zones)
 
 
 router = APIRouter(prefix="/api/v1/merchant-pool", tags=["merchant-pool"])
@@ -231,6 +232,18 @@ class MerchantResponse(BaseModel):
     def normalize_industry(cls, value: Optional[str]) -> Optional[str]:
         return normalize_merchant_industry(value)
 
+    @model_validator(mode="before")
+    @classmethod
+    def imported_contact_timezone(cls, value):
+        if isinstance(value, MerchantPool):
+            evidence = address_timezone_evidence(value.raw_payload)
+            if evidence:
+                fields = {name: getattr(value, name) for name in cls.model_fields if hasattr(value, name)}
+                fields.update(resolve_contact_timezone(**{key: fields[key] for key in ("country", "state", "city", "address")},
+                                                      address_evidence=evidence))
+                return fields
+        return value
+
     @model_validator(mode="after")
     def computed_contact_timezone(self):
         if self.timezone_basis == "unknown":
@@ -290,7 +303,7 @@ HEADER_LOOKUP = {_normalize_header(header): field for header, field in CSV_HEADE
 
 IMPORT_TEMPLATE_HEADERS = ("商家名称", "商家电话", "商家位置", "地区", "来源")
 IMPORT_TEMPLATE_FIELDS = ("business_name", "phone", "address", "region", "data_source")
-IMPORT_OPTIONAL_HEADERS = {"行业": "industry", "来源URL": "source_url", "来源日期": "source_date", "核验类型": "verification_type"}
+IMPORT_OPTIONAL_HEADERS = {"行业": "industry", "来源URL": "source_url", "来源日期": "source_date", "核验类型": "verification_type", "IANA时区": "source_timezone"}
 
 
 def _validate_import_template_headers(headers: list[Any]) -> list[str]:
@@ -303,7 +316,7 @@ def _validate_import_template_headers(headers: list[Any]) -> list[str]:
         actual = "、".join(value or "空列" for value in normalized) or "未读取到表头"
         raise HTTPException(
             status_code=400,
-            detail=f"导入模板不符合要求。第一行必须依次为：{expected}（前五列固定）；可追加行业、来源URL、来源日期、核验类型。当前为：{actual}。请下载模板后重新填写。",
+            detail=f"导入模板不符合要求。第一行必须依次为：{expected}（前五列固定）；可追加行业、来源URL、来源日期、核验类型、IANA时区。当前为：{actual}。请下载模板后重新填写。",
         )
     return normalized
 
@@ -467,6 +480,10 @@ async def _create_sales_lead_from_merchant(
         lead.analysis_snapshot = latest_analysis.analysis_json
     db.add(lead)
     await db.flush()
+    evidence = address_timezone_evidence(merchant.raw_payload)
+    if evidence:
+        db.add(SalesLeadProfiles(lead_id=lead.id, revision=1, payload_json=json.dumps(
+            {"prospect_source": {"address_timezone": evidence}}, ensure_ascii=False)))
     await inherit_pool_quality(db, merchant, lead, user)
     merchant.pool_status = "converted"
     merchant.converted_lead_id = lead.id
@@ -568,6 +585,9 @@ async def _store_record(
     raw = dict(raw_record or record.model_dump(mode="json"))
     metadata_values = {field: raw.get(field) or raw.get(header) for header, field in IMPORT_OPTIONAL_HEADERS.items()}
     raw["prospect_source"] = import_source_metadata(metadata_values)
+    evidence = import_address_timezone(metadata_values.get("source_timezone"), record, raw["prospect_source"].get("source_url"))
+    if evidence:
+        raw["prospect_source"]["address_timezone"] = evidence
     raw["prospect_quality"] = initial_prospect_quality()
     pool_status, reason, duplicate_id, customer_id = await _classify_record_with_reference_lock(db, record)
     collected_at = record.collected_at or datetime.now(timezone.utc)
@@ -638,24 +658,10 @@ async def list_merchant_pool(
                       "state", "city", "address", "website")
     current = {field: case((SalesLeads.id.is_not(None), getattr(SalesLeads, field)),
                            else_=getattr(MerchantPool, field)) for field in current_fields}
-    # Profiles are joined through the already-authorized current lead. Never
-    # use a historical import's location after the visible lead was updated.
+    # Profile and address evidence are only evaluated for a visible current lead.
+    # An original address correction invalidates the evidence for the former address.
     profile_join = SalesLeadProfiles.lead_id == SalesLeads.id
-    address_scope = (select(MerchantPool.id.label("merchant_id"),
-                            *(current[field].label(field) for field in ("country", "state", "city", "address")),
-                            SalesLeadProfiles.payload_json.label("profile_payload"))
-                     .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
-                     .outerjoin(SalesLeadProfiles, profile_join).cte("merchant_contact_address"))
-    resolved = sql_contact_timezone({field: address_scope.c[field] for field in ("country", "state", "city", "address")},
-                                    address_scope.c.profile_payload)
-    # Name the expression shape once in SQL before using it for each
-    # facet/count/page. Repeating the full address CASE per group can exceed
-    # SQLite's bound-variable limit even for a single returned merchant.
-    resolved_scope = select(address_scope.c.merchant_id, *(resolved[field].label(field)
-        for field in ("timezone", "timezone_basis", "timezone_needs_confirmation"))).cte("merchant_contact_timezone")
-    contact_timezone = {field: resolved_scope.c[field] for field in ("timezone", "timezone_basis", "timezone_needs_confirmation")}
-    contact_timezone["timezone_group"] = sql_timezone_group(resolved_scope.c.timezone)
-    timezone_join = resolved_scope.c.merchant_id == MerchantPool.id
+    address_fields = {key: current[key] for key in ("country", "state", "city", "address")}
     conditions = []
     scope = await _manager_scope(db, current_user)
     if scope is not None:
@@ -692,58 +698,58 @@ async def list_merchant_pool(
     if rating_min is not None:
         conditions.append(MerchantPool.rating >= rating_min)
     if timezone_group:
-        conditions.append(contact_timezone["timezone_group"] == timezone_group)
+        selected_zones = GROUP_ZONES.get(timezone_group) or frozenset().union(*GROUP_ZONES.values())
+        matches = sql_matches_contact_zones(address_fields, selected_zones, source_payload=MerchantPool.raw_payload,
+                                            profile_payload=SalesLeadProfiles.payload_json)
+        conditions.append(~matches if timezone_group == "unknown" else matches)
     if not pool_status:
         conditions.append(MerchantPool.pool_status != ARCHIVED_STATUS)
-    # Category counts follow this exact view/search/scope, before applying the
-    # selected category. That keeps the other categories discoverable.
-    facet_query = (select(current["industry"], func.count(MerchantPool.id))
-                   .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
-                   .join(resolved_scope, timezone_join).group_by(current["industry"]))
-    if conditions:
-        facet_query = facet_query.where(*conditions)
+
+    # One group-by computes both facets and the selected total. Applying the
+    # industry and verification filters to these bins preserves both facets
+    # without re-resolving every merchant's timezone for three separate counts.
     dialect = db.get_bind().dialect.name
     pool_quality = quality_status_expression("pool", MerchantPool.id, dialect)
-    # A visible lead owns subsequent sales marks. Older conversions can still
-    # have only their original pool mark. The scoped join also protects facets.
     lead_quality = quality_status_expression("lead", SalesLeads.id, dialect, default=None)
     quality_expression = func.coalesce(lead_quality, pool_quality)
-    if quality_status:
-        facet_query = facet_query.where(quality_expression == quality_status)
-    facets = merchant_industry_facets((await db.execute(facet_query)).all())
+    grouped = (select(current["industry"], quality_expression, func.count(MerchantPool.id))
+               .select_from(MerchantPool).outerjoin(SalesLeads, join_on))
+    if timezone_group:
+        grouped = grouped.outerjoin(SalesLeadProfiles, profile_join)
+    bins = (await db.execute(grouped.where(*conditions).group_by(current["industry"], quality_expression))).all()
+    facets = merchant_industry_facets([(value, count) for value, status, count in bins
+                                      if not quality_status or status == quality_status])
+    quality_facets = dict.fromkeys(("pending", "valid", "invalid_phone", "not_target", "closed"), 0)
+    normalized = normalize_merchant_industry(industry)
+    total = 0
+    for value, status, count in bins:
+        if industry and normalize_merchant_industry(value) != normalized:
+            continue
+        if status in quality_facets:
+            quality_facets[status] += count
+        if not quality_status or quality_status == status:
+            total += count
+
     if industry:
         conditions.append(merchant_industry_filter(current["industry"], industry))
-    quality_query = (select(quality_expression.label("quality_status"), func.count(MerchantPool.id))
-                     .select_from(MerchantPool).outerjoin(SalesLeads, join_on)
-                     .join(resolved_scope, timezone_join).group_by(quality_expression))
-    if conditions:
-        quality_query = quality_query.where(*conditions)
-    quality_facets = dict.fromkeys(("pending", "valid", "invalid_phone", "not_target", "closed"), 0)
-    for status, count in (await db.execute(quality_query)).all():
-        if status in quality_facets:
-            quality_facets[status] = int(count)
     if quality_status:
         conditions.append(quality_expression == quality_status)
-    timezone_fields = tuple(contact_timezone)
-    query = (select(MerchantPool, SalesLeads, *(contact_timezone[key].label(key) for key in timezone_fields))
-             .outerjoin(SalesLeads, join_on).join(resolved_scope, timezone_join))
-    count_query = (select(func.count(MerchantPool.id)).select_from(MerchantPool).outerjoin(SalesLeads, join_on)
-                   .join(resolved_scope, timezone_join))
-    if conditions:
-        query = query.where(*conditions)
-        count_query = count_query.where(*conditions)
-    total = (await db.execute(count_query)).scalar() or 0
-    rows = (await db.execute(query.order_by(MerchantPool.id.desc()).offset(skip).limit(limit))).all()
+    query = (select(MerchantPool, SalesLeads, SalesLeadProfiles.payload_json)
+             .select_from(MerchantPool).outerjoin(SalesLeads, join_on).outerjoin(SalesLeadProfiles, profile_join)
+             .where(*conditions).order_by(MerchantPool.id.desc()).offset(skip).limit(limit))
+    rows = (await db.execute(query)).all()
     quality_by_id = await quality_for_many(db, "pool", [row[0].id for row in rows])
     visible_lead_quality = await quality_for_many(db, "lead", [lead.id for _, lead, *_ in rows if lead is not None])
     items = []
-    for original, lead, *zone_values in rows:
+    for original, lead, profile_payload in rows:
         item = MerchantResponse.model_validate(original).model_dump()
         if lead is not None:
             item.update({field: getattr(lead, field) for field in current_fields})
             item["updated_at"] = lead.updated_at
             item["current_lead_id"] = lead.id
-        item.update(dict(zip(timezone_fields, zone_values)))
+        item.update(resolve_contact_timezone(**{field: item[field] for field in address_fields},
+                    profile_timezone=unpack(profile_payload).get("timezone"),
+                    address_evidence=address_timezone_evidence(original.raw_payload)))
         item["prospect_source"] = source_metadata_from_raw(original.raw_payload, record=original)
         quality = visible_lead_quality.get(lead.id) if lead is not None else None
         item["prospect_quality"] = quality if quality and quality["revision"] else quality_by_id[original.id]
@@ -765,12 +771,11 @@ async def import_merchant_records(
     counts: dict[str, int] = {"pending": 0, "no_phone": 0, "duplicate": 0, "existing_customer": 0, "closed": 0}
     for index, raw_record in enumerate(payload.records, start=1):
         try:
-            from services.merchant_imports import import_source_metadata
-            import_source_metadata(raw_record)
             mapped = dict(raw_record)
             if not mapped.get("industry") and payload.default_industry:
                 mapped["industry"] = payload.default_industry
             record = MerchantRecord.model_validate(_parse_import_values(mapped))
+            merchant = await _store_record(db, record, payload.data_source, current_user, raw_record=raw_record)
         except (ValidationError, TypeError, ValueError) as exc:
             if isinstance(exc, ValidationError):
                 detail = exc.errors()[0]
@@ -780,7 +785,6 @@ async def import_merchant_records(
                 reason = str(exc)
             errors.append({"row": index, "reason": reason})
             continue
-        merchant = await _store_record(db, record, payload.data_source, current_user, raw_record=raw_record)
         created.append(merchant)
         counts[merchant.pool_status] = counts.get(merchant.pool_status, 0) + 1
     if not created:

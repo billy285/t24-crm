@@ -5,9 +5,13 @@ area code is deliberately never an input: a business may keep a ported number.
 Split-zone states require a reviewed city or an existing explicit IANA override.
 """
 
+import json
+from collections import defaultdict
 from zoneinfo import available_timezones
 
 from sqlalchemy import and_, case, func, literal, or_
+
+from services.merchant_identity import has_concrete_name_and_address
 
 
 TIMEZONE_GROUPS = ("eastern", "central", "mountain", "pacific", "alaska", "hawaii", "unknown")
@@ -108,10 +112,47 @@ def timezone_group(zone):
     return next((group for group, zones in GROUP_ZONES.items() if zone in zones), "unknown")
 
 
-def resolve_contact_timezone(*, country=None, state=None, city=None, address=None, profile_timezone=None):
-    """Return a computed read model; never persist an inferred zone as confirmed."""
+ADDRESS_FIELDS = ("country", "state", "city", "address")
+US_IANA_ZONES = frozenset().union(*GROUP_ZONES.values()) & VALID_TIMEZONES
+
+
+def address_timezone_evidence(payload):
+    """Only consume normalized import evidence, never an arbitrary raw timezone."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except ValueError:
+            return None
+    metadata = payload.get("prospect_source") if isinstance(payload, dict) else None
+    return metadata.get("address_timezone") if isinstance(metadata, dict) else None
+
+
+def import_address_timezone(zone, record, source_url):
+    if zone is None or zone == "":
+        return None
+    if not isinstance(zone, str):
+        raise ValueError("IANA时区需要填写有效的美国时区名称")
+    zone = zone.strip()
+    location = [getattr(record, field, None) or "" for field in ADDRESS_FIELDS]
+    country, state, city, address = location
+    state_code = STATE_CODES.get(state.strip().upper(), state.strip().upper())
+    if (zone not in US_IANA_ZONES or _place_key(country) not in US_COUNTRIES
+            or state_code not in STATE_NAMES or not city.strip() or not has_concrete_name_and_address(record) or not source_url):
+        raise ValueError("IANA时区需要有效的美国时区、完整门店地址（国家、州、城市、街道）和来源URL")
+    if state_code in STATE_ZONES and timezone_group(STATE_ZONES[state_code]) != timezone_group(zone):
+        raise ValueError("IANA时区与门店所在州不一致")
+    return {"zone": zone, "location": location}
+
+
+def resolve_contact_timezone(*, country=None, state=None, city=None, address=None, profile_timezone=None, address_evidence=None):
+    """A reviewed source location remains inferred, including after conversion."""
     zone = valid_timezone(profile_timezone)
     basis = "confirmed_profile" if zone else "unknown"
+    if not zone and isinstance(address_evidence, dict):
+        if address_evidence.get("location") == [country or "", state or "", city or "", address or ""]:
+            candidate = address_evidence.get("zone")
+            if isinstance(candidate, str) and candidate in US_IANA_ZONES:
+                zone, basis = candidate, "address_source"
     if not zone and _place_key(country) in US_COUNTRIES:
         state = str(state or "").strip(TRIM_CHARACTERS).upper()
         state = STATE_CODES.get(state, state)
@@ -139,36 +180,77 @@ def sql_timezone_group(zone):
     return case(*[(zone.in_(sorted(zones)), key) for key, zones in GROUP_ZONES.items()], else_="unknown")
 
 
-def sql_contact_timezone(fields, profile_payload=None):
-    """SQL equivalent used before filtering, facet counting and pagination.
-
-    The caller supplies its currently authorized address expressions. Raw import
-    metadata is not consulted, so later lead edits cannot resurrect a stale zone.
-    """
+def _sql_address_rules(fields):
     state = func.upper(func.trim(func.coalesce(fields["state"], ""), TRIM_CHARACTERS))
     is_us = _sql_place_key(fields["country"]).in_(sorted(US_COUNTRIES))
     city = _sql_place_key(fields["city"])
+    states_by_zone = defaultdict(list)
+    for state_code, zone in STATE_ZONES.items():
+        states_by_zone[zone].extend((state_code, STATE_NAMES[state_code].upper()))
+    state_rules = [(state.in_(codes), zone) for zone, codes in states_by_zone.items()]
+    city_rules = []
+    for state_code, zone, cities in _CITY_ROWS:
+        matches = and_(state.in_((state_code, STATE_NAMES[state_code].upper())), city.in_([_place_key(c) for c in cities]))
+        if state_code == "AZ":
+            street = func.lower(func.coalesce(fields["address"], ""))
+            matches = and_(matches, *(~street.contains(marker) for marker in NAVAJO_MARKERS))
+        city_rules.append((matches, zone))
+    return is_us, state_rules, city_rules
 
-    def state_is(code):
-        return state.in_((code, STATE_NAMES[code].upper()))
 
-    navajo = and_(state_is("AZ"), or_(*(func.lower(func.coalesce(fields["address"], "")).contains(marker) for marker in NAVAJO_MARKERS)))
-    address_allowed = and_(is_us, ~navajo)
-    state_conditions = [(and_(address_allowed, state_is(code)), zone) for code, zone in STATE_ZONES.items()]
-    city_conditions = [(and_(address_allowed, state_is(code), city.in_([_place_key(value) for value in cities])), zone)
-                       for code, zone, cities in _CITY_ROWS]
-    derived_zone = case(*(state_conditions + city_conditions), else_=None)
-    derived_basis = case(*[(condition, "address_state") for condition, _ in state_conditions],
-                         *[(condition, "address_city") for condition, _ in city_conditions], else_="unknown")
+def _sql_source_zone(fields, payload):
+    # Check the small locator first; old rows have no such evidence. An address
+    # edit invalidates the imported inference in both pool and converted leads.
+    document = case((func.json_valid(payload), payload), else_="{}")
+    path = "$.prospect_source.address_timezone"
+    candidate = func.json_extract(document, path + ".zone")
+    loc = func.json_array(*(func.coalesce(fields[field], "") for field in ADDRESS_FIELDS))
+    return case((candidate.in_(sorted(US_IANA_ZONES)),
+                 case((func.json_extract(document, path + ".location") == loc, candidate))))
+
+
+def _sql_manual_zone(payload):
+    document = case((func.json_valid(payload), payload), else_="{}")
+    candidate = func.trim(func.json_extract(document, "$.timezone"), TRIM_CHARACTERS)
+    return case((candidate.in_(sorted(VALID_TIMEZONES)), candidate))
+
+
+def sql_matches_contact_zones(fields, zones, *, source_payload=None, profile_payload=None):
+    """Filter on exact IANA zones without expanding the timezone CASE per group."""
+    selected = frozenset(zones) & VALID_TIMEZONES
+    if not selected:
+        return literal(False)
+    is_us, state_rules, city_rules = _sql_address_rules(fields)
+    rules = [condition for condition, zone in (*state_rules, *city_rules) if zone in selected]
+    derived = and_(is_us, or_(*rules)) if rules else literal(False)
+    if source_payload is None:
+        source_payload = profile_payload  # Converted leads keep their import evidence in the profile.
+    for payload, manual in ((source_payload, False), (profile_payload, True)):
+        if payload is not None:
+            explicit = _sql_manual_zone(payload) if manual else _sql_source_zone(fields, payload)
+            # NULL falls back, a different valid manual zone suppresses inference.
+            derived = func.coalesce(explicit.in_(sorted(selected)), derived)
+    return derived
+
+
+def sql_contact_timezone(fields, profile_payload=None, *, source_payload=None):
+    """Resolve only the authorized location. Source evidence must match it exactly."""
+    is_us, state_rules, city_rules = _sql_address_rules(fields)
+    zone = case((is_us, case(*(state_rules + city_rules))))
+    inferred_basis = case(*[(condition, "address_state") for condition, _ in state_rules],
+                          *[(condition, "address_city") for condition, _ in city_rules], else_="unknown")
+    basis = case((is_us, inferred_basis), else_="unknown")
+    needs_confirmation = literal(True)
+    if source_payload is None:
+        source_payload = profile_payload
+    if source_payload is not None:
+        source = _sql_source_zone(fields, source_payload)
+        zone = func.coalesce(source, zone)
+        basis = case((source.is_not(None), "address_source"), else_=basis)
     if profile_payload is not None:
-        safe_payload = case((func.json_valid(profile_payload), profile_payload), else_="{}")
-        manual = case((func.json_type(safe_payload, "$.timezone") == "text", func.trim(func.json_extract(safe_payload, "$.timezone"), TRIM_CHARACTERS)), else_=None)
-        manual_valid = manual.in_(sorted(VALID_TIMEZONES))
-        zone = case((manual_valid, manual), else_=derived_zone)
-        basis = case((manual_valid, "confirmed_profile"), else_=derived_basis)
-        needs_confirmation = case((manual_valid, False), else_=True)
-    else:
-        zone, basis, needs_confirmation = derived_zone, derived_basis, literal(True)
-    group = sql_timezone_group(zone)
-    return {"timezone": zone, "timezone_group": group, "timezone_basis": basis,
+        manual = _sql_manual_zone(profile_payload)
+        zone = func.coalesce(manual, zone)
+        basis = case((manual.is_not(None), "confirmed_profile"), else_=basis)
+        needs_confirmation = manual.is_(None)
+    return {"timezone": zone, "timezone_group": sql_timezone_group(zone), "timezone_basis": basis,
             "timezone_needs_confirmation": needs_confirmation}

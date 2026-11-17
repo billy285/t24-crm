@@ -34,6 +34,7 @@ from services.phone_numbers import parse_phone_number, phone_match_key
 from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_identity import concrete_location_key
 from services.merchant_industries import normalize_merchant_industry
+from services.sales_timezones import import_address_timezone
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_EXPANDED_BYTES = 30 * 1024 * 1024
@@ -160,9 +161,13 @@ def _identity_keys(record) -> list[str]:
 async def evaluate_rows(db: AsyncSession, rows: list[dict]) -> list[dict]:
     # Take one identity snapshot instead of scanning every table per uploaded row.
     identities: dict[str, dict] = {}
-    customers = (await db.execute(select(Customers))).scalars().all()
-    merchants = (await db.execute(select(MerchantPool))).scalars().all()
-    leads = (await db.execute(select(SalesLeads))).scalars().all()
+    # Historical dossiers and complete raw import payloads are unnecessary for
+    # matching, and can dwarf the actual identity columns in a national pool.
+    def identity_columns(model):
+        return (model.id, model.business_name, model.address, model.phone, model.country, model.website)
+    customers = (await db.execute(select(*identity_columns(Customers)))).all()
+    merchants = (await db.execute(select(*identity_columns(MerchantPool), MerchantPool.duplicate_of_id))).all()
+    leads = (await db.execute(select(*identity_columns(SalesLeads)))).all()
     merchant_ids = {merchant.id for merchant in merchants}
     for records, kind in ((customers, "customer"), (merchants, "merchant"), (leads, "lead")):
         for record in records:
@@ -192,6 +197,7 @@ async def evaluate_rows(db: AsyncSession, rows: list[dict]) -> list[dict]:
             if len(source) > 50:
                 raise ValueError("来源最多填写 50 个字符")
             metadata = import_source_metadata(mapped)
+            source_zone = mapped.pop("source_timezone", None)
             for field in ("source_url", "source_date", "verification_type"):
                 mapped.pop(field, None)
             if not mapped.get("industry") and row.get("import_defaults", {}).get("industry"):
@@ -199,6 +205,9 @@ async def evaluate_rows(db: AsyncSession, rows: list[dict]) -> list[dict]:
             if len(mapped.get("industry", "")) > 100:
                 raise ValueError("行业最多 100 字")
             record = MerchantRecord.model_validate(_parse_import_values(mapped))
+            evidence = import_address_timezone(source_zone, record, metadata.get("source_url"))
+            if evidence:
+                metadata["address_timezone"] = evidence
             if not record.business_name.strip():
                 raise ValueError("商家名称不能为空")
         except (ValidationError, ValueError, TypeError) as error:
