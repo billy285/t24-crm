@@ -1,0 +1,63 @@
+{
+  "backend_files": {
+    "routers/sales_leads.py": {
+      "bytes": 141428,
+      "sha256": "3718cdf3a581ce56c243d0b8ebbf12008cfe70b141d02935b6bf4790dbb46feb"
+    },
+    "services/merchant_industries.py": {
+      "bytes": 4156,
+      "sha256": "24eb3a33beab207ae0625ab5f8db1c6f10212b36c06cfd4b6bfd874900a6c2c6"
+    },
+    "services/sales_industry_queue.py": {
+      "exists": false
+    },
+    "services/sales_industry_reporting.py": {
+      "exists": false
+    }
+  },
+  "backend_matches_baseline_source": true,
+  "base_image_config_sha256": "35f5207aa8b8d3ef7761ea59ee38df4c5a80d47181651ba9c3ac3f8031c27d43",
+  "base_image_id": "sha256:c0c34e83054de6dca142c5853c87f6567ec099da893ad661f46971d0418a37bb",
+  "base_image_repo_digests": [
+    "t24-crm@sha256:c0c34e83054de6dca142c5853c87f6567ec099da893ad661f46971d0418a37bb"
+  ],
+  "code_overlay_destinations": [],
+  "database_reads": false,
+  "eligible_for_image_only_backend_patch": true,
+  "environment_values_output": false,
+  "expected_backend_sha256": {
+    "routers/sales_leads.py": "3718cdf3a581ce56c243d0b8ebbf12008cfe70b141d02935b6bf4790dbb46feb",
+    "services/merchant_industries.py": "24eb3a33beab207ae0625ab5f8db1c6f10212b36c06cfd4b6bfd874900a6c2c6",
+    "services/sales_industry_queue.py": null,
+    "services/sales_industry_reporting.py": null
+  },
+  "host_metadata": {
+    "auto_remove": false,
+    "network_mode": "app_default",
+    "read_only_rootfs": false
+  },
+  "lifecycle_operations": false,
+  "mount_metadata": [
+    {
+      "destination": "/app/backend/data",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/app/backend/logs",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/run/secrets/t24_crm_stripe_history_readonly",
+      "rw": false,
+      "type": "bind"
+    }
+  ],
+  "mount_sources_output": false,
+  "provider_requests": false,
+  "read_only": true,
+  "runtime_id": "2174bcd68758d047b963b2efac0434b78f045e28f49fb021fef9032b4249d7ed",
+  "runtime_image": "sha256:c0c34e83054de6dca142c5853c87f6567ec099da893ad661f46971d0418a37bb",
+  "stage": "CRM_SALES_INDUSTRY_CHOICE_TARGET_PROBE"
+}

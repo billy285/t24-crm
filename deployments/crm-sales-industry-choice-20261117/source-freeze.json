@@ -1,0 +1,30 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "65655c0cccc3f4ffa41c090135aac107c966c2e1",
+  "baseline_source_sha": "64437f2418129c296568e636dcfbd0a1aa325e1d",
+  "build_receipt_sha256": "de3827826b880cf405493014c9d4a913e2c5d9bcabc2a7e99a6844b0b052e6e9",
+  "changed_source_files": {
+    "app/backend/routers/sales_leads.py": "fb48616fbf671bf51babd22070a0b9874bdbc986f69ec53bcedb1117f5992a20",
+    "app/backend/services/merchant_industries.py": "10bcb4f942bf32e4d26a3785ecc1a9e6f5b8c7ebc2e7be2373b4abedc4234125",
+    "app/backend/services/sales_industry_queue.py": "1cc9b18a68cedadf1b73b45e6d2bcf2dc339820fecf7cb626783eca2d8ac51df",
+    "app/backend/services/sales_industry_reporting.py": "75d5ef643bc938e7ae4e5092fa23d9c4dbc2ec4d747e14508de6376b67886279",
+    "app/frontend/src/components/SalesIndustryReport.tsx": "65857e95e13bcb895e08a5ae2a16b895bb2b5bf59c2cfc0f47961461eb112486",
+    "app/frontend/src/components/SalesTeamPerformance.tsx": "2c7ebe69197ebab02b2c8d7f46a9f16741d44ddd24800ad54f9df831482d4364",
+    "app/frontend/src/pages/SalesLeads.tsx": "5ebad04ca3c5e103147ef77004f0cecd1abbfaa6b24046323b9e032b3bf7d6fe",
+    "app/frontend/src/pages/SalesWorkbench.tsx": "7caa4a87a63529506a8ff95eb4530463195fbe3d0ef1c44b60799adadaf2b3ca",
+    "app/frontend/src/pages/sales-workbench-industry.ts": "a8f5b65f5dca420855af6a85bf067945b183ebbddd8003497b5a3403c05b4e1f",
+    "app/frontend/src/pages/sales-workbench-refined.css": "ddf926ffb233ba38ce4868d3dbd409e5cdd135f8eb7c4d0fd928378b62116ebb"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_ringcentral_report_health.py": "203925e70b987d2c18c3b828fd51c46f6eada41cd5b5fdb455f1c78ed8263b67",
+    "app/backend/tests/test_sales_industry_pick.py": "7ad5474f6259414e4e914a208fdd68d052528f22b407a1423dd9cca23b4ac67c",
+    "app/frontend/tests/sales-nine-workbench.spec.ts": "704468e812f959685ab64f79b106d1bbc04f5c64d70adbda96194e08acf683b6"
+  },
+  "dist_inventory_sha256": "7294d0a746861184d0841ad0ae68f65b6e4fa29fb5640fda3095f59b477195f3",
+  "fresh_build_passed": true,
+  "frontend_version": "88c6377ab8a2",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "41d4f3df7c79cf40e1bfd3b0068eb4d4f2551c09",
+  "stage": "CRM_SALES_INDUSTRY_CHOICE_SOURCE_FREEZE"
+}

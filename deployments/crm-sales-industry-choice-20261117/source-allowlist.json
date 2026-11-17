@@ -1,0 +1,12 @@
+[
+  "app/backend/routers/sales_leads.py",
+  "app/backend/services/merchant_industries.py",
+  "app/backend/services/sales_industry_queue.py",
+  "app/backend/services/sales_industry_reporting.py",
+  "app/frontend/src/components/SalesIndustryReport.tsx",
+  "app/frontend/src/components/SalesTeamPerformance.tsx",
+  "app/frontend/src/pages/SalesLeads.tsx",
+  "app/frontend/src/pages/SalesWorkbench.tsx",
+  "app/frontend/src/pages/sales-workbench-industry.ts",
+  "app/frontend/src/pages/sales-workbench-refined.css"
+]
