@@ -151,10 +151,10 @@ test('登录用户、销售与lead分别隔离，task编号相同也不会串稿
   const data = await fixture(page, { user: { ...employee, id: 1, role: 'sales_manager' } });
   await open(page);
   await notes(page).fill('主管1为销售甲商家1记录的草稿');
-  await page.getByRole('combobox', { name: '当前销售', exact: true }).selectOption('28');
+  await page.getByRole('combobox', { name: '选择销售', exact: true }).selectOption('28');
   await expect(notes(page)).toHaveValue('');
   await notes(page).fill('主管1为销售乙的草稿');
-  await page.getByRole('combobox', { name: '当前销售', exact: true }).selectOption('27');
+  await page.getByRole('combobox', { name: '选择销售', exact: true }).selectOption('27');
   await expect(notes(page)).toHaveValue('主管1为销售甲商家1记录的草稿');
   data.changeLead(777);
   await page.reload();
@@ -246,8 +246,8 @@ test('显式退出会清除内存兜底，同账号重新登录也不会恢复�
   await notes(page).fill('退出后不得恢复的内存草稿');
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await page.getByPlaceholder('请输入邮箱', { exact: true }).fill('sales@example.test');
-  await page.getByPlaceholder('请输入密码', { exact: true }).fill('mock-password-only');
+  await page.getByRole('textbox', { name: '用户名或邮箱', exact: true }).fill('sales@example.test');
+  await page.getByLabel('密码', { exact: true }).fill('mock-password-only');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('navigation', { name: '销售中心导航' }).getByRole('link', { name: '今日拨打', exact: true }).click();
   await expect(notes(page)).toHaveValue('');
