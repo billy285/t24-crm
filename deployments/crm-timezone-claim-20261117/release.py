@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("runtime", ROOT / "runtime.py")
@@ -144,8 +145,22 @@ def nginx_switch(before, after):
     run(["systemctl","reload","nginx"])
 
 def web_version():
-    return json.loads(run(["curl","--noproxy","*","--resolve","t24-crm.com:443:127.0.0.1","-fsS","--max-time","12",
-                           "https://t24-crm.com/app-version.json"]))["version"]
+    return json.loads(run(["curl","-q","--noproxy","*","--resolve","t24-crm.com:443:127.0.0.1","-fsS","--max-time","5",
+                           "-H","Cache-Control: no-cache","-H","Connection: close",
+                           "https://t24-crm.com/app-version.json?release_check="+str(time.monotonic_ns())],timeout=8))["version"]
+
+def wait_web_version(expected, timeout=30):
+    deadline = time.monotonic() + timeout
+    observed = "no response"
+    while time.monotonic() < deadline:
+        try:
+            observed = web_version()
+            if observed == expected:
+                return observed
+        except (RuntimeError, subprocess.TimeoutExpired, ValueError, KeyError) as error:
+            observed = type(error).__name__
+        time.sleep(0.5)
+    raise RuntimeError(f"frontend version did not converge: expected {expected}, last observed {observed}")
 
 def rollback():
     original = rt.inspect(old_id)
@@ -162,14 +177,15 @@ def rollback():
         run(["docker","start",old_id])
     rt.ready(old_id,120)
     nginx_switch((ROOT/"nginx-after").read_bytes(),(ROOT/"nginx-before").read_bytes())
-    require(web_version() == m["previous_version"],"previous frontend did not recover")
+    wait_web_version(m["previous_version"])
     save("rollback.json",{"source":s,"restored":old_id,"version":m["previous_version"]})
     return saved("rollback.json")
 
-def status():
+def status(expected_frontend=None):
     active = rt.inspect("t24-crm")
     return {"container_id":active["Id"],"image":active["Image"],"running":active["State"]["Running"],
-            "source":(active["Config"].get("Labels") or {}).get("t24.release.source"),"frontend_version":web_version()}
+            "source":(active["Config"].get("Labels") or {}).get("t24.release.source"),
+            "frontend_version":wait_web_version(expected_frontend) if expected_frontend else web_version()}
 
 def activate():
     p = saved("prepared.json")
@@ -191,7 +207,7 @@ def activate():
         rt.configuration_equal(rt.inspect(candidate),original,p["image"],s)
         require(digest(json.dumps(rt.inventory(candidate),sort_keys=True).encode()) == p["expected_inventory"],"activated source differs from candidate")
         nginx_switch((ROOT/"nginx-before").read_bytes(),(ROOT/"nginx-after").read_bytes())
-        value = status()
+        value = status(m["version"])
         require(value["frontend_version"] == m["version"] and value["container_id"] == candidate,"activated release is not live")
         save("deployed.json",value)
         return value
