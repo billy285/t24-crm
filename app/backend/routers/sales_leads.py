@@ -1,11 +1,11 @@
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +35,9 @@ from schemas.aihub import ChatMessage, GenTxtRequest
 from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
-from services.sales_task_assignment import sync_pending_daily_tasks
+from services.sales_task_assignment import lead_has_active_closer, sync_pending_daily_tasks
+from services.sales_closing_queue import (ClosingAction, POSITIVE, closing_list, closing_dial_target, management_actor,
+    previous_interest, record_manual_interest, retain_legacy_interest, update_closing)
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
 from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
@@ -529,14 +531,14 @@ def _suggest_follow_up(outcome: str, now: datetime) -> tuple[Optional[datetime],
     return (now + timedelta(days=days) if days is not None else None), label
 
 
-def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, next_follow_up_at: Optional[datetime]) -> Optional[datetime]:
+def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, next_follow_up_at: Optional[datetime], *, preserve_interest=False) -> Optional[datetime]:
     """Apply deterministic retry/cooling rules while keeping every call activity immutable."""
     lead.last_contact_at = now
     lead.last_automation_at = now
     if outcome == "no_answer":
         attempts = int(lead.contact_attempt_count or 0) + 1
         lead.contact_attempt_count = attempts
-        if attempts >= 3:
+        if attempts >= 3 and not preserve_interest:
             old_id = lead.assigned_sales_id
             lead.last_assigned_sales_id = old_id
             lead.assigned_sales_id = None
@@ -550,7 +552,7 @@ def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, nex
             return lead.cooldown_until
         retry_days = 2 if attempts == 1 else 7
         lead.next_follow_up_at = now + timedelta(days=retry_days)
-        lead.automation_state = "assigned"
+        lead.automation_state = "protected" if preserve_interest else "assigned"
         lead.last_recycle_reason = f"第{attempts}次未接通，{retry_days}天后重试"
         return lead.next_follow_up_at
     if outcome in {"not_now", "existing_provider"}:
@@ -576,6 +578,18 @@ def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, nex
     else:
         lead.automation_state = "assigned"
     return next_follow_up_at
+
+
+async def _apply_contact_outcome(db, lead, outcome, now, next_follow_up_at, user):
+    prior = lead.status
+    positive = prior if prior in POSITIVE else None
+    if outcome == "no_answer" and not positive:
+        positive = await previous_interest(db, lead.id)
+    if prior in POSITIVE and outcome not in POSITIVE:
+        await retain_legacy_interest(db, lead, user)
+    missed_after_interest = outcome == "no_answer" and positive is not None
+    lead.status = positive if missed_after_interest else _lead_status_from_outcome(outcome)
+    return _apply_automation_outcome(lead, outcome, now, next_follow_up_at, preserve_interest=missed_after_interest)
 
 
 def _workbench_priority(lead: SalesLeads, target_date: date) -> tuple[str, str]:
@@ -611,6 +625,8 @@ def _recovery_state(
     """Return a transparent recovery state without silently changing ownership."""
     if lead.converted_customer_id or lead.status in {"won", "lost", "blocked"} or lead.do_not_contact or lead.is_blacklisted:
         return "excluded", "已成交、无意向或受保护线索不会进入回收流程", None
+    if lead.automation_state == "closing_active":
+        return "protected", "主管或老板已接手踢单", None
     if lead.status in PROTECTED_LEAD_STATUSES:
         return "protected", "已约定回访、有意向或已预约，需主管确认并填写原因后才可转交", None
     protection_until = _as_utc(protection_until)
@@ -744,6 +760,37 @@ async def _load_recovery_snapshot(
             },
         })
     return snapshot
+
+
+@router.get("/closing-queue")
+async def get_closing_queue(
+    stage: Literal["active", "all", "pending", "working", "lost", "won"] = "active",
+    source_sales_id: Optional[int] = None, search: str = Query("", max_length=200),
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    actor = await management_actor(db, current_user)
+    return await closing_list(db, await _scope_condition(db, actor),
+                              stage, source_sales_id, search, page, page_size)
+
+
+@router.get("/closing-queue/{lead_id}/dial-target")
+async def get_closing_dial_target(
+    lead_id: int, response: Response, revision: Optional[int] = Query(None, ge=0),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    actor = await management_actor(db, current_user)
+    response.headers["Cache-Control"] = "no-store"
+    return await closing_dial_target(db, lead_id, actor, await _scope_condition(db, actor), revision)
+
+
+@router.post("/closing-queue/{lead_id}")
+async def record_closing_action(
+    lead_id: int, payload: ClosingAction,
+    current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    return await update_closing(db, lead_id, current_user, _scope_condition, payload)
 
 
 @router.get("/assignees", response_model=List[SalesAssigneeResponse])
@@ -906,6 +953,8 @@ async def start_assigned_lead_task(
     ensure_enrichment_editable(lead)
     if lead.status in {"lost", "won", "blocked"}:
         raise HTTPException(409, "该商家已结束电话跟进")
+    if await lead_has_active_closer(db, lead.id):
+        raise HTTPException(409, "该商家已由主管或老板接手踢单")
     if (await quality_for(db, "lead", lead.id))["status"] in {"invalid_phone", "not_target", "closed"}:
         raise HTTPException(409, "该商家已标记为号码无效、非目标或停业")
 
@@ -1747,6 +1796,7 @@ async def convert_sales_lead_to_customer(
         lead_snapshot_json=json.dumps(snapshot, ensure_ascii=False, default=str), generate_service_board=generate_service_board,
         service_progress_id=service_progress.id if service_progress else None, converted_by_id=_employee_id(current_user), converted_by_name=current_user.name,
     ))
+    await retain_legacy_interest(db, lead, current_user)
     lead.converted_customer_id = customer.id
     lead.converted_at = datetime.now(timezone.utc)
     lead.converted_by_id = _employee_id(current_user)
@@ -2351,8 +2401,7 @@ async def record_daily_call_result(
     await _attach_result_provider_call(db, lead, activity, task,
         dial_attempt.started_at if dial_attempt else task.dial_started_at)
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
-    lead.status = _lead_status_from_outcome(payload.outcome)
-    next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
+    next_follow_up_at = await _apply_contact_outcome(db, lead, payload.outcome, now, next_follow_up_at, current_user)
     activity.next_follow_up_at = next_follow_up_at
     if old_assignment[0] and lead.assigned_sales_id is None:
         await sync_pending_daily_tasks(db, lead, None)
@@ -2401,6 +2450,8 @@ async def record_supplemental_follow_up(
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if _role(current_user) == "sales" and lead.assigned_sales_id != _employee_id(current_user):
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")
+    if payload.outcome != "do_not_contact" and await lead_has_active_closer(db, lead.id):
+        raise HTTPException(409, "该商家已由主管或老板接手，请在踢单名单记录进展")
     await ensure_lead_contact_allowed(db, lead)
     ensure_enrichment_editable(lead)
     if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
@@ -2435,8 +2486,7 @@ async def record_supplemental_follow_up(
         await _attach_result_provider_call(db, lead, activity,
             await db.get(SalesDailyDialTasks, dial_attempt.task_id), dial_attempt.started_at)
     old_assignment = (lead.assigned_sales_id, lead.assigned_sales_name)
-    lead.status = _lead_status_from_outcome(payload.outcome)
-    next_follow_up_at = _apply_automation_outcome(lead, payload.outcome, now, next_follow_up_at)
+    next_follow_up_at = await _apply_contact_outcome(db, lead, payload.outcome, now, next_follow_up_at, current_user)
     activity.next_follow_up_at = next_follow_up_at
     if old_assignment[0] and lead.assigned_sales_id is None:
         await sync_pending_daily_tasks(db, lead, None)
@@ -2487,6 +2537,8 @@ async def record_ringcentral_dial_started(
     if task.status not in {"pending", "completed"}:
         raise HTTPException(status_code=400, detail="该任务已转交或取消，请刷新当前队列")
     lead = await _get_scoped_lead(db, task.lead_id, current_user)
+    if await lead_has_active_closer(db, lead.id):
+        raise HTTPException(409, "该商家已由主管或老板接手踢单")
     await ensure_lead_contact_allowed(db, lead)
     if (await quality_for(db, 'lead', lead.id))['status'] in {'invalid_phone', 'not_target', 'closed'}:
         raise HTTPException(409, "该商家核验为无效或非目标，请核实资料并更新核验状态后再拨打")
@@ -2604,6 +2656,8 @@ async def create_sales_lead(
     )
     db.add(lead)
     await db.flush()
+    if lead.status in POSITIVE:
+        record_manual_interest(db, lead, current_user)
     if lead_is_blocked(lead):
         await persist_lead_suppression(db, lead, current_user)
     await db.commit()
@@ -2656,10 +2710,21 @@ async def update_sales_lead(
     if updates.get("is_blacklisted") or updates.get("do_not_contact"):
         updates["status"] = "blocked"
 
+    if "status" in updates or "notes" in updates:
+        await retain_legacy_interest(db, lead, current_user)
+    changing_closing_schedule = (
+        ("next_follow_up_at" in updates and _as_utc(updates["next_follow_up_at"]) != _as_utc(lead.next_follow_up_at))
+        or ("status" in updates and updates["status"] != lead.status)
+    )
+    if updates.get("status") != "blocked" and changing_closing_schedule and await lead_has_active_closer(db, lead.id):
+        raise HTTPException(409, "主管或老板已接手，回访时间和进展请在踢单名单更新")
+    new_interest = updates.get("status") in POSITIVE and lead.status != updates.get("status")
     for key, value in updates.items():
         if hasattr(lead, key):
             setattr(lead, key, value)
     lead.updated_at = datetime.now(timezone.utc)
+    if new_interest:
+        record_manual_interest(db, lead, current_user)
     if lead_is_blocked(lead):
         await persist_lead_suppression(db, lead, current_user, preserve_releases=was_blocked)
         await sync_pending_daily_tasks(db, lead, None)

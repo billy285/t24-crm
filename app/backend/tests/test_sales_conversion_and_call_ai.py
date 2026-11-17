@@ -27,6 +27,11 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
         json={"outcome": "interested", "notes": "需要报价，约下周回访", "next_follow_up_at": "2026-08-08T15:00:00+08:00"},
     )
     assert recorded.status_code == 200
+    closing = await sales_app_client.post(
+        f"/api/v1/sales-leads/closing-queue/{lead_id}", headers=manager,
+        json={"action": "claim", "revision": 0},
+    )
+    assert closing.status_code == 200, closing.text
     history = await sales_app_client.get(f"/api/v1/sales-leads/{lead_id}/call-history", headers=sales)
     activity_id = history.json()[0]["id"]
 
@@ -107,6 +112,9 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
     assert converted.json()["service_progress_id"]
     customer = await sales_app_client.get(f"/api/v1/entities/customers/{converted.json()['customer_id']}", headers=admin)
     assert customer.json()["status"] == "closed"
+    assert customer.json()["sales_employee_id"] == 11
+    won = await sales_app_client.get("/api/v1/sales-leads/closing-queue", headers=manager, params={"stage": "won"})
+    assert [(row["lead_id"], row["source_sales_id"], row["closer_id"]) for row in won.json()["items"]] == [(lead_id, 11, 10)]
     board = await sales_app_client.get(f"/api/v1/entities/service_progresses/{converted.json()['service_progress_id']}", headers=admin)
     assert board.json()["issue_status"] == "none"
     assert board.json()["ops_person"]
@@ -121,6 +129,7 @@ async def test_post_call_analysis_and_manager_conversion_keep_lead_history(sales
     assert deals.json()["total"] == 1
     assert deals.json()["items"][0]["package_name"] == "基础套餐"
     assert deals.json()["items"][0]["deal_amount"] == 198
+    assert deals.json()["items"][0]["sales_employee_id"] == 11
 
     payments = await sales_app_client.get(
         "/api/v1/entities/payments/all",

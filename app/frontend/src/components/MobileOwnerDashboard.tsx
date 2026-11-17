@@ -46,7 +46,7 @@ export default function MobileOwnerDashboard({ cockpit, scanCurrent }: MobileOwn
     { label: '公司战略', path: '/company-roadmap', icon: Target },
     { label: '客户中心', path: '/customers', icon: Users },
     { label: '财务结算', path: '/finance', icon: WalletCards },
-    { label: '销售中心', path: '/sales-workbench', icon: Headphones },
+    { label: '意向踢单', path: '/sales-leads?view=closing', icon: Headphones },
   ].filter(item => canOpen(item.path));
   const usd = cockpit.finance.USD;
   const SummaryIcon = scanCurrent ? CheckCircle2 : Info;

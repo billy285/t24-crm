@@ -1,11 +1,30 @@
 """Move today's pending work without changing completed call attribution."""
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from sqlalchemy import select
+from sqlalchemy import func, select
+from models.sales_intelligence import SalesInsightEvents
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
+
+CLOSING_EVENTS = ("closing_claim", "closing_follow_up", "closing_take_over", "closing_lost")
+
+
+def active_closing_leads():
+    event = SalesInsightEvents
+    latest = (select(func.max(event.id)).where(event.kind.in_(CLOSING_EVENTS)).group_by(event.lead_id))
+    return select(event.lead_id).where(event.id.in_(latest), event.kind != "closing_lost")
+
+
+async def lead_has_active_closer(db, lead_id):
+    latest = await db.scalar(select(SalesInsightEvents.kind).where(
+        SalesInsightEvents.lead_id == lead_id, SalesInsightEvents.kind.in_(CLOSING_EVENTS)
+    ).order_by(SalesInsightEvents.id.desc()).limit(1))
+    return latest is not None and latest != "closing_lost"
+
 
 async def sync_pending_daily_tasks(db, lead, new_employee_id, *, now=None):
     today = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("Asia/Shanghai")).date()
+    if new_employee_id is not None and await lead_has_active_closer(db, lead.id):
+        new_employee_id = None
     tasks = (await db.execute(select(SalesDailyDialTasks).where(
         SalesDailyDialTasks.lead_id == lead.id, SalesDailyDialTasks.task_date >= today,
     ))).scalars().all()

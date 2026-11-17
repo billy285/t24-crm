@@ -311,7 +311,7 @@ test('保存失败保留，成功后下一位与回访入口对应已保存的le
   expect(data.writes.map(write => write.path)).toEqual(['/api/v1/sales-leads/workbench/tasks/901/result', '/api/v1/sales-leads/workbench/tasks/901/result']);
 });
 
-test('有意向成功后报价入口对应已保存客户，报价导航不产生业务写入', async ({ page }) => {
+test('销售保存意向后看到主管踢单提示，打开成交登记不重复写入', async ({ page }) => {
   const data = await fixture(page);
   await open(page);
   await page.getByRole('button', { name: '有意向', exact: true }).click();
@@ -324,9 +324,9 @@ test('有意向成功后报价入口对应已保存客户，报价导航不产�
     await page.locator('.app-main').evaluate(element => { element.scrollTop = 0; });
     await page.screenshot({ path: `${screenshots}/workbench-save-local-1440.png` });
   }
-  await page.route(`${base}/sales-leads?lead_id=501&action=quote&returnTo=*`, route => route.fulfill({ contentType: 'text/html', body: '<title>本地报价入口</title>' }));
-  await receipt.getByRole('button', { name: '准备报价', exact: true }).click();
-  await expect(page).toHaveURL(`${base}/sales-leads?lead_id=501&action=quote&returnTo=${encodeURIComponent('/sales-workbench?sales_employee_id=27')}`);
+  await expect(receipt).toContainText('主管和老板可在「意向踢单」查看跟进');
+  await receipt.getByRole('button', { name: '登记成交', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: /登记成交/ })).toBeVisible();
   expect(data.writes).toHaveLength(1);
   expect(data.writes[0].body).toMatchObject({ outcome: 'interested', notes: '已讨论服务范围', next_follow_up_at: '2026-10-15T02:30:00.000Z' });
 });

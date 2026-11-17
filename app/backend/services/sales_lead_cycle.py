@@ -12,7 +12,7 @@ from models.sales_call_activities import SalesCallActivities
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.sales_leads import SalesLeads
-from services.sales_task_assignment import sync_pending_daily_tasks
+from services.sales_task_assignment import active_closing_leads, sync_pending_daily_tasks
 from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_contact_protection import (blocked_phone_keys, lead_phone_keys, persist_lead_suppression)
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
@@ -46,6 +46,7 @@ async def run_sales_lead_cycle(db: AsyncSession, *, now: Optional[datetime] = No
     leads = (await db.execute(select(SalesLeads).execution_options(populate_existing=True))).scalars().all()
     keys_by_lead = {lead.id: await lead_phone_keys(db, lead) for lead in leads}
     suppressed = await blocked_phone_keys(db, set().union(*keys_by_lead.values()) if keys_by_lead else set())
+    claimed = set((await db.scalars(active_closing_leads())).all())
     released_cooldown = released_unstarted = protected = 0
     for lead in leads:
         lead.last_automation_at = now
@@ -60,6 +61,10 @@ async def run_sales_lead_cycle(db: AsyncSession, *, now: Optional[datetime] = No
             continue
         if lead.status in {"won", "lost"} or lead.converted_customer_id:
             lead.automation_state = "closed"
+            continue
+        if lead.id in claimed:
+            lead.automation_state = "closing_active"
+            protected += 1
             continue
         if lead.status in PROTECTED_STATUSES:
             lead.automation_state = "protected"
@@ -135,6 +140,8 @@ async def ensure_daily_batch(
         SalesLeads.is_blacklisted.is_(False),
         SalesLeads.do_not_contact.is_(False),
         SalesLeads.status.notin_(list(CLOSED_STATUSES)),
+        SalesLeads.converted_customer_id.is_(None),
+        SalesLeads.automation_state != "closing_active",
         or_(SalesLeads.assigned_sales_id == sales_employee_id, SalesLeads.assigned_sales_id.is_(None)),
     ))).scalars().all()
     candidate_keys = {lead.id: await lead_phone_keys(db, lead) for lead in candidates}
@@ -219,6 +226,8 @@ async def automation_overview(db: AsyncSession) -> dict:
     counts = {"eligible": 0, "assigned": 0, "protected": 0, "cooling": 0, "blocked": 0, "closed": 0}
     for lead in leads:
         state = lead.automation_state or "eligible"
+        if state == "closing_active":
+            state = "protected"
         if aware(lead.cooldown_until) and aware(lead.cooldown_until) > now:
             state = "cooling"
         counts[state if state in counts else "eligible"] += 1

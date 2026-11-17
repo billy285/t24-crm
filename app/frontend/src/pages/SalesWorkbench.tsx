@@ -815,7 +815,7 @@ function SalesWorkspace() {
     {canManage ? <label className="sc-date-control"><span className={isMobile ? '' : 'sr-only'}>当前销售</span><NativeSelect value={teamView ? '' : selectedSalesId} onChange={value => { if (value) openSalesTasks(Number(value)); else setTeamView(true); }} disabled={saving || !assigneesLoaded || Boolean(assigneeLoadError)} options={[{ value: '', label: teamView ? '全部销售' : '选择销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /></label> : <span className="sw-salesperson">{employee?.name}</span>}
   </>;
   const managerModes = canManage && <nav className="sw-mode-switch" aria-label="主管任务视角"><button type="button" aria-pressed={teamView} disabled={saving} onClick={() => setTeamView(true)}>团队</button><button type="button" aria-pressed={!teamView} disabled={saving} onClick={() => setTeamView(false)}>客户任务</button></nav>;
-  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}<DropdownMenuItem onSelect={() => navigate('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+  const workbenchMenu = <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="更多工作台功能"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-ui sales-center-menu">{!teamView && <DropdownMenuItem disabled={preparing || saving || date !== today() || Boolean(loadError) || (canManage && !selectedSalesId)} onSelect={() => void prepareWorkbench()}>生成今日任务</DropdownMenuItem>}{canManage && <DropdownMenuItem onSelect={() => navigate('/sales-leads?view=closing')}>意向踢单</DropdownMenuItem>}<DropdownMenuItem onSelect={() => navigate('/sales-leads?view=intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setSettingsOpen(true)}>拨号与任务设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
   const currentSalesName = canManage ? teamView ? isAdmin ? '全部销售' : '直属销售' : assignees.find(item => String(item.id) === selectedSalesId)?.name || '选择销售' : employee?.name || '当前销售';
   const viewingScope = teamView
     ? isAdmin ? '全部销售的团队任务' : '直属销售的团队任务'
@@ -841,7 +841,23 @@ function SalesWorkspace() {
     </div>
     {!isMobile && !teamView && workbench?.queue_policy && <p className="sw-queue-policy" role="status">{workbench.queue_policy.label} · 当地 {workbench.queue_policy.contact_start}:00–{workbench.queue_policy.contact_end}:00{workbench.queue_policy.unknown_timezone > 0 && ` · ${workbench.queue_policy.unknown_timezone} 条待确认时区`}</p>}
     <SalesPhoneConnections onConnectMine={() => void connectRingCentral()} />
-    {!teamView && savedReceipt && <section className="sw-save-receipt" role="status" aria-label="上次保存结果"><CheckCircle2 size={17} /><span>已保存 · <strong>{savedReceipt.name}</strong>{savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}</span>{savedReceipt.action && <Button variant="outline" onClick={() => savedReceipt.action === 'quote' ? setDealLeadId(savedReceipt.leadId) : navigate(`/sales-leads?lead_id=${savedReceipt.leadId}&action=followup&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>{savedReceipt.action === 'quote' ? '登记成交' : '查看跟进'}</Button>}</section>}
+    {!teamView && savedReceipt && (
+      <section className="sw-save-receipt" role="status" aria-label="上次保存结果">
+        <CheckCircle2 size={17} />
+        <span>
+          已保存 · <strong>{savedReceipt.name}</strong>
+          {savedReceipt.nextFollowUpAt && <time> · 回访 {formatDate(savedReceipt.nextFollowUpAt)}</time>}
+          {savedReceipt.action === 'quote' && <small className="block">主管和老板可在「意向踢单」查看跟进。</small>}
+        </span>
+        {savedReceipt.action && (
+          <Button variant="outline" onClick={() => savedReceipt.action === 'quote'
+            ? setDealLeadId(savedReceipt.leadId)
+            : navigate(`/sales-leads?lead_id=${savedReceipt.leadId}&action=followup&returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)}>
+            {savedReceipt.action === 'quote' ? '登记成交' : '查看跟进'}
+          </Button>
+        )}
+      </section>
+    )}
     {assigneeLoadError && <div className="sales-v3-alert" role="alert">销售人员暂时无法读取<Button size="sm" variant="outline" onClick={() => void loadAssignees()}>重新加载</Button></div>}
     {!teamView && auxiliaryErrors.length > 0 && <div className="sales-v3-alert" role="status">{auxiliaryErrors.join('、')}暂时无法更新，已保留最近读取的数据。<Button size="sm" variant="outline" onClick={() => void Promise.all([loadRecoveryAlerts(), loadPersonalPerformance(), loadRingCentral()])}>重试更新</Button></div>}
     {!teamView && loadError && <div className="sales-v3-alert" role="alert">今日任务暂时无法更新{workbench ? '，保留上次读取的任务' : ''}<Button size="sm" variant="outline" onClick={() => void loadWorkbench()}>重新加载</Button></div>}

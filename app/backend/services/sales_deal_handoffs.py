@@ -472,6 +472,8 @@ async def register(db, lead_id, payload, user):
         lead_snapshot_json=json.dumps({"source": "fixed_catalog_sale", "handoff_id": row.id,
             "assigned_sales_id": lead.assigned_sales_id, "assigned_sales_name": lead.assigned_sales_name, "source_snapshot": source}, ensure_ascii=False),
         generate_service_board=False, converted_by_id=int(user.id), converted_by_name=user.name))
+    from services.sales_closing_queue import retain_legacy_interest
+    await retain_legacy_interest(db, lead, user)
     lead.converted_customer_id, lead.converted_at = customer.id, now
     lead.converted_by_id, lead.converted_by_name, lead.status = int(user.id), user.name, "won"
     await db.flush()

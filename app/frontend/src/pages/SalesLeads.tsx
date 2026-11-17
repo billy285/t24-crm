@@ -19,6 +19,7 @@ import SalesLeadDossier from '@/components/SalesLeadDossier';
 import SalesPhoneConnections, { type SyncCoverage } from '@/components/SalesPhoneConnections';
 import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesDealHandoffQueue from '@/components/SalesDealHandoffQueue';
+import SalesClosingQueue from '@/components/SalesClosingQueue';
 import SalesSharedDossiers from '@/components/SalesSharedDossiers';
 import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
 import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
@@ -69,6 +70,12 @@ type SalesLead = {
   last_contact_at?: string;
   created_at: string;
 };
+
+const workspaceViews = {
+  leads: '联系进展', closing: '意向踢单', calls: '通话数据', handoffs: '成交与交接',
+  performance: '历史跟进参考', intelligence: '经营中心', shared: '协作档案',
+} as const;
+type WorkspaceView = keyof typeof workspaceViews;
 
 type Assignee = { id: number; name: string; role: string; supervisor?: string };
 type ManagementDashboard = { metrics: { assigned: number; completed: number; completion_rate: number; calls: number; connected: number; connection_rate: number; interested: number; interest_rate: number; appointments: number; appointment_rate: number; converted: number; conversion_rate: number }; source_quality: { source: string; total: number; usable: number; quality_rate: number }[]; salespeople: { salesperson: string; calls: number; connected: number; interested: number; appointments: number }[] };
@@ -190,7 +197,13 @@ function SalesLeadWorkspace() {
   const [listError, setListError] = useState(false);
   const [dataErrors, setDataErrors] = useState<string[]>([]);
   const [initialParams] = useState(() => new URLSearchParams(window.location.search));
-  const [view, setView] = useState<'leads' | 'calls' | 'performance' | 'intelligence' | 'shared' | 'handoffs'>(() => ['calls', 'performance', 'intelligence', 'shared', 'handoffs'].includes(initialParams.get('view') || '') ? initialParams.get('view') as 'calls' | 'performance' | 'intelligence' | 'shared' | 'handoffs' : 'leads');
+  const [view, setView] = useState<WorkspaceView>(() => {
+    const requested = initialParams.get('view');
+    if (requested === 'closing' && !canManage) return 'leads';
+    return requested && Object.prototype.hasOwnProperty.call(workspaceViews, requested) ? requested as WorkspaceView : 'leads';
+  });
+  const primaryViews: WorkspaceView[] = canManage ? ['leads', 'closing', 'calls', 'handoffs'] : ['leads', 'calls', 'handoffs'];
+  const inClosingQueue = view === 'closing';
   const [dossierId, setDossierId] = useState<number | null>(() => { const value = Number(initialParams.get('dossier')); return Number.isSafeInteger(value) && value > 0 ? value : null; });
   const requestedQuoteRef = useRef(false);
   const [search, setSearch] = useState(() => initialParams.get('search')?.slice(0,200) || '');
@@ -327,13 +340,14 @@ function SalesLeadWorkspace() {
   };
 
   useEffect(() => {
+    if (inClosingQueue) return;
     const timer = window.setTimeout(() => void loadData(), search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, performanceDays, callReportDays]);
+  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, performanceDays, callReportDays, inClosingQueue]);
   useEffect(() => () => { loadRequestSeqRef.current += 1; historyRequestRef.current += 1; }, []);
 
-  useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !showForm && !dealLeadId });
+  useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !inClosingQueue && !showForm && !dealLeadId });
 
   useEffect(() => {
     if (view !== 'leads' || !items.length || itemsScope !== listScope) return;
@@ -670,15 +684,18 @@ function SalesLeadWorkspace() {
   return (
     <div className={`t24-directory-page t24-sales-leads-page mfc-sales-leads sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}${view === 'leads' ? ' sl-order-page' : ''}`}>
       <div className="sc-section-heading slr-page-heading">
-        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{view === 'leads' ? '联系进展' : view === 'calls' ? '通话数据' : view === 'intelligence' ? '经营中心' : view === 'shared' ? '协作档案' : view === 'handoffs' ? '成交与交接' : '历史跟进参考'}</h2>{view === 'leads' && <p className="slr-current-scope" role="status">{scopeText} · {loading ? '正在读取客户' : `共 ${total} 位客户`}</p>}</div>
-        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图"><span className="sl-order-more-label">更多</span><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{isMobile && ([{value:'leads',label:'联系进展'},{value:'calls',label:'通话数据'},{value:'handoffs',label:'成交与交接'}] as const).map(item => <DropdownMenuItem key={item.value} aria-current={view === item.value ? 'page' : undefined} onSelect={() => setView(item.value)}>{item.label}{view === item.value && <CheckCircle2 className="ml-auto h-4 w-4" aria-hidden="true" />}</DropdownMenuItem>)}{view === 'leads' && <DropdownMenuItem onSelect={() => setOverviewExpanded(current => !current)}>{overviewExpanded ? '收起数据一览' : canManage ? '数据与线索保护' : '数据一览'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{canManage && <Button onClick={openCreate} aria-label="新增线索"><Plus className="h-4 w-4" /><span className="sl-order-create-label">新增线索</span></Button>}</div>
+        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{workspaceViews[view]}</h2>{view === 'leads' && <p className="slr-current-scope" role="status">{scopeText} · {loading ? '正在读取客户' : `共 ${total} 位客户`}</p>}</div>
+        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图"><span className="sl-order-more-label">更多</span><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{isMobile && !canManage && primaryViews.map(item => <DropdownMenuItem key={item} aria-current={view === item ? 'page' : undefined} onSelect={() => setView(item)}>{workspaceViews[item]}{view === item && <CheckCircle2 className="ml-auto h-4 w-4" aria-hidden="true" />}</DropdownMenuItem>)}{view === 'leads' && <DropdownMenuItem onSelect={() => setOverviewExpanded(current => !current)}>{overviewExpanded ? '收起数据一览' : canManage ? '数据与线索保护' : '数据一览'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{!inClosingQueue && canManage && <Button onClick={openCreate} aria-label="新增线索"><Plus className="h-4 w-4" /><span className="sl-order-create-label">新增线索</span></Button>}</div>
       </div>
 
-      {listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
-      {visibleDataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{visibleDataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
-      <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => void loadData()} />
-      {(!isMobile || view !== 'leads') && <nav className="slr-primary-views" aria-label="销售主要视图">{([{value:'leads',label:'联系进展'},{value:'calls',label:'通话数据'},{value:'handoffs',label:'成交与交接'}] as const).map(item => <button key={item.value} type="button" aria-current={view === item.value ? 'page' : undefined} onClick={() => setView(item.value)}>{item.label}</button>)}</nav>}
-      {view !== 'leads' && <p className="slr-current-scope" role="status">当前范围：{scopeText} · {view === 'calls' ? `最近 ${callReportDays} 天 · 北京时间` : view === 'handoffs' ? '成交与交接记录' : '已授权销售资料'}</p>}
+      {!inClosingQueue && listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
+      {!inClosingQueue && visibleDataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{visibleDataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
+      <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => {
+        if (inClosingQueue) setHandoffQueueVersion(value => value + 1);
+        else void loadData();
+      }} />
+      {(canManage || !isMobile || view !== 'leads') && <nav className="slr-primary-views" aria-label="销售主要视图" data-management={canManage || undefined}>{primaryViews.map(item => <button key={item} type="button" aria-current={view === item ? 'page' : undefined} onClick={() => setView(item)}>{workspaceViews[item]}</button>)}</nav>}
+      {view !== 'leads' && !inClosingQueue && <p className="slr-current-scope" role="status">当前范围：{scopeText} · {view === 'calls' ? `最近 ${callReportDays} 天 · 北京时间` : view === 'handoffs' ? '成交与交接记录' : '已授权销售资料'}</p>}
       {(view === 'calls' || view === 'leads' && overviewExpanded) && <div className="slr-utilities">
         <details className="slr-overview" open={view === 'leads' ? overviewExpanded : undefined} onToggle={event => { if (view === 'leads') setOverviewExpanded(event.currentTarget.open); }}><summary><BarChart3 size={15} />数据一览<ChevronDown size={14} /></summary><SalesLeadPulse stats={stats} report={callReport} days={callReportDays} onCalls={() => setView('calls')} loading={!statsReady} /></details>
         {view === 'leads' && canManage && recoveryOverview && <details className="sl-recovery">
@@ -686,6 +703,7 @@ function SalesLeadWorkspace() {
           <div><p>系统只提示，主管确认后才回收。受保护 {recoveryOverview.summary.protected} 条 · 延期保护 {recoveryOverview.summary.extended} 条 · 禁止联系 {stats.do_not_contact} 条 · 黑名单 {stats.blacklisted} 条。</p>{isMobile ? <p>批量回收与改派请在电脑端处理。</p> : <Button size="sm" variant="outline" onClick={() => setRecoveryOpen(true)}>查看并处理</Button>}</div>
         </details>}
       </div>}
+      {inClosingQueue && canManage && employee && <SalesClosingQueue employeeId={Number(employee.id)} isOwner={role === 'super_admin'} scope={scopeText} refreshVersion={handoffQueueVersion} onOpenDossier={setDossierId} onOpenDeal={setDealLeadId} />}
       {view === 'intelligence' && <SalesIntelligenceCenter />}
       {view === 'shared' && <SalesSharedDossiers onOpen={setDossierId} />}
       {view === 'handoffs' && <SalesDealHandoffQueue key={handoffQueueVersion} onOpenLead={setDealLeadId} />}
@@ -983,7 +1001,7 @@ function SalesLeadWorkspace() {
 </CrmFormDialogContent>
       </Dialog>}
 
-      <SalesDealHandoffDialog leadId={dealLeadId} onClose={() => setDealLeadId(null)} onOpenDossier={setDossierId} onRegistered={async () => { setHandoffQueueVersion(value => value + 1); await loadData(); }} />
+      <SalesDealHandoffDialog leadId={dealLeadId} onClose={() => setDealLeadId(null)} onOpenDossier={setDossierId} onRegistered={async () => { setHandoffQueueVersion(value => value + 1); if (!inClosingQueue) await loadData(); }} />
     </div>
   );
 }

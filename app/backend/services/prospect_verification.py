@@ -217,7 +217,7 @@ async def save_verification(db, kind, entity_id, user, payload):
     if kind == 'lead':
         from zoneinfo import ZoneInfo
         from models.sales_daily_dial_tasks import SalesDailyDialTasks
-        from services.sales_task_assignment import sync_pending_daily_tasks
+        from services.sales_task_assignment import lead_has_active_closer, sync_pending_daily_tasks
         today = now.astimezone(ZoneInfo('Asia/Shanghai')).date()
         retained_ids = set(before.get('quality_cancelled_task_ids', []))
         if payload.status in {'invalid_phone', 'not_target', 'closed'}:
@@ -232,7 +232,7 @@ async def save_verification(db, kind, entity_id, user, payload):
             # revive unrelated manual cancellations or rewrite old ownership.
             restored = []
             protection = await contact_protection_summary(db, row)
-            if protection['can_contact'] and row.assigned_sales_id and not row.do_not_contact and not row.is_blacklisted and row.status not in {'blocked', 'lost', 'won'} and not row.converted_customer_id:
+            if protection['can_contact'] and row.assigned_sales_id and not row.do_not_contact and not row.is_blacklisted and row.status not in {'blocked', 'lost', 'won'} and not row.converted_customer_id and not await lead_has_active_closer(db, row.id):
                 tasks = (await db.scalars(select(SalesDailyDialTasks).where(
                     SalesDailyDialTasks.id.in_(retained_ids), SalesDailyDialTasks.lead_id == row.id,
                     SalesDailyDialTasks.sales_employee_id == row.assigned_sales_id,
