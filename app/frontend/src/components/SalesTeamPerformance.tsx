@@ -18,6 +18,7 @@ import { useRole } from "@/lib/role-context";
 import { businessDateKey } from "@/lib/business-date";
 import { salesApi, salesError, salesDate } from "@/lib/sales-intelligence";
 import { invokeWithAuth } from "@/lib/tokenStore";
+import SalesIndustryReport, { type SalesIndustryCallReport } from "@/components/SalesIndustryReport";
 type TargetValues = {
   role_template: string;
   calls: number;
@@ -82,6 +83,7 @@ type DailyTeamRow = {
   remaining: number | null;
 };
 type DailyTeamSummary = {
+  industryReport: SalesIndustryCallReport | null;
   rows: DailyTeamRow[];
   connected: number | null;
   overdue: number | null;
@@ -160,8 +162,9 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
       const stalled = dateMatches ? dailyCount(management?.owner_attention?.high_intent_stale) : null;
       const unassigned = dailyCount(pool?.pending);
       const connected = reportCurrent ? dailyCount(report?.summary?.connected) : null;
+      const industryReport = report?.period?.start_date === targetDate && report?.period?.end_date === targetDate && report?.industry_breakdown ? report : null;
       loadedScopeRef.current = requestScope;
-      setSummary({ rows, connected, overdue, stalled, unassigned, incomplete: rows.some(row => row.completed === null || row.quota === null || row.remaining === null) || overdue === null || stalled === null || unassigned === null });
+      setSummary({ rows, connected, overdue, stalled, unassigned, industryReport, incomplete: rows.some(row => row.completed === null || row.quota === null || row.remaining === null) || overdue === null || stalled === null || unassigned === null });
       setReadError(false);
       setLoading(false);
     };
@@ -191,6 +194,9 @@ export function SalesTeamToday({ employees, targetDate, onOpenWorkbench }: {
     </section>
     <section className="sw-team-panel sw-team-progress" aria-label="团队进度">
       <h2>团队进度</h2>
+      {summary?.industryReport && <details className="mb-3"><summary className="cursor-pointer py-2 text-sm">查看今日行业拨打统计</summary>
+        <SalesIndustryReport report={summary.industryReport} scopeLabel={actorRole === 'sales_manager' ? '直属销售团队' : '全部销售'} />
+      </details>}
       <div className="sw-team-table-scroll"><table><thead><tr><th>销售</th><th>{dateLabel}目标</th><th>已记录</th><th>待处理</th><th>操作</th></tr></thead><tbody>
         {taskRows.map(row => <tr key={row.id}>
           <td><span className="sw-team-person"><span className="sw-team-avatar" aria-hidden="true">{row.name.slice(0, 1)}</span><strong>{row.name}</strong></span></td>

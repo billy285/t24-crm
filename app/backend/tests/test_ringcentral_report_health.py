@@ -1,8 +1,10 @@
 """Connection health is separate from observed official call counts."""
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from core.database import Base
@@ -109,3 +111,61 @@ async def test_live_connection_does_not_prove_historical_coverage_and_never_sync
     assert rows[11]["needs_attention"] is False
     assert rows[13]["needs_attention"] is True
     assert all(row["coverage_status"] == "unknown" for row in rows.values())
+
+
+@pytest.mark.asyncio
+async def test_industry_report_counts_distinct_merchants_within_beijing_period_and_team(report_db):
+    beijing = ZoneInfo("Asia/Shanghai")
+    day_start = datetime.now(beijing).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    report_db.add_all([
+        SalesLeads(id=21, business_name="A", phone="+12125550100", industry="Chinese Restaurant"),
+        SalesLeads(id=22, business_name="B", phone="+12125550101", industry="Nail Salon"),
+        SalesLeads(id=23, business_name="C", phone="+12125550102"),
+        SalesLeads(id=24, business_name="D", phone="+12125550103", industry="PRIVATE_OUTSIDE_INDUSTRY"),
+        SalesLeads(id=25, business_name="E", phone="+12125550104", industry="待分类"),
+    ])
+    for lead, employee, outcome, when in [
+        (21, 11, "no_answer", day_start), (21, 11, "interested", day_start),
+        (21, 13, "appointment", day_start), (22, 13, "callback", day_start),
+        (23, 11, "appointment", day_start), (24, 12, "interested", day_start),
+        (25, 11, "appointment", day_start - timedelta(seconds=1)),
+        (25, 11, "appointment", day_start + timedelta(days=1)),
+    ]:
+        report_db.add(SalesCallActivities(lead_id=lead, sales_employee_id=employee, outcome=outcome, called_at=when))
+    for key, lead, employee, synced, direction, when in [
+        ("linked", 21, 11, "verified", "outbound", day_start),
+        ("no_lead", None, 11, "verified", "outbound", day_start),
+        ("unclassified", 23, 11, "verified", "outbound", day_start),
+        ("unverified", 22, 13, "pending", "outbound", day_start),
+        ("inbound", 21, 11, "verified", "inbound", day_start),
+        ("outside_team", 24, 12, "verified", "outbound", day_start),
+        ("prior_day", 22, 13, "verified", "outbound", day_start - timedelta(seconds=1)),
+        ("undated", 21, 11, "verified", "outbound", None),
+    ]:
+        report_db.add(RingCentralCallRecords(provider_key=key, lead_id=lead, sales_employee_id=employee,
+            direction=direction, connected=True, sync_status=synced, started_at=when))
+    # Queuing a lead or switching to its industry does not create a CRM outcome.
+    report_db.add(SalesDailyDialTasks(lead_id=25, sales_employee_id=11, status="pending",
+        task_date=day_start.astimezone(beijing).date(), queue_category="new"))
+    await report_db.flush()
+    await report_db.execute(text("UPDATE sales_call_activities SET called_at = substr(called_at, 1, 19) WHERE lead_id IN (23, 25)"))
+    await report_db.commit()
+
+    manager = user("sales_manager", "Manager A", "10")
+    report = await sales_call_report(days=1, current_user=manager, db=report_db)
+    rows = {row["industry"]: row for row in report["industry_breakdown"]["industries"]}
+    assert rows["餐厅"] == dict(industry="餐厅", recorded_merchants=1, crm_records=3, interested_merchants=1, provider_calls=1, connected=1)
+    assert rows["美业"] == dict(industry="美业", recorded_merchants=1, crm_records=1, interested_merchants=0, provider_calls=0, connected=0)
+    assert rows["待分类"] == dict(industry="待分类", recorded_merchants=1, crm_records=1, interested_merchants=1, provider_calls=1, connected=1)
+    assert report["industry_breakdown"]["unmatched_provider_calls"] == report["industry_breakdown"]["unmatched_connected"] == 1
+    assert report["industry_breakdown"]["undated_provider_calls"] == 1
+    assert "PRIVATE_OUTSIDE_INDUSTRY" not in str(report)
+    again = await sales_call_report(days=1, current_user=manager, db=report_db)
+    assert again["industry_breakdown"] == report["industry_breakdown"]
+    employee = await sales_call_report(days=1, current_user=user("sales", "Sales A", "11"), db=report_db)
+    matching = next(row for row in report["employees"] if row["sales_employee_id"] == 11)
+    assert matching["industry_breakdown"] == employee["industry_breakdown"]
+    personal_rows = {row["industry"]: row for row in employee["industry_breakdown"]["industries"]}
+    assert personal_rows["餐厅"]["crm_records"] == 2 and personal_rows["美业"]["recorded_merchants"] == 0
+    owner = await sales_call_report(days=1, current_user=user(), db=report_db)
+    assert "PRIVATE_OUTSIDE_INDUSTRY" in str(owner["industry_breakdown"])

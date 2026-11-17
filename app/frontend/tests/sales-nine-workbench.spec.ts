@@ -4,7 +4,7 @@ const base = process.env.T24_WORKBENCH_BASE_URL || 'http://127.0.0.1:5191';
 const screenshots = process.env.T24_UI_SCREENSHOT_DIR;
 const day = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 type Employee = { id: number; name: string; role: string; status: string };
-type Lead = { id: number; business_name: string; phone: string; country: string; status: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number; next_follow_up_at?: string };
+type Lead = { id: number; business_name: string; phone: string; country: string; industry?: string; industry_group?: string; enrichment_summary?: { interest_product_names: string[] }; status: string; do_not_contact: boolean; is_blacklisted: boolean; converted_customer_id?: number; next_follow_up_at?: string };
 type Task = { task_id: number; task_status: string; priority: string; queue_category: string; lead: Lead };
 const employee: Employee = { id: 27, name: '模拟销售甲', role: 'sales', status: 'active' };
 const records = (salesId = 27): Task[] => [0, 1].map(index => ({
@@ -12,9 +12,16 @@ const records = (salesId = 27): Task[] => [0, 1].map(index => ({
   lead: { id: (salesId === 27 ? 501 : 601) + index, business_name: `${salesId === 27 ? '甲' : '乙'}商家${index + 1}`, phone: '+1 202 555 0123', country: 'US', status: 'new', do_not_contact: false, is_blacklisted: false },
 }));
 
-async function fixture(page: Page, options: { user?: Employee; manualLead?: boolean; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
+async function fixture(page: Page, options: { user?: Employee; industryChoice?: boolean; manualLead?: boolean; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
   let user = options.user || employee;
   const data = new Map([[27, options.empty ? [] : records()], [28, records(28)]]);
+  if (options.industryChoice) {
+    const tasks = data.get(27)!;
+    tasks.push({ ...tasks[0], task_id: 903, lead: { ...tasks[0].lead, id: 503, business_name: '未拨美业' } });
+    tasks.forEach(task => { task.lead.industry_group = 'beauty'; task.lead.industry = '美业'; });
+    tasks[1].lead.next_follow_up_at = '2025-01-01T08:00:00Z';
+    tasks[1].lead.status = 'follow_up';
+  }
   if (options.protected) {
     data.get(27)![0].lead.do_not_contact = true;
     data.get(27)![1].lead.converted_customer_id = 800;
@@ -37,6 +44,14 @@ async function fixture(page: Page, options: { user?: Employee; manualLead?: bool
       writes.push({ path, body: request.postDataJSON() });
       if (path.endsWith('/emp-auth/login')) return route.fulfill({ json: { token: 'sales-nine-local-token', employee: user } });
       if (path.endsWith('/emp-auth/logout') || path.endsWith('/emp-auth/set_refresh')) return route.fulfill({ json: {} });
+      if (options.industryChoice && path.endsWith('/workbench/prepare-industry')) {
+        expect(url.searchParams.get('industry')).toBe('restaurant');
+        expect(url.searchParams.get('target_date')).toBe(day());
+        expect(url.searchParams.has('sales_employee_id')).toBe(false);
+        const tasks = data.get(27)!;
+        tasks[2] = { ...tasks[2], task_id: 904, lead: { ...tasks[2].lead, id: 504, business_name: '新餐厅', industry: '中餐厅', industry_group: 'restaurant', enrichment_summary: { interest_product_names: ['新媒体代运营'] } } };
+        return route.fulfill({ json: { industry: 'restaurant', created: 1, replaced: 1, total: 3, pending_in_industry: 1, message: '已补充 1 家餐厅' } });
+      }
       if (options.manualLead && path.endsWith('/workbench/manual-task/503')) {
         const tasks = data.get(27)!;
         const task = { ...records()[0], task_id: 903, lead: { ...records()[0].lead, id: 503, business_name: '名下待联系商家' } };
@@ -70,7 +85,7 @@ async function fixture(page: Page, options: { user?: Employee; manualLead?: bool
       lastSalesId = salesId;
       const tasks = data.get(salesId) || [];
       const completed = tasks.filter(task => task.task_status === 'completed').length;
-      response = { salesperson: { id: salesId, name: '模拟销售' }, target_date: url.searchParams.get('target_date'), quota: 20, assigned_count: tasks.length, completed_count: completed, remaining_count: tasks.length - completed, is_target_complete: false,
+      response = { salesperson: { id: salesId, name: '模拟销售' }, target_date: url.searchParams.get('target_date'), quota: options.industryChoice ? 3 : 20, assigned_count: tasks.length, completed_count: completed, remaining_count: tasks.length - completed, is_target_complete: false,
         categories: { unfinished: tasks.length - completed, callback: 0, interested: 0, appointment: 0, new: tasks.length }, performance: { attempted: 0, connected: 0, interested: 0, appointments: 0, callbacks_due: 0, connection_rate: 0 }, items: tasks };
     } else if (path.endsWith('/dashboard/management')) response = { target_date: url.searchParams.get('target_date'), owner_attention: { overdue_followups: 0, high_intent_stale: 0 } };
     else if (path.endsWith('/merchant-pool/stats')) response = { pending: 0 };
@@ -409,5 +424,38 @@ for (const width of [390, 1440]) {
     expect(data.writes.at(-1)?.path).toBe('/api/v1/sales-leads/workbench/tasks/903/result');
     expect(data.writes.at(-1)?.body.outcome).toBe('no_answer');
     expect(data.writes).toHaveLength(3);
+  });
+}
+
+for (const width of [390, 1440]) {
+  test(`销售可自行选择行业补单，保护回访与草稿（${width}）`, async ({ page }) => {
+    const { writes, reads } = await fixture(page, { industryChoice: true });
+    await open(page, width);
+    await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+    await page.getByRole('button', { name: '下一位客户', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '甲商家1' })).toBeVisible();
+    await notes(page).fill('店主的沟通草稿');
+    const choices = page.getByRole('group', { name: '拨打行业' });
+    await choices.getByRole('button', { name: '餐厅', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '当前没有餐厅任务' })).toBeVisible();
+    await expect(page.getByText('到期回访（1）')).toBeVisible();
+    expect(writes.filter(row => row.path.includes('/workbench/'))).toHaveLength(0);
+    await page.getByRole('button', { name: '补充餐厅名单' }).click();
+    await expect(page.getByRole('heading', { name: '新餐厅' })).toBeVisible();
+    expect(writes.filter(row => row.path.includes('/workbench/'))).toEqual([
+      { path: '/api/v1/sales-leads/workbench/prepare-industry', body: { preserve_task_ids: [901] } },
+    ]);
+    const progress = page.getByRole('progressbar', { name: '任务完成进度' });
+    await expect(progress).toHaveAttribute('aria-valuemax', '3');
+    await expect(progress).toHaveAttribute('aria-valuenow', '0');
+    await page.getByRole('button', { name: '话术', exact: true }).click();
+    await expect.poll(() => reads.some(path => path.includes('/sales-knowledge/articles?product_scope=managed_service'))).toBe(true);
+    await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click();
+    await page.getByText('到期回访（1）').click();
+    await page.getByRole('button', {name: /甲商家2.*美业/}).click();
+    await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+    await expect(choices.getByRole('button', { name: '全部行业', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '下一位客户', exact: true }).click();
+    await expect(notes(page)).toHaveValue('店主的沟通草稿');
   });
 }

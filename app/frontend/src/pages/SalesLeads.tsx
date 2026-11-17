@@ -20,6 +20,7 @@ import SalesPhoneConnections, { type SyncCoverage } from '@/components/SalesPhon
 import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesDealHandoffQueue from '@/components/SalesDealHandoffQueue';
 import SalesClosingQueue from '@/components/SalesClosingQueue';
+import SalesIndustryReport, { type SalesIndustryBreakdown } from '@/components/SalesIndustryReport';
 import SalesSharedDossiers from '@/components/SalesSharedDossiers';
 import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
 import SalesLocalTime, { useSalesContactWindow } from '@/components/SalesLocalTime';
@@ -84,6 +85,7 @@ type RecoveryOverview = { items: RecoveryItem[]; summary: { recoverable: number;
 type PerformanceItem = { rank: number; sales_employee_id: number; salesperson: string; score: number; confidence: string; score_breakdown: { execution: number; discipline: number; opportunity: number; results: number; documentation: number }; metrics: { assigned: number; completed: number; calls: number; connected: number; interested: number; appointments: number; conversions: number; completion_rate: number; connection_rate: number; interest_rate: number; note_quality_rate: number; overdue_followups: number }; suggestions: string[] };
 type PerformanceDashboard = { period: { days: number; start_date: string; end_date: string }; items: PerformanceItem[] };
 type SalesCallReport = {
+  industry_breakdown?: SalesIndustryBreakdown;
   period: { days: number; start_date: string; end_date: string };
   source: { status: 'verified' | 'waiting_provider_data' | 'no_salespeople'; label: string; provider: string; data_complete?: boolean; coverage_status?: string; message?: string };
   summary: { provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; conversions: number; assigned: number; completed: number; completion_rate: number };
@@ -318,7 +320,11 @@ function SalesLeadWorkspace() {
       if (statsResult.status === 'fulfilled') { setStats(statsResult.value.data || stats); setStatsReady(true); }
       else failedSections.push('统计');
       if (callReportResult.status === 'fulfilled') { setCallReport(callReportResult.value.data || null); setCallReportError(false); }
-      else { setCallReportError(true); failedSections.push('真实通话报告'); }
+      else {
+        const error = callReportResult.reason;
+        if ([401, 403].includes(error?.response?.status || error?.data?.status || error?.status)) setCallReport(null);
+        setCallReportError(true); failedSections.push('真实通话报告');
+      }
 
       if (canManage) {
         const [assigneeResult, dashboardResult, performanceResult, recoveryResult] = managementResults;
@@ -741,6 +747,7 @@ function SalesLeadWorkspace() {
           </div>
 
           <div className="space-y-5 p-4 sm:p-5">
+            <SalesIndustryReport report={callReport} scopeLabel={scopeText} />
             <div className="grid gap-3 lg:grid-cols-[1.35fr_.65fr]">
               <section className="rounded-2xl border border-slate-200 p-4">
                 <div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-slate-900">业务转化结果</h4><p className="mt-1 text-xs text-slate-500">销售保存结果后进入统计，不代替RingCentral官方通话事实。</p></div><Badge variant="outline">CRM记录 {callReport.summary.crm_records}</Badge></div>

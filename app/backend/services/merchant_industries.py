@@ -61,6 +61,10 @@ def normalize_merchant_industry(value: Optional[str]) -> Optional[str]:
     return stripped
 
 
+def workbench_industry_group(value: Optional[str]) -> str:
+    return {"餐厅": "restaurant", "美业": "beauty"}.get(normalize_merchant_industry(value), "other")
+
+
 def merchant_industry_expression(column):
     """SQL canonical category, usable on legacy rows without a data backfill."""
     key = func.lower(func.trim(column))

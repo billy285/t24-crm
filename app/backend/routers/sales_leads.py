@@ -38,10 +38,13 @@ from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import lead_has_active_closer, sync_pending_daily_tasks
 from services.sales_closing_queue import (ClosingAction, POSITIVE, closing_list, closing_dial_target, management_actor,
     previous_interest, record_manual_interest, retain_legacy_interest, update_closing)
+from services.merchant_industries import workbench_industry_group
+from services.sales_industry_queue import DEFERRED, prepare_industry_batch
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
 from services.prospect_verification import quality_for, quality_for_many
 from services.ringcentral_team import team_connection_statuses
 from services.sales_conversion_reporting import conversion_counts, currency_totals, first_receipts, sales_conversions
+from services.sales_industry_reporting import industry_breakdown
 from services.sales_workflow_locks import lock_sales_workflow
 from services.customer_codes import allocate_customer_code
 from services.phone_numbers import parse_phone_number, phone_match_key
@@ -931,6 +934,24 @@ async def prepare_daily_call_workbench(
     return {"message": f"今日任务已准备，新增 {result['created']} 条", **result}
 
 
+class SalesIndustryPick(BaseModel):
+    preserve_task_ids: list[int] = Field(default_factory=list, max_length=300)
+
+
+@router.post("/workbench/prepare-industry")
+async def prepare_sales_industry(
+    industry: Literal["restaurant", "beauty"],
+    target_date: date,
+    payload: Optional[SalesIndustryPick] = None,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if _role(current_user) != "sales":
+        raise HTTPException(403, "仅销售本人可以领取行业名单")
+    return await prepare_industry_batch(db, current_user, industry, target_date, _daily_quota,
+                                        set(payload.preserve_task_ids) if payload else set())
+
+
 @router.post("/workbench/manual-task/{lead_id}")
 async def start_assigned_lead_task(
     lead_id: int,
@@ -964,12 +985,15 @@ async def start_assigned_lead_task(
     task = next((item for item in existing if item.sales_employee_id == employee_id), None)
     if task is not None and task.status == "cancelled":
         raise HTTPException(409, "今天的联系任务已取消，请核对交接或商家标记")
-    if task is None:
+    if task is None or task.status == DEFERRED:
         if any(item.status in {"pending", "completed"} for item in existing):
             raise HTTPException(409, "这家商家今天已有其他销售的联系任务，请核对交接")
-        task = SalesDailyDialTasks(sales_employee_id=employee_id, lead_id=lead.id,
-                                   task_date=today, status="pending", queue_category=queue_category(lead))
-        db.add(task)
+        if task is None:
+            task = SalesDailyDialTasks(sales_employee_id=employee_id, lead_id=lead.id,
+                                       task_date=today, status="pending", queue_category=queue_category(lead))
+            db.add(task)
+        else:
+            task.status = "pending"
         await db.flush()
     receipt = {"task_id": task.id, "lead_id": lead.id, "sales_employee_id": employee_id,
                "task_date": today, "task_status": task.status}
@@ -1039,6 +1063,7 @@ async def get_daily_call_workbench(
             "contact_queue": contexts[lead.id],
             "lead": {**SalesLeadResponse.model_validate(lead).model_dump(mode="json"),
                      "prospect_quality": qualities[lead.id],
+                     "industry_group": workbench_industry_group(lead.industry),
                      "contact_protection": contact_protections[lead.id],
                      **({"enrichment_summary": summaries[lead.id]} if lead.id in summaries else {})},
         })
@@ -1949,6 +1974,7 @@ async def sales_call_report(
                 "linked_records": 0, "link_rate": 0, "interested": 0, "appointments": 0,
                 "conversions": 0, "assigned": 0, "completed": 0, "completion_rate": 0,
             },
+            "industry_breakdown": industry_breakdown([], [], {}),
             "result_breakdown": [], "daily": [], "employees": [], "recent_calls": [],
         }
 
@@ -1971,19 +1997,37 @@ async def sales_call_report(
     }
     connection_health["needs_attention"] = connection_health["total"] - connection_health["ready"]
 
-    provider_rows = (await db.execute(
-        select(RingCentralCallRecords).where(
+    range_start = coverage_start
+    range_end = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=BUSINESS_TIMEZONE).astimezone(timezone.utc)
+    if db.get_bind().dialect.name == "sqlite":
+        # Server-default timestamps omit fractions, while ORM writes include them.
+        # Both stored representations must agree on the midnight boundary.
+        range_start = range_start.replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+        range_end = range_end.replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+    provider_data = (await db.execute(
+        select(RingCentralCallRecords, SalesLeads.id, SalesLeads.business_name, SalesLeads.industry)
+        .outerjoin(SalesLeads, SalesLeads.id == RingCentralCallRecords.lead_id).where(
             RingCentralCallRecords.sales_employee_id.in_(salesperson_ids),
             func.lower(RingCentralCallRecords.direction) == "outbound",
             RingCentralCallRecords.sync_status == "verified",
+            or_(RingCentralCallRecords.started_at.is_(None),
+                (RingCentralCallRecords.started_at >= range_start) & (RingCentralCallRecords.started_at < range_end)),
         )
-    )).scalars().all()
-    provider_rows = [row for row in provider_rows if (_business_date(row.started_at) or today) >= start_date and (_business_date(row.started_at) or today) <= today]
+    )).all()
+    provider_rows = [row[0] for row in provider_data]
+    lead_names = {lead_id: name for _, lead_id, name, _ in provider_data if lead_id is not None}
+    industry_by_lead = {lead_id: industry for _, lead_id, _, industry in provider_data if lead_id is not None}
 
-    activities = (await db.execute(
-        select(SalesCallActivities).where(SalesCallActivities.sales_employee_id.in_(salesperson_ids))
-    )).scalars().all()
-    activities = [row for row in activities if start_date <= (_business_date(row.called_at) or today) <= today]
+    activity_data = (await db.execute(
+        select(SalesCallActivities, SalesLeads.id, SalesLeads.industry)
+        .outerjoin(SalesLeads, SalesLeads.id == SalesCallActivities.lead_id).where(
+            SalesCallActivities.sales_employee_id.in_(salesperson_ids),
+            SalesCallActivities.called_at >= range_start,
+            SalesCallActivities.called_at < range_end,
+        )
+    )).all()
+    activities = [row[0] for row in activity_data]
+    industry_by_lead.update({lead_id: industry for _, lead_id, industry in activity_data if lead_id is not None})
     tasks = (await db.execute(
         select(SalesDailyDialTasks).where(
             SalesDailyDialTasks.sales_employee_id.in_(salesperson_ids),
@@ -1992,14 +2036,6 @@ async def sales_call_report(
             SalesDailyDialTasks.task_date <= today,
         )
     )).scalars().all()
-
-    lead_ids = {int(row.lead_id) for row in provider_rows if row.lead_id}
-    lead_names = {}
-    if lead_ids:
-        lead_names = {
-            int(row.id): row.business_name
-            for row in (await db.execute(select(SalesLeads).where(SalesLeads.id.in_(lead_ids)))).scalars().all()
-        }
 
     conversions_by_sales = await conversion_counts(db, salesperson_ids, start_date, today)
 
@@ -2039,6 +2075,7 @@ async def sales_call_report(
             "data_complete": False,
             "coverage_status": "unknown",
             "sync_coverage": connection_status.get("coverage"),
+            "industry_breakdown": industry_breakdown(employee_activities, employee_provider, industry_by_lead),
             "salesperson": names.get(sales_id) or next((row.sales_employee_name for row in employee_provider if row.sales_employee_name), "未命名销售"),
             "provider_calls": len(employee_provider),
             "connected": connected,
@@ -2089,6 +2126,7 @@ async def sales_call_report(
             ),
         },
         "connection_health": connection_health,
+        "industry_breakdown": industry_breakdown(activities, provider_rows, industry_by_lead),
         "sync_coverage": {
             "requested_from": coverage_start,
             "requested_to": coverage_end,
