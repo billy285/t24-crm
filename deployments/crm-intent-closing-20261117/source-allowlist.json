@@ -1,0 +1,15 @@
+[
+  "app/backend/routers/sales_leads.py",
+  "app/backend/services/prospect_verification.py",
+  "app/backend/services/sales_closing_queue.py",
+  "app/backend/services/sales_deal_handoffs.py",
+  "app/backend/services/sales_intelligence.py",
+  "app/backend/services/sales_lead_cycle.py",
+  "app/backend/services/sales_task_assignment.py",
+  "app/frontend/src/components/MobileOwnerDashboard.tsx",
+  "app/frontend/src/components/SalesClosingQueue.tsx",
+  "app/frontend/src/components/sales-closing-queue.css",
+  "app/frontend/src/pages/Dashboard.tsx",
+  "app/frontend/src/pages/SalesLeads.tsx",
+  "app/frontend/src/pages/SalesWorkbench.tsx"
+]

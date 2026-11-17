@@ -1,0 +1,35 @@
+{
+  "backend_focused_tests_passed": true,
+  "baseline_git_commit": "846a5c066d1a940e5ad2ad69b65ddf03a56d2cf6",
+  "baseline_source_sha": "8ce3469fc6aa403bbc1ddad44187bedee0b89c11",
+  "build_receipt_sha256": "bed4a4665b7d85a0c8852872cded12926ea5bd4b7d7e5e41c68c3412bcc8b900",
+  "changed_source_files": {
+    "app/backend/routers/sales_leads.py": "3718cdf3a581ce56c243d0b8ebbf12008cfe70b141d02935b6bf4790dbb46feb",
+    "app/backend/services/prospect_verification.py": "70333cf2528bd7637263c24cdcc500654b0e74e14d717414224b86630d01b17d",
+    "app/backend/services/sales_closing_queue.py": "c718fd55ac6f21a2c50211822aa6ebcb94a86bcec4733baaca0e702d0aaad9a3",
+    "app/backend/services/sales_deal_handoffs.py": "454f02dff13bb67b369c16d272b513032d726a335a14c55138a42ef901591a75",
+    "app/backend/services/sales_intelligence.py": "35da353dd119627d5a0e55de526d22311109f9d12c7e5ced2d86b4c1537458c6",
+    "app/backend/services/sales_lead_cycle.py": "c4b4eab66fe3e751483e883e3ac2df13227fb307a4a927ee5b971cf67bd6e083",
+    "app/backend/services/sales_task_assignment.py": "2a21773647dade0bbe195a50f15ccbd995f358a39ccfda7c5286c2897f8ba3f1",
+    "app/frontend/src/components/MobileOwnerDashboard.tsx": "3ed1826962400a2aa684289aeba4848323eae1e4064e1630bfcf6723e5ec5267",
+    "app/frontend/src/components/SalesClosingQueue.tsx": "85db70c1c601c915da5da74fc4b105c8a0ae61118b0a973f7728abfa5b2d771c",
+    "app/frontend/src/components/sales-closing-queue.css": "be255e417c114ebe7337d7e75e2f8cb02c76cf9bc7a3b35a67d157546e74dc45",
+    "app/frontend/src/pages/Dashboard.tsx": "852e560e5f6bbe821c0f0d2ae8a0f05ae2a0eda61c0bc50f9d4710072b636906",
+    "app/frontend/src/pages/SalesLeads.tsx": "14abc8ad9beb18bcce1af8a3a91813683bc75509e05468fdbafa553774a802d8",
+    "app/frontend/src/pages/SalesWorkbench.tsx": "99fcb074e4cdd0ec8aa18273e2e392325d4b25d196e8f87f1ac6966755d8acda"
+  },
+  "changed_test_files": {
+    "app/backend/tests/test_sales_closing_queue.py": "7beac58403ce31aaef5676958acf9f798b0016e4cca7c1926cf8f2cb5beb6a97",
+    "app/backend/tests/test_sales_conversion_and_call_ai.py": "c3b5f3e55525ba42ce64f481c599fb3472a2578f7a824dfc70033a7f6d41b3e8",
+    "app/backend/tests/test_sales_workflow_locks.py": "c59f2d02459ba1d1aa73eca955db859cf746adbf83cfc146c7774b506e028c56",
+    "app/frontend/tests/sales-closing-queue.spec.ts": "244d9030486e6adadd99c2cb51ccc22b948edcfc1ed51de25a8c56b6d8b11870",
+    "app/frontend/tests/sales-nine-workbench.spec.ts": "7ced92f06d24bd72e20b3d40cb76d6b0c2020d4fb8dc8e435e079cc630a6d00f"
+  },
+  "dist_inventory_sha256": "e86344a8f09333f2174120dd4ae7170d93201734845f2c1981001a654952bead",
+  "fresh_build_passed": true,
+  "frontend_version": "218c95595a72",
+  "no_migration": true,
+  "source_commit_bytes_verified": true,
+  "source_sha": "64437f2418129c296568e636dcfbd0a1aa325e1d",
+  "stage": "CRM_INTENT_CLOSING_SOURCE_FREEZE"
+}

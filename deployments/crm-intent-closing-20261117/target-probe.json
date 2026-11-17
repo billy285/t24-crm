@@ -1,0 +1,79 @@
+{
+  "backend_files": {
+    "routers/sales_leads.py": {
+      "bytes": 137669,
+      "sha256": "f8c8046a773189d5a494e27cb6de8b9994605b80acc56385c5526e5cdd41cbdc"
+    },
+    "services/prospect_verification.py": {
+      "bytes": 14920,
+      "sha256": "d2e89309811faddffc4cc2713ede4432f831f42c1ee935962a9e2af625927749"
+    },
+    "services/sales_closing_queue.py": {
+      "exists": false
+    },
+    "services/sales_deal_handoffs.py": {
+      "bytes": 41864,
+      "sha256": "c3517a3f1c86a20d60920c02430ea3895f35bba7d725948675130fa2cee9dd48"
+    },
+    "services/sales_intelligence.py": {
+      "bytes": 16107,
+      "sha256": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee"
+    },
+    "services/sales_lead_cycle.py": {
+      "bytes": 11796,
+      "sha256": "5c04c70a5911d1018924864570a402840f72f236abd990435c514a9e1917e5b6"
+    },
+    "services/sales_task_assignment.py": {
+      "bytes": 1588,
+      "sha256": "bece9ba0441150d168425f0ab8911ee7b800a39ba10093335da219ab865dcf78"
+    }
+  },
+  "backend_matches_baseline_source": true,
+  "base_image_config_sha256": "35f5207aa8b8d3ef7761ea59ee38df4c5a80d47181651ba9c3ac3f8031c27d43",
+  "base_image_id": "sha256:cd60b50b3b76f3dd022678afa73b18d9cc99baf7e8e79a93734d9b658996a301",
+  "base_image_repo_digests": [
+    "t24-crm@sha256:cd60b50b3b76f3dd022678afa73b18d9cc99baf7e8e79a93734d9b658996a301"
+  ],
+  "code_overlay_destinations": [],
+  "database_reads": false,
+  "eligible_for_image_only_backend_patch": true,
+  "environment_values_output": false,
+  "expected_backend_sha256": {
+    "routers/sales_leads.py": "f8c8046a773189d5a494e27cb6de8b9994605b80acc56385c5526e5cdd41cbdc",
+    "services/prospect_verification.py": "d2e89309811faddffc4cc2713ede4432f831f42c1ee935962a9e2af625927749",
+    "services/sales_closing_queue.py": null,
+    "services/sales_deal_handoffs.py": "c3517a3f1c86a20d60920c02430ea3895f35bba7d725948675130fa2cee9dd48",
+    "services/sales_intelligence.py": "90d82e2fc429de85c39d0c01badc8a7cef0cbf8ca5f4445444d14284f8385fee",
+    "services/sales_lead_cycle.py": "5c04c70a5911d1018924864570a402840f72f236abd990435c514a9e1917e5b6",
+    "services/sales_task_assignment.py": "bece9ba0441150d168425f0ab8911ee7b800a39ba10093335da219ab865dcf78"
+  },
+  "host_metadata": {
+    "auto_remove": false,
+    "network_mode": "app_default",
+    "read_only_rootfs": false
+  },
+  "lifecycle_operations": false,
+  "mount_metadata": [
+    {
+      "destination": "/app/backend/logs",
+      "rw": true,
+      "type": "bind"
+    },
+    {
+      "destination": "/run/secrets/t24_crm_stripe_history_readonly",
+      "rw": false,
+      "type": "bind"
+    },
+    {
+      "destination": "/app/backend/data",
+      "rw": true,
+      "type": "bind"
+    }
+  ],
+  "mount_sources_output": false,
+  "provider_requests": false,
+  "read_only": true,
+  "runtime_id": "5770803b616d178a8b1a61c596b6ff5ce0777b386b47b8c07de33a1b8a678c4f",
+  "runtime_image": "sha256:cd60b50b3b76f3dd022678afa73b18d9cc99baf7e8e79a93734d9b658996a301",
+  "stage": "CRM_INTENT_CLOSING_TARGET_PROBE"
+}
