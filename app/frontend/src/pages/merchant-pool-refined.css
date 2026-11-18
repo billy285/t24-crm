@@ -561,6 +561,20 @@
 
 .mp-batch-scope,.mp-list-error { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#eff6ff; border:1px solid #dbeafe; border-radius:10px; font-size:14px; color:#1e40af; }
 .mp-batch-scope span { min-width:0; overflow-wrap:anywhere; }
+.mp-assignment-receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .65rem .85rem;
+  border: 1px solid var(--t24-border);
+  border-radius: .65rem;
+  background: var(--t24-surface);
+}
+.mp-assignment-receipt > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .85rem; }
+.mp-assignment-receipt strong { font-size: .875rem; font-weight: 600; color: var(--t24-ink); }
+.mp-assignment-receipt span { font-size: .8125rem; color: var(--t24-ink-muted); }
 .mp-list-error { color:#92400e; background:#fffbeb; border-color:#fde68a; }
 .mi-import-actions { position:sticky; bottom:0; z-index:1; background:white; border-top:1px solid #e2e8f0; padding:12px 0 4px; }
 @media(max-width:767px) {

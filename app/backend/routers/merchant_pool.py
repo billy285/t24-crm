@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from openpyxl import load_workbook
@@ -18,6 +19,8 @@ from models.customers import Customers
 from models.merchant_pool import MerchantPool
 from models.merchant_ai_analyses import MerchantAiAnalyses
 from models.sales_leads import SalesLeads
+from models.sales_daily_dial_tasks import SalesDailyDialTasks
+from models.sales_lead_assignment_logs import SalesLeadAssignmentLogs
 from models.sales_intelligence import SalesLeadProfiles
 from models.employees import Employees
 from schemas.auth import UserResponse
@@ -491,6 +494,33 @@ async def _create_sales_lead_from_merchant(
     merchant.converted_lead_id = lead.id
     merchant.isolation_reason = "已人工确认并转入独立电话销售线索库"
     return lead
+
+
+async def _manual_assignment_receipt(db, leads, user):
+    """Record ownership in the conversion transaction. Daily scheduling stays explicit."""
+    first = leads[0]
+    ids = [lead.id for lead in leads]
+    now = datetime.now(timezone.utc)
+    day = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    for lead in leads:
+        lead.assigned_at = now
+        lead.automation_state = "assigned"
+        db.add(SalesLeadAssignmentLogs(
+            lead_id=lead.id, action="pool_manual_assign", to_sales_employee_id=lead.assigned_sales_id,
+            to_sales_employee_name=lead.assigned_sales_name, operated_by_id=_employee_id(user),
+            operated_by_name=user.name, reason="商家池人工分配", created_at=now,
+        ))
+    queued = await db.scalar(select(func.count()).select_from(SalesDailyDialTasks).where(
+        SalesDailyDialTasks.sales_employee_id == first.assigned_sales_id,
+        SalesDailyDialTasks.lead_id.in_(ids), SalesDailyDialTasks.task_date == day,
+        SalesDailyDialTasks.status.in_(("pending", "completed"))))
+    return {
+        "message": f"已归属 {first.assigned_sales_name} {len(ids)} 家，已进今日队列 {queued} 家",
+        "assigned_count": len(ids), "today_queued_count": queued, "target_date": day,
+        "assigned_sales_id": first.assigned_sales_id, "assigned_sales_name": first.assigned_sales_name,
+        "first_lead_id": first.id, "lead_ids": ids,
+        "workbench_url": f"/sales-workbench?scope=assigned&sales_employee_id={first.assigned_sales_id}&lead_id={first.id}&target_date={day}",
+    }
 
 
 async def _match_customer(db: AsyncSession, record: MerchantRecord) -> tuple[Optional[int], Optional[str]]:
@@ -1011,8 +1041,9 @@ async def convert_to_sales_lead(
     lead = await _create_sales_lead_from_merchant(
         db, merchant, current_user, assigned_id, assigned_name, manager_id
     )
+    receipt = await _manual_assignment_receipt(db, [lead], current_user) if assigned_id is not None else {}
     await db.commit()
-    return {"message": "已转入电话销售线索库", "lead_id": lead.id, "merchant_id": merchant.id}
+    return {"message": "已转入电话销售线索库", "lead_id": lead.id, "merchant_id": merchant.id, **receipt}
 
 
 @router.post("/bulk-convert-to-lead")
@@ -1055,14 +1086,9 @@ async def bulk_convert_to_sales_leads(
         leads.append(await _create_sales_lead_from_merchant(
             db, merchant_by_id[merchant_id], current_user, assigned_id, assigned_name, manager_id
         ))
+    receipt = await _manual_assignment_receipt(db, leads, current_user)
     await db.commit()
-    return {
-        "message": f"已将 {len(leads)} 条可用商家分配给 {assigned_name}",
-        "assigned_sales_id": assigned_id,
-        "assigned_sales_name": assigned_name,
-        "converted_count": len(leads),
-        "lead_ids": [lead.id for lead in leads],
-    }
+    return {"converted_count": len(leads), **receipt}
 
 
 @router.post("/bulk-update-industry")

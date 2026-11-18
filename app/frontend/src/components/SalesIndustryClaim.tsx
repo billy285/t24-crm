@@ -63,9 +63,9 @@ export default function SalesIndustryClaim({ industry, choice, pending, disabled
     </div>
     <div className="sw-claim-action">
       <span role="status">{unavailable ? '库存暂时无法读取' : available == null ? '正在读取库存…' :
-        '可领取 ' + available.toLocaleString() + ' 家'} · 当前队列待拨 {pending} 家</span>
+        '可领取 ' + available.toLocaleString() + ' 家'} · 该行业和时段待拨 {pending} 家</span>
       {unavailable && <Button type="button" size="sm" variant="ghost" onClick={() => setRefresh(v => v + 1)}>重试</Button>}
-      <Button type="button" size="sm" disabled={disabled || !available} onClick={onClaim}>
+      <Button type="button" size="sm" disabled={disabled || available == null} onClick={onClaim}>
         {submitting ? '正在领取…' : '领取' + workbenchIndustryLabels[industry] + '名单'}</Button>
     </div>
   </section>;

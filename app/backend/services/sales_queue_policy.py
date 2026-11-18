@@ -1,5 +1,5 @@
 """Explainable local-time queue ordering; never changes contact permissions."""
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -31,7 +31,7 @@ async def queue_context(db, leads, target_date):
 
 def contact_queue_context(lead, *, now=None, profile=None, start=10, end=18):
     now = aware(now or datetime.now(timezone.utc))
-    profile = profile or {}
+    profile = profile if isinstance(profile, dict) else {}
     resolved = resolve_contact_timezone(country=lead.country, state=lead.state,
         city=lead.city, address=lead.address, profile_timezone=profile.get('timezone'),
         address_evidence=address_timezone_evidence(profile))
@@ -39,9 +39,15 @@ def contact_queue_context(lead, *, now=None, profile=None, start=10, end=18):
     due = aware(lead.next_follow_up_at)
     overdue = bool(due and due <= now)
     in_window = bool(local and start <= local.hour < end)
+    next_window = None
+    if local and not in_window:
+        next_day = local.date() if local.hour < start else local.date() + timedelta(days=1)
+        # Round-trip through UTC for a configured opening hour skipped by DST.
+        opening = datetime.combine(next_day, time(start), tzinfo=local.tzinfo)
+        next_window = opening.astimezone(timezone.utc).astimezone(local.tzinfo).isoformat()
     label = '到期回访优先' if overdue else '建议联系时段内' if in_window else '时区待确认' if not local else '等待当地联系时段'
     return {**resolved, 'local_time': local.isoformat() if local else None,
-        'in_contact_window': in_window if local else None,
+        'in_contact_window': in_window if local else None, 'next_window_at': next_window,
         'contact_start': start, 'contact_end': end, 'due_follow_up': overdue,
         'queue_reason': label}
 

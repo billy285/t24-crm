@@ -426,3 +426,37 @@
   .sw-claim-regions button time { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .sw-claim-action button:last-child { width: 100%; }
 }
+
+.sw-owned { margin-block: .5rem; min-width: 0; }
+.sw-owned-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: hidden; border: 1px solid var(--t24-border); border-radius: .65rem; background: var(--t24-surface); }
+.sw-owned-tabs button { display: flex; align-items: baseline; justify-content: center; gap: .55rem; min-width: 0; padding: .65rem .35rem; color: var(--t24-ink-muted); }
+.sw-owned-tabs button + button { border-inline-start: 1px solid var(--t24-border); }
+.sw-owned-tabs button[aria-pressed="true"] { color: var(--t24-primary); background: var(--t24-primary-soft); box-shadow: inset 0 -2px var(--t24-primary); }
+.sw-owned-tabs strong { color: inherit; font-variant-numeric: tabular-nums; }
+.sw-owned-list { margin-top: .55rem; padding: .85rem; color: var(--t24-ink); border: 1px solid var(--t24-border); border-radius: .65rem; background: var(--t24-surface); }
+.sw-owned-filter, .sw-owned-pager, .sw-owned-empty, .sw-claim-receipt, .sw-claim-receipt details > div { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.sw-owned-filter { justify-content: space-between; }
+.sw-owned-filter > input { flex: 1 1 10rem; min-width: 0; }
+.sw-owned-filter > .t24-native-select-wrap { width: auto; min-width: 6.2rem; }
+.sw-owned-list ul { margin: .35rem 0 0; padding: 0; list-style: none; }
+.sw-owned-list li { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(0,1fr) auto; align-items: center; gap: .65rem; padding: .7rem .2rem; border-bottom: 1px solid var(--t24-border); }
+.sw-owned-list li:last-child { border-bottom: 0; }
+.sw-owned-list small, .sw-owned-pager span { display: block; color: var(--t24-ink-muted); font-size: .8rem; }
+.sw-owned-list li > div { min-width: 0; overflow-wrap: anywhere; }
+.sw-owned-merchant button { color: var(--t24-primary); text-align: start; font-weight: 600; }
+.sw-owned-timing { font-size: .85rem; }
+.sw-owned-pager { margin-top: .55rem; justify-content: end; }
+.sw-owned-list > p, .sw-owned-empty { margin: .75rem 0; }
+.sw-claim-receipt { padding: .55rem .7rem; background: var(--t24-primary-soft); border-radius: .5rem; font-size: .875rem; color: var(--t24-ink); }
+.sw-claim-receipt details > div { margin-top: .4rem; }
+.sw-claim-receipt summary { cursor: pointer; }
+@media (max-width: 640px) {
+  .sw-owned-tabs button { flex-direction: column; align-items: center; gap: 0; font-size: .82rem; min-height: 44px; }
+  .sw-owned-tabs strong { font-size: 1.04rem; }
+  .sw-owned-list li { grid-template-columns: minmax(0,1fr) auto; gap: .25rem .4rem; }
+  .sw-owned-timing { grid-column: 1; }
+  .sw-owned-list li > button { grid-column: 2; grid-row: 1 / 3; min-height: 44px; }
+  .sw-owned-list li button, .sw-owned-pager button { min-height: 44px; }
+}
+
+.sw-refined .sc-customer { scroll-margin-block-start: 8rem; }

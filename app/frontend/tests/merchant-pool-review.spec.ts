@@ -51,7 +51,7 @@ async function seedPool(page: Page, employee = manager) {
           return json(route, { detail: '模拟后端拒绝非法分配' }, 400);
         }
         selected.forEach(record => { record.pool_status = 'converted'; record.converted_lead_id = record.id + 1000; });
-        return json(route, { converted_count: selected.length, assigned_sales_id: salesperson.id, assigned_sales_name: salesperson.name, lead_ids: selected.map(record => record.converted_lead_id) });
+        return json(route, { converted_count: selected.length, assigned_count: selected.length, today_queued_count: 0, assigned_sales_id: salesperson.id, assigned_sales_name: salesperson.name, lead_ids: selected.map(record => record.converted_lead_id) });
       }
       return json(route, { detail: '此测试不允许其他写请求' }, 400);
     }
@@ -154,10 +154,11 @@ for (const width of [1440, 390]) {
     await expect(page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^未分配\s*1$/ })).toBeVisible();
     await expect(page.getByRole('navigation', { name: '商家工作视图' }).getByRole('button', { name: /^已转线索\s*2$/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '查看资料：Golden Dragon Restaurant', exact: true })).toHaveCount(0);
-    const receipt = page.getByRole('button', { name: '查看该商家的拨打任务' });
+    await expect(page.getByRole('status').filter({ hasText: '本次已分配 1 家' })).toContainText('其中 0 家已进今日队列');
+    const receipt = page.getByRole('button', { name: '查看归属名单' });
     await expect(receipt).toBeVisible();
     await receipt.click();
-    await expect(page).toHaveURL(/sales-workbench\?sales_employee_id=11&lead_id=1021/);
+    await expect(page).toHaveURL(/sales-workbench\?sales_employee_id=11&scope=assigned&lead_id=1021/);
     expect(writes).toEqual([{ method: 'POST', path: '/api/v1/merchant-pool/bulk-convert-to-lead', body: { merchant_ids: [pendingMerchant.id], assigned_sales_id: salesperson.id } }]);
   });
 }

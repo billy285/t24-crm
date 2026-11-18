@@ -54,17 +54,57 @@ async def test_full_queue_swaps_only_untouched_and_keeps_owner_and_progress(sale
     choice = await pick(sales_app_client, json={"preserve_task_ids": [6]})
     assert choice.status_code == 200, choice.text
     assert choice.json()["created"] == choice.json()["replaced"] == 2
+    assert choice.json()["reason"] == "queued"
+    assert set(choice.json()["queued_lead_ids"]) == {8, 9}
+    assert "仍归你负责" in choice.json()["message"]
     after = (await sales_app_client.get(f"{WORK}/today", headers=SALES)).json()
     assert after["assigned_count"] == 7 and after["completed_count"] == 1
     assert {i["lead"]["id"] for i in after["items"]} == {1, 2, 3, 6, 7, 8, 9}
     repeat = await pick(sales_app_client, json={"preserve_task_ids": [6]})
     assert repeat.json()["created"] == 0
+    assert repeat.json()["reason"] == "quota_full" and repeat.json()["queued_lead_ids"] == []
     async for db in app.dependency_overrides[get_db]():
         assert (await db.get(SalesLeads, 5)).assigned_sales_id == 11
         assert (await db.get(SalesDailyDialTasks, 5)).status == "industry_deferred"
         assert (await db.get(SalesLeads, 10)).assigned_sales_id == 12
     manual = await sales_app_client.post(f"{WORK}/manual-task/5", params={"target_date": TODAY}, headers=SALES)
     assert manual.status_code == 200 and manual.json()["task_status"] == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["prepare-industry", "prepare"])
+async def test_transferred_pending_row_does_not_consume_former_owner_quota(sales_app_client, route):
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([SalesDailyQuotas(sales_employee_id=11, target_date=TODAY, target_count=1),
+                    lead(1, owner=12), task(1), lead(2, "餐厅")])
+        await db.commit()
+    params = {"target_date": TODAY}
+    if route == "prepare-industry":
+        params["industry"] = "restaurant"
+    response = await sales_app_client.post(f"{WORK}/{route}", headers=SALES, params=params)
+    assert response.status_code == 200, response.text
+    assert response.json()["created"] == 1
+    queue = (await sales_app_client.get(f"{WORK}/today", headers=SALES)).json()
+    assert [item["lead"]["id"] for item in queue["items"]] == [2]
+
+
+@pytest.mark.asyncio
+async def test_claim_receipt_links_restored_tasks_without_creating_another_lead(sales_app_client):
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([SalesDailyQuotas(sales_employee_id=11, target_date=TODAY, target_count=1),
+                    lead(1), task(1), lead(2, "餐厅", owner=None)])
+        await db.commit()
+
+    for industry, expected_id in (("restaurant", 2), ("beauty", 1), ("restaurant", 2)):
+        receipt = (await pick(sales_app_client, industry)).json()
+        assert receipt["queued_lead_ids"] == [expected_id]
+        assert receipt["reason"] == "queued" and receipt["replaced"] == 1
+        response = await sales_app_client.get(f"{WORK}/today", headers=SALES)
+        assert [item["lead"]["id"] for item in response.json()["items"]] == [expected_id]
+
+    async for db in app.dependency_overrides[get_db]():
+        assert set(await db.scalars(select(SalesLeads.id).where(SalesLeads.assigned_sales_id == 11))) == {1, 2}
+        assert sorted(await db.scalars(select(SalesDailyDialTasks.lead_id))) == [1, 2]
 
 
 @pytest.mark.asyncio
@@ -88,7 +128,8 @@ async def test_private_raw_sources_and_duplicate_numbers_cannot_block_a_later_el
     rows = (await sales_app_client.get(f"{WORK}/today", headers=SALES)).json()["items"]
     assert {item["lead"]["merchant_pool_id"] for item in rows} == {5, 86}
     assert all(item["lead"]["industry_group"] == "restaurant" for item in rows)
-    assert (await pick(sales_app_client)).json()["created"] == 0
+    empty = (await pick(sales_app_client)).json()
+    assert empty["created"] == 0 and empty["reason"] == "no_stock"
     raw = await sales_app_client.get("/api/v1/merchant-pool", headers=SALES)
     assert raw.status_code == 403
     assert (await sales_app_client.post(f"{WORK}/prepare-industry", headers=ADMIN,
@@ -108,7 +149,9 @@ async def test_pending_appointments_do_not_fill_first_call_batch_and_cold_picks_
     first = await pick(sales_app_client)
     assert first.status_code == 200, first.text
     assert first.json()["created"] == 10 and first.json()["pending_in_industry"] == 21
-    assert (await pick(sales_app_client)).json()["created"] == 0
+    ready = (await pick(sales_app_client)).json()
+    assert ready["created"] == 0 and ready["reason"] == "already_ready"
+    assert set(ready["ready_lead_ids"]) == set(first.json()["queued_lead_ids"])
     remaining = (await sales_app_client.get(f"{WORK}/today", headers=SALES)).json()
     assert remaining["performance"]["attempted"] == remaining["completed_count"] == 0
 
@@ -126,6 +169,7 @@ async def test_concurrent_sellers_claim_distinct_merchants_and_retries_are_idemp
 
     first, second = await asyncio.gather(claim(21), claim(22))
     assert first["created"] == second["created"] == 10
+    assert set(first["queued_lead_ids"]).isdisjoint(second["queued_lead_ids"])
     repeated = await asyncio.gather(claim(21), claim(21))
     assert all(result["created"] == 0 for result in repeated)
     leads = (await dispatch_db.scalars(select(SalesLeads))).all()
@@ -152,7 +196,9 @@ async def test_zone_stock_and_claim_share_local_hours_identity_and_permissions(s
         db.add_all([source(31, "CO", "Denver"), source(32, "AZ", "Phoenix"), source(33, "NY", "New York"),
                     source(34, "CO", "Denver", phone="(212) 555-0031"), source(35, "CO", "Denver", owner=999),
                     source(36, "CO", "Denver"), source(37, "CA", "Los Angeles"),
-                    SalesPhoneSuppression(phone_key="+12125550036", blocked=True, reason="test")])
+                    source(38, "CA", "San Jose", owner=999), source(39, "CA", "Oakland"),
+                    SalesPhoneSuppression(phone_key="+12125550036", blocked=True, reason="test"),
+                    SalesPhoneSuppression(phone_key="+12125550039", blocked=True, reason="test")])
         await db.commit()
     params = {"industry": "restaurant"}
     assert (await sales_app_client.get(f"{WORK}/industry-stock", params=params, headers=ADMIN)).status_code == 403
@@ -170,15 +216,20 @@ async def test_zone_stock_and_claim_share_local_hours_identity_and_permissions(s
         res = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES, params={
             **params, "target_date":day, "timezone_group":group, "window_only":window_only, "batch_size":size})
         assert res.status_code == 200, res.text
-        return res.json()["created"]
-    assert await take("pacific") == 0
-    assert await take("mountain") == 1
-    assert await take("mountain") == 0
+        return res.json()
+    closed = await take("pacific")
+    assert closed["created"] == 0 and closed["reason"] == "outside_window"
+    assert (await take("central"))["reason"] == "no_stock"
+    partial = await take("mountain", size=5)
+    assert partial["created"] == 1 and partial["shortfall_reason"] == "outside_window"
+    ready = await take("mountain")
+    assert ready["reason"] == "already_ready" and ready["ready_lead_ids"] == partial["queued_lead_ids"]
     assert (await read())["mountain"]["in_window"] == 0
     snapshot = await sales_app_client.get(f"{WORK}/today", headers=SALES, params={"target_date":day})
     assert snapshot.json()["self_claimed_count"] == 1 and snapshot.json()["completed_count"] == 0
-    assert await take("eastern") == 1
-    assert await take("pacific", False) == 1
+    assert (await take("eastern"))["created"] == 1
+    assert (await take("pacific", False))["created"] == 1
+    assert (await take("pacific"))["reason"] == "no_stock"
     async for db in app.dependency_overrides[get_db]():
         chosen = (await db.scalars(select(SalesLeads).where(SalesLeads.assigned_sales_id == 11))).all()
         assert {lead.merchant_pool_id for lead in chosen} == {31, 33, 37}

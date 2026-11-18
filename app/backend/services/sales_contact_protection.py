@@ -4,6 +4,7 @@ Only a generic protection message leaves these checks. Matching phone numbers
 never disclose another prospect, employee or customer identity.
 """
 from datetime import datetime, timezone
+from functools import lru_cache
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select
@@ -12,9 +13,12 @@ from models.sales_contact_protection import SalesContactProtectionAudit, SalesPh
 from models.sales_lead_enrichments import SalesDialAttempt, SalesLeadEnrichment, SalesLeadEnrichmentAudit
 from models.sales_leads import SalesLeads
 from models.sales_dossiers import SalesDossierHandoff
-from services.phone_numbers import phone_match_key
+from services.phone_numbers import parse_phone_number, phone_match_key
 
 PROTECTION_NOTICE = "该联系方式受联系保护，请由老板核实；本次没有拨打或记录联系"
+# Parsing has no account or database dependencies. Always read protection and
+# ownership live, even when the same number was parsed on a previous poll.
+_queue_number = lru_cache(maxsize=16384)(parse_phone_number)
 
 
 def lead_is_blocked(lead):
@@ -86,7 +90,7 @@ async def contact_protection_summary(db, lead):
         "protected_phones": sorted(blocked)}
 
 
-async def contact_protection_summaries(db, leads):
+async def contact_protection_summaries(db, leads, *, include_dialability=False):
     """Batch the existing read-only summaries for an already-scoped queue.
 
     Dial/save guards deliberately keep their individual authoritative checks.
@@ -96,15 +100,16 @@ async def contact_protection_summaries(db, leads):
     by_id = {lead.id: lead for lead in leads}
     if not by_id:
         return {}
-    profiles = {row.lead_id: row for row in (await db.execute(
-        select(SalesLeadEnrichment).where(SalesLeadEnrichment.lead_id.in_(by_id)))).scalars()}
+    contacts = dict((await db.execute(select(SalesLeadEnrichment.lead_id, SalesLeadEnrichment.contacts)
+        .where(SalesLeadEnrichment.lead_id.in_(by_id)))).all())
     keys_by_id = {}
+    dialable_ids = set()
     for lead_id, lead in by_id.items():
-        keys = {key for key in [phone_match_key(lead.phone, lead.country)] if key}
-        profile = profiles.get(lead_id)
-        if profile:
-            keys |= snapshot_phone_keys({"contacts": profile.contacts}, lead.country)
-        keys_by_id[lead_id] = keys
+        saved = [lead.phone, *(item.get("phone") for item in contacts.get(lead_id) or [] if isinstance(item, dict))]
+        numbers = [_queue_number(str(raw), lead.country) for raw in saved if raw]
+        keys_by_id[lead_id] = {number.e164 for number in numbers if number.e164}
+        if include_dialability and any(number.is_valid and not number.extension for number in numbers):
+            dialable_ids.add(lead_id)
     all_keys = set().union(*keys_by_id.values())
     ledger = {}
     if all_keys:
@@ -163,6 +168,8 @@ async def contact_protection_summaries(db, leads):
             pending_candidates.append(lead_id)
         summaries[lead_id] = {"can_contact": reason is None, "reason": reason,
                               "cooldown_until": cooldown, "protected_phones": protected_phones}
+        if include_dialability:
+            summaries[lead_id]["has_dialable_number"] = lead_id in dialable_ids
     if pending_candidates:
         pending = set((await db.execute(select(SalesDossierHandoff.lead_id, SalesDossierHandoff.to_sales_id).where(
             SalesDossierHandoff.lead_id.in_(pending_candidates), SalesDossierHandoff.status == "pending"))).all())

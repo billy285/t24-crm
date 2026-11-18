@@ -1090,6 +1090,9 @@ async def get_daily_call_workbench(
             SalesDailyDialTasks.sales_employee_id == salesperson.id,
             SalesDailyDialTasks.task_date == target_date,
             SalesDailyDialTasks.status.in_(["pending", "completed"]),
+            # A move can leave an old pending row. Only its current owner may
+            # work it; completed calls retain the existing historical scope.
+            or_(SalesDailyDialTasks.status == "completed", SalesLeads.assigned_sales_id == salesperson.id),
         )
         .order_by(SalesDailyDialTasks.status.asc(), SalesLeads.next_follow_up_at.is_(None), SalesLeads.next_follow_up_at.asc(), SalesDailyDialTasks.id.asc())
     )).all()

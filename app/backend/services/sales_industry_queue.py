@@ -74,7 +74,8 @@ async def _batch_state(db, actor, day, industry, now, preserve_task_ids, selecte
     rows = (await db.execute(select(SalesDailyDialTasks, SalesLeads).join(
         SalesLeads, SalesLeads.id == SalesDailyDialTasks.lead_id).where(
         SalesDailyDialTasks.sales_employee_id == actor.id, SalesDailyDialTasks.task_date == day,
-        SalesDailyDialTasks.status.in_(("completed", "pending"))))).all()
+        SalesDailyDialTasks.status.in_(("completed", "pending")),
+        or_(SalesDailyDialTasks.status == "completed", SalesLeads.assigned_sales_id == actor.id)))).all()
     profiles = (await queue_context(db, [lead for _, lead in rows], day))[0] if selected_zones is not None else {}
     matching_ids = {task.id for task, lead in rows if workbench_industry_group(lead.industry) == industry and
                     (selected_zones is None or contact_queue_context(lead, now=now, profile=profiles.get(lead.id))["timezone"] in selected_zones)}
@@ -89,8 +90,8 @@ async def _batch_state(db, actor, day, industry, now, preserve_task_ids, selecte
         SalesDailyDialTasks.queue_category == "new", SalesDailyDialTasks.dial_started_at.is_(None),
         SalesDailyDialTasks.completed_activity_id.is_(None), *_untouched_lead(now),
     ).order_by(SalesDailyDialTasks.id.desc()))).all()
-    first_calls = sum(task.id in matching_ids for task in replaceable)
-    return len(rows), completed, pending, first_calls, [
+    first_call_ids = [task.lead_id for task in reversed(replaceable) if task.id in matching_ids]
+    return len(rows), completed, pending, first_call_ids, [
         task for task in replaceable if task.id not in matching_ids and task.id not in preserve_task_ids
     ]
 
@@ -134,12 +135,33 @@ def _eligible_pool(db, label, owners):
             quality_status_expression("pool", MerchantPool.id, db.get_bind().dialect.name).in_(VALID_QUALITY))
 
 
+async def _available_pool_pages(db, label, owners, zones, customers, leads, selected_keys):
+    conditions = list(_eligible_pool(db, label, owners))
+    if zones is not None:
+        conditions.append(sql_matches_contact_zones(_pool_fields(), zones, source_payload=MerchantPool.raw_payload))
+    after_id = 0
+    while True:
+        rows = (await db.execute(select(MerchantPool.id, MerchantPool.phone, MerchantPool.country)
+            .where(*conditions, MerchantPool.id > after_id).order_by(MerchantPool.id).limit(128))).all()
+        eligible = {}
+        for row in rows:
+            key = _queue_phone_key(row.phone, row.country)
+            if key and key not in customers and key not in leads and key not in selected_keys:
+                eligible.setdefault(key, row.id)
+        for key in await blocked_phone_keys(db, eligible):
+            eligible.pop(key, None)
+        if eligible:
+            yield eligible
+        if len(rows) < 128:
+            break
+        after_id = rows[-1].id
+
+
 async def _pool_shortlist(db, label, owners, selected_zones, preferred_zones, count):
     """Page by merchant id until enough guarded row locks are acquired."""
     if count <= 0 or not owners or selected_zones == set():
         return []
     customers, leads = await _number_index(db)
-    conditions = _eligible_pool(db, label, owners)
     selected = []
     selected_keys = set()
     # The unrestricted legacy choice prefers the contact window, then can fill
@@ -148,39 +170,20 @@ async def _pool_shortlist(db, label, owners, selected_zones, preferred_zones, co
     for zones in passes:
         if zones == set():
             continue
-        conditions_now = list(conditions)
-        if zones is not None:
-            conditions_now.append(sql_matches_contact_zones(_pool_fields(), zones, source_payload=MerchantPool.raw_payload))
-        after_id = 0
-        while len(selected) < count:
-            rows = (await db.execute(select(MerchantPool.id, MerchantPool.phone, MerchantPool.country)
-                .where(*conditions_now, MerchantPool.id > after_id).order_by(MerchantPool.id).limit(128))).all()
-            if not rows:
-                break
-            after_id = rows[-1].id
-            eligible = {}
-            for row in rows:
-                key = _queue_phone_key(row.phone, row.country)
-                if key and key not in customers and key not in leads and key not in selected_keys:
-                    eligible.setdefault(key, row.id)
-            for key in await blocked_phone_keys(db, eligible):
-                eligible.pop(key, None)
-            if eligible:
-                reserved = set(await db.scalars(select(MerchantPool.id).where(
-                    MerchantPool.id.in_(eligible.values()), *_pool_conditions(label, owners))
-                    .order_by(MerchantPool.id).limit(count - len(selected)).with_for_update(skip_locked=True)))
-                for key, ident in eligible.items():
-                    if ident in reserved:
-                        selected.append(ident)
-                        selected_keys.add(key)
-            if len(rows) < 128:
-                break
-        if len(selected) >= count:
-            break
+        async for eligible in _available_pool_pages(db, label, owners, zones, customers, leads, selected_keys):
+            reserved = set(await db.scalars(select(MerchantPool.id).where(
+                MerchantPool.id.in_(eligible.values()), *_pool_conditions(label, owners))
+                .order_by(MerchantPool.id).limit(count - len(selected)).with_for_update(skip_locked=True)))
+            for key, ident in eligible.items():
+                if ident in reserved:
+                    selected.append(ident)
+                    selected_keys.add(key)
+            if len(selected) >= count:
+                return selected
     return selected
 
 
-async def _lead_candidates(db, actor, manager, label, day, now, customer_keys, phone_owners, selected_zones=None):
+async def _lead_candidates(db, actor, manager, label, day, now, customer_keys, phone_owners):
     # A deferred row owned by this salesperson may be restored. Other task rows,
     # including cancellations or another salesperson's work, keep their original meaning.
     reservations = select(SalesDailyDialTasks.lead_id).where(SalesDailyDialTasks.task_date == day,
@@ -214,8 +217,7 @@ async def _lead_candidates(db, actor, manager, label, day, now, customer_keys, p
         if not lead.assigned_sales_id and lead.last_assigned_sales_id == actor.id and lead.rotation_count and active_sales > 1:
             continue
         context = contact_queue_context(lead, now=now, profile=profiles.get(lead.id), start=start, end=end)
-        if selected_zones is None or context["timezone"] in selected_zones:
-            result.append((lead, (lead.assigned_sales_id != actor.id, queue_sort_key(lead, context)), context["timezone"]))
+        result.append((lead, (lead.assigned_sales_id != actor.id, queue_sort_key(lead, context)), context["timezone"]))
     return sorted(result, key=lambda entry: entry[1])
 
 
@@ -276,9 +278,9 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
     manager, owners = await _source_owners(db, actor)
     _, start, end = await queue_context(db, [], day)
     zones = _selected_zones(group, window_only, now, start, end)
-    pre_total, pre_done, _, pre_first, pre_slots = await _batch_state(db, actor, day, industry, now, preserve_task_ids, zones)
+    pre_total, pre_done, _, pre_first_call_ids, pre_slots = await _batch_state(db, actor, day, industry, now, preserve_task_ids, zones)
     pre_quota = await quota_reader(db, actor.id, day)
-    pre_limit = min(batch_size - pre_first, pre_quota - pre_done,
+    pre_limit = min(batch_size - len(pre_first_call_ids), pre_quota - pre_done,
                     max(0, pre_quota - pre_total) + len(pre_slots))
     shortlist = await _pool_shortlist(db, label, owners, zones, _selected_zones(None, True, now, start, end), max(0, pre_limit))
     await lock_sales_workflow(db, employee_ids=[actor.id])
@@ -290,14 +292,16 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
     _, start, end = await queue_context(db, [], day)
     zones = _selected_zones(group, window_only, now, start, end)
     quota = await quota_reader(db, actor.id, day)
-    total, completed, pending, first_calls, slots = await _batch_state(db, actor, day, industry, now, preserve_task_ids, zones)
+    total, completed, pending, first_call_ids, slots = await _batch_state(db, actor, day, industry, now, preserve_task_ids, zones)
     free = max(0, quota - total)
-    limit = max(0, min(batch_size - first_calls, quota - completed, free + len(slots)))
+    needed = max(0, batch_size - len(first_call_ids))
+    limit = max(0, min(needed, quota - completed, free + len(slots)))
     chosen = []
+    outside_window = False
     if limit:
         customers, leads = await _number_index(db)
-        candidates = await _lead_candidates(db, actor, manager, label, day, now, customers, leads, zones)
-        chosen = [lead for lead, _, _ in candidates[:limit]]
+        candidates = await _lead_candidates(db, actor, manager, label, day, now, customers, leads)
+        chosen = [lead for lead, _, zone in candidates if zones is None or zone in zones][:limit]
         if len(chosen) < limit and shortlist:
             criteria = list(_pool_conditions(label, owners))
             if zones is not None:
@@ -319,8 +323,16 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
                 row.isolation_reason = "销售自主领取行业首拨名单"
                 chosen.append(lead)
                 unavailable.add(key)
+                leads[key] = {lead.id}
                 if len(chosen) == limit:
                     break
+        if window_only and len(chosen) < limit:
+            region_zones = GROUP_ZONES[group] if group else set().union(*(GROUP_ZONES[g] for g in REGIONS))
+            closed_zones = region_zones - zones
+            outside_window = any(zone in closed_zones for _, _, zone in candidates)
+            if owners and closed_zones and not outside_window:
+                pages = _available_pool_pages(db, label, owners, closed_zones, customers, leads, set())
+                outside_window = bool(await anext(pages, None))
     replaced = max(0, len(chosen) - free)
     for task in slots[:replaced]:
         task.status = DEFERRED
@@ -339,14 +351,36 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
         db.add(SalesLeadAssignmentLogs(lead_id=lead.id, action="industry_pick", to_sales_employee_id=actor.id,
             to_sales_employee_name=actor.name, operated_by_id=actor.id, operated_by_name=actor.name,
             reason=f"本人领取{label}首拨任务", created_at=now))
+    queued_ids = [lead.id for lead in chosen]
     await db.commit()
-    if chosen:
-        message = f"已安排 {len(chosen)} 家{label}，当前选择下待拨 {pending + len(chosen)} 家"
-    elif first_calls >= batch_size:
-        message = f"当前选择下已有 {pending} 家{label}待拨"
-    elif not limit:
-        message = "今日目标已完成或剩余名额已由回访、已开始的任务占用"
+    created = len(queued_ids)
+    shortfall = None
+    explanation = ""
+    if created < limit:
+        if outside_window:
+            shortfall = "outside_window"
+            explanation = f"其余可领取的{label}当前不在当地 {start:02d}:00–{end:02d}:00 的拨打时段"
+        else:
+            shortfall = "no_stock"
+            explanation = f"当前条件下暂无更多可领取的{label}首拨名单"
+    elif created < needed:
+        shortfall = "quota_full"
+        explanation = (f"今日已完成目标 {quota} 家" if completed >= quota and quota > 0 else
+                       f"今日目标 {quota} 家，可用首拨名额已用完")
+    if created:
+        reason = "queued"
+        message = f"已加入今日待拨 {created} 家{label}"
+        if replaced:
+            message += f"，原队列有 {replaced} 家首拨暂缓，仍归你负责"
+        if shortfall:
+            message += f"。{explanation}"
+    elif not needed:
+        reason = "already_ready"
+        message = f"当前条件下已有 {len(first_call_ids)} 家{label}首拨待处理，本次新增 0 家"
     else:
-        message = f"当前没有更多可领取的{label}首拨名单"
-    return dict(industry=industry, created=len(chosen), replaced=replaced,
-                total=total + len(chosen) - replaced, pending_in_industry=pending + len(chosen), message=message)
+        reason = shortfall
+        message = f"本次新增 0 家。{explanation}"
+    return dict(industry=industry, created=created, replaced=replaced, queued_lead_ids=queued_ids,
+                ready_lead_ids=first_call_ids[:batch_size] if reason == "already_ready" else [],
+                reason=reason, shortfall_reason=shortfall, total=total + created - replaced,
+                pending_in_industry=pending + created, message=message)

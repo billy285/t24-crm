@@ -202,7 +202,7 @@ export default function MerchantPool() {
   const [failedViewKey, setFailedViewKey] = useState<string | null>(null);
   const [acceptedViewKey, setAcceptedViewKey] = useState<string | null>(null);
   const [batchScope, setBatchScope] = useState<MerchantImportReceipt | null>(() => { const id = new URLSearchParams(window.location.search).get('batch_id'); return id && /^[a-zA-Z0-9-]{1,36}$/.test(id) ? { id, filename: '本批导入' } : null; });
-  const [assignmentReceipt, setAssignmentReceipt] = useState<{ scope: string; name: string; id: number; count: number; leadId?: number } | null>(null);
+  const [assignmentReceipt, setAssignmentReceipt] = useState<{ scope: string; name: string; count: number; queued: number | null; href: string } | null>(null);
   const [search, setSearch] = useState('');
   const previousSearchRef = useRef(search);
   const [poolStatus, setPoolStatus] = useState('pending');
@@ -487,10 +487,20 @@ export default function MerchantPool() {
         url: '/api/v1/merchant-pool/bulk-convert-to-lead', method: 'POST',
         data: { merchant_ids: selectedMerchantIds, assigned_sales_id: Number(selectedSalesId) },
       });
-      toast.success(`已将 ${result.data?.converted_count || selectedMerchantIds.length} 条商家分配给 ${result.data?.assigned_sales_name || assignee?.name}`);
-      const singleLeadId = selectedMerchantIds.length === 1 && result.data?.lead_ids?.length === 1 ? result.data.lead_ids[0] : undefined;
-      setAssignmentReceipt({ scope: authScope, name: result.data?.assigned_sales_name || assignee?.name || '销售', id: Number(selectedSalesId),
-        count: result.data?.converted_count || selectedMerchantIds.length, leadId: Number.isSafeInteger(singleLeadId) && singleLeadId > 0 ? singleLeadId : undefined });
+      const data = result.data;
+      const name = data?.assigned_sales_name || assignee?.name || '销售';
+      const count = data?.assigned_count ?? data?.converted_count ?? data?.lead_ids?.length;
+      const queued = data?.today_queued_count;
+      const params = new URLSearchParams({ sales_employee_id: selectedSalesId, scope: 'assigned' });
+      const firstLeadId = data?.first_lead_id ?? data?.lead_ids?.[0];
+      if (count === 1 && Number.isSafeInteger(firstLeadId) && firstLeadId > 0) params.set('lead_id', String(firstLeadId));
+      if (Number.isSafeInteger(count) && count >= 0) {
+        setAssignmentReceipt({ scope: authScope, name, count, queued: Number.isSafeInteger(queued) && queued >= 0 ? queued : null, href: `/sales-workbench?${params}` });
+        toast.success(`本次已分配 ${count} 家给${name}`);
+      } else {
+        setAssignmentReceipt(null);
+        toast.info('分配请求已提交，返回的结果缺少数量，请在销售的归属名单中核对。');
+      }
       setSelectedMerchantIds([]);
       setSelectedSalesId('');
       await loadData();
@@ -759,7 +769,12 @@ export default function MerchantPool() {
 
       <div className="mp-list-tools">
         {batchScope && <div className="mp-batch-scope" role="status"><span>本批导入 · {batchScope.filename}</span><Button size="sm" variant="ghost" onClick={() => { setBatchScope(null); setSelectedMerchantIds([]); setPage(1); window.history.replaceState(window.history.state, '', '/merchant-pool'); }}>查看全部商家</Button></div>}
-        {assignmentReceipt?.scope === authScope && <div className="mp-batch-scope" role="status"><span>已分配 {assignmentReceipt.count} 家给 {assignmentReceipt.name}</span><Button size="sm" variant="ghost" onClick={() => navigate(`/sales-workbench?sales_employee_id=${assignmentReceipt.id}${assignmentReceipt.leadId ? `&lead_id=${assignmentReceipt.leadId}` : ''}`)}>{assignmentReceipt.leadId ? '查看该商家的拨打任务' : '查看销售任务'}</Button></div>}
+        {assignmentReceipt?.scope === authScope && <div className="mp-assignment-receipt" role="status">
+          <div><strong>{assignmentReceipt.name} · 本次已分配 {assignmentReceipt.count} 家</strong>
+            {assignmentReceipt.queued !== null && <span>其中 {assignmentReceipt.queued} 家已进今日队列</span>}
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate(assignmentReceipt.href)}>查看归属名单<ArrowUpRight size={15} /></Button>
+        </div>}
         <nav className="mp-work-views" aria-label="商家工作视图">
           {[{ status: 'pending', label: '未分配', count: stats.pending }, { status: 'converted', label: '已转线索', count: stats.converted }, { status: '', label: '全部记录', count: stats.total }].map(view => <button type="button" key={view.label} aria-pressed={poolStatus === view.status} onClick={() => changeView(view.status)}>{view.label}{!batchScope && <span>{view.count}</span>}</button>)}
         </nav>

@@ -31,6 +31,7 @@ function fixture(handler,{mobile=false,batch=false}={}){
     if(name==='react/jsx-runtime')return{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props}),Fragment:'fragment'};
     if(name==='react-router-dom')return{useNavigate:()=>()=>{}};
     if(name==='@/lib/role-context')return{useRole:()=>actor};
+    if(name==='@/lib/sales-labels')return{useSalesLabels:()=>({data:[]})};
     if(name==='@/hooks/use-mobile')return{useIsMobile:()=>mobile};
     if(name==='@/lib/tokenStore')return{invokeWithAuth:request=>{requests.push({...request,actorId:actor.employee.id});return handler(request,actor);}};
     if(name==='sonner')return{toast:{error:value=>toasts.push(value),success:value=>toasts.push(value)}};

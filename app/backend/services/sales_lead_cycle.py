@@ -118,10 +118,12 @@ async def ensure_daily_batch(
 ) -> dict:
     now = datetime.now(timezone.utc)
     await run_sales_lead_cycle(db, now=now, commit=False)
-    existing = (await db.execute(select(SalesDailyDialTasks).where(
+    existing = (await db.execute(select(SalesDailyDialTasks).join(
+        SalesLeads, SalesLeads.id == SalesDailyDialTasks.lead_id).where(
         SalesDailyDialTasks.sales_employee_id == sales_employee_id,
         SalesDailyDialTasks.task_date == target_date,
         SalesDailyDialTasks.status.in_(["pending", "completed"]),
+        or_(SalesDailyDialTasks.status == "completed", SalesLeads.assigned_sales_id == sales_employee_id),
     ))).scalars().all()
     if len(existing) >= quota:
         if commit:

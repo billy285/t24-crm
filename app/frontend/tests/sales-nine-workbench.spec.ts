@@ -12,7 +12,7 @@ const records = (salesId = 27): Task[] => [0, 1].map(index => ({
   lead: { id: (salesId === 27 ? 501 : 601) + index, business_name: `${salesId === 27 ? '甲' : '乙'}商家${index + 1}`, phone: '+1 202 555 0123', country: 'US', status: 'new', do_not_contact: false, is_blacklisted: false },
 }));
 
-async function fixture(page: Page, options: { user?: Employee; industryChoice?: boolean; manualLead?: boolean; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
+async function fixture(page: Page, options: { user?: Employee; industryChoice?: boolean; multiClaim?: boolean; completedFirst?: boolean; manualLead?: boolean; empty?: boolean; failRead?: boolean; failFirstSave?: boolean; failReadAfterSave?: boolean; protected?: boolean } = {}) {
   let user = options.user || employee;
   const data = new Map([[27, options.empty ? [] : records()], [28, records(28)]]);
   if (options.industryChoice) {
@@ -22,6 +22,7 @@ async function fixture(page: Page, options: { user?: Employee; industryChoice?: 
     tasks[1].lead.next_follow_up_at = '2025-01-01T08:00:00Z';
     tasks[1].lead.status = 'follow_up';
   }
+  if (options.completedFirst) data.get(27)![0].task_status = 'completed';
   if (options.protected) {
     data.get(27)![0].lead.do_not_contact = true;
     data.get(27)![1].lead.converted_customer_id = 800;
@@ -49,11 +50,13 @@ async function fixture(page: Page, options: { user?: Employee; industryChoice?: 
         expect(url.searchParams.get('target_date')).toBe(day());
         expect(url.searchParams.get('timezone_group')).toBe('mountain');
         expect(url.searchParams.get('window_only')).toBe('true');
-        expect(url.searchParams.get('batch_size')).toBe('1');
+        expect(url.searchParams.get('batch_size')).toBe(options.multiClaim ? '5' : '1');
         expect(url.searchParams.has('sales_employee_id')).toBe(false);
         const tasks = data.get(27)!;
         tasks[2] = { ...tasks[2], task_id: 904, contact_queue: { timezone_group: 'mountain', in_contact_window: true }, lead: { ...tasks[2].lead, id: 504, business_name: '新餐厅', industry: '中餐厅', industry_group: 'restaurant', enrichment_summary: { interest_product_names: ['新媒体代运营'] } } };
-        return route.fulfill({ json: { industry: 'restaurant', created: 1, replaced: 1, total: 3, pending_in_industry: 1, message: '已补充 1 家餐厅' } });
+        if (options.multiClaim) tasks.push({ ...tasks[2], task_id: 905, lead: { ...tasks[2].lead, id:505, business_name:'第二家餐厅' } });
+        const ids = options.multiClaim ? [504,505] : [504];
+        return route.fulfill({ json: { industry: 'restaurant', created: ids.length, replaced: 1, total: tasks.length, pending_in_industry: ids.length, reason: 'queued', queued_lead_ids: ids, ready_lead_ids: [], message: `已补充 ${ids.length} 家餐厅` } });
       }
       if (options.manualLead && path.endsWith('/workbench/manual-task/503')) {
         const tasks = data.get(27)!;
@@ -80,6 +83,17 @@ async function fixture(page: Page, options: { user?: Employee; industryChoice?: 
     reads.push(path + url.search);
     let response: unknown = { items: [], total: 0 };
     if (path.endsWith('/emp-auth/me')) response = user;
+    else if (path.endsWith('/workbench/owned')) {
+      const id = Number(url.searchParams.get('sales_employee_id'));
+      const tasks = data.get(id) || [];
+      const rows = tasks.map(task => ({ lead: task.lead, task_id: task.task_id, task_status: task.task_status, can_start: task.task_status === 'pending', unavailable_reason: null,
+        contact_queue: { local_time: '2026-11-17T21:30:00-08:00', in_contact_window: false, next_window_at: '2026-11-18T10:00:00-08:00' } }));
+      const assigned = options.manualLead && id === 27 && !tasks.some(t => t.lead.id === 503) ? [...rows, { ...rows[0], lead: { ...records()[0].lead, id: 503, business_name: '名下待联系商家' }, task_id: null, task_status: null }] : rows;
+      const target = Number(url.searchParams.get('lead_id'));
+      const view = url.searchParams.get('view');
+      const items = view === 'assigned' ? assigned.filter(r => !target || r.lead.id === target) : [];
+      response = { sales_employee_id: id, target_date: url.searchParams.get('target_date'), counts: { assigned: assigned.length, pending: tasks.filter(t => t.task_status === 'pending').length, callable: 0 }, items, total: items.length, has_more: false };
+    }
     else if (options.industryChoice && path.endsWith('/workbench/industry-stock')) response = {
       industry: 'restaurant', contact_start: 10, contact_end: 18, total: 40, in_window: 20,
       zones: ['eastern', 'central', 'mountain', 'pacific'].map(group => ({
@@ -277,6 +291,7 @@ test('浏览器拒绝删除但允许读写时，成功保存和确认丢弃后�
   await page.getByRole('button', { name: '未接通', exact: true }).click();
   await save(page).click();
   await expect.poll(() => page.evaluate(key => JSON.parse(sessionStorage.getItem(key) || '{}').cleared === true, key())).toBe(true);
+  await page.getByRole('complementary', {name:'今日客户队列'}).getByRole('button',{name:'全部',exact:true}).click();
   await page.locator('[data-lead-id="501"]').click();
   await page.reload();
   await expect(notes(page)).toHaveValue('');
@@ -299,6 +314,7 @@ test('保存已成功但浏览器删除和覆写都拒绝时，明确警示而�
   await expect(page.getByText('记录已保存；浏览器暂存无法清除，刷新可能恢复旧草稿，请勿重复提交', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '甲商家2', exact: true })).toBeVisible();
   await expect(page.getByText('保存失败，记录已保留，请重试', { exact: true })).toHaveCount(0);
+  await page.getByRole('complementary', {name:'今日客户队列'}).getByRole('button',{name:'全部',exact:true}).click();
   await page.locator('[data-lead-id="501"]').click();
   await expect(notes(page)).toHaveValue('');
   await expect(save(page)).toBeDisabled();
@@ -360,6 +376,7 @@ test('保存已经成功而队列刷新失败时不会误报保存失败或允�
   await save(page).click();
   await expect(page.getByRole('status', { name: '上次保存结果' })).toContainText('已保存');
   await expect(page.getByRole('alert').filter({ hasText: '今日任务暂时无法更新' })).toBeVisible();
+  await page.getByRole('complementary', {name:'今日客户队列'}).getByRole('button',{name:'全部',exact:true}).click();
   await page.locator('[data-lead-id="501"]').click();
   await expect(save(page)).toBeDisabled();
   await expect(notes(page)).toHaveValue('');
@@ -447,6 +464,7 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole('heading', { name: '当前条件下没有餐厅任务' })).toBeVisible();
     await expect(page.getByText('到期回访（1）')).toBeVisible();
     expect(writes.filter(row => row.path.includes('/workbench/'))).toHaveLength(0);
+    await page.getByRole('button', { name:'领取名单', exact:true }).click();
     const regions = page.getByRole('group', { name: '领取时区' });
     await expect(regions.getByRole('button', { name:'山地' })).toContainText('09:30 / 10:30');
     await regions.getByRole('button', { name:'山地' }).click();
@@ -457,12 +475,17 @@ for (const width of [390, 1440]) {
     expect(writes.filter(row => row.path.includes('/workbench/'))).toEqual([
       { path: '/api/v1/sales-leads/workbench/prepare-industry', body: { preserve_task_ids: [901] } },
     ]);
+    // A different browsing filter must not lose the precise receipt or restrict its target.
+    await choices.getByRole('button', { name:'美业', exact:true }).click();
+    await page.getByRole('button', { name: '查看任务 · 新餐厅', exact:true }).click();
+    await expect(page.getByRole('heading', { name:'新餐厅', exact:true })).toBeVisible();
     const progress = page.getByRole('progressbar', { name: '任务完成进度' });
     await expect(progress).toHaveAttribute('aria-valuemax', '3');
     await expect(progress).toHaveAttribute('aria-valuenow', '0');
     await page.getByRole('button', { name: '话术', exact: true }).click();
     await expect.poll(() => reads.some(path => path.includes('/sales-knowledge/articles?product_scope=managed_service'))).toBe(true);
     await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click();
+    await choices.getByRole('button', { name:'餐厅', exact:true }).click();
     await page.getByText('到期回访（1）').click();
     await page.getByRole('button', {name: /甲商家2.*美业/}).click();
     await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
@@ -471,3 +494,115 @@ for (const width of [390, 1440]) {
     await expect(notes(page)).toHaveValue('店主的沟通草稿');
   });
 }
+
+
+for (const width of [390, 1440]) {
+  test(`分配回执定位名下商家，非当地时段可找回并明确开始联系（${width}）`, async ({ page }) => {
+    const { writes } = await fixture(page, { manualLead: true });
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${base}/sales-workbench?sales_employee_id=27&scope=assigned&lead_id=503`);
+    const list = page.getByRole('region', { name: '销售名单' });
+    await expect(list.getByRole('button', {name:'名下待联系商家', exact:true})).toBeVisible();
+    await expect(list.getByText(/当地 21:30.*10:00 起建议联系/)).toBeVisible();
+    await expect(list.getByRole('listitem')).toHaveCount(1);
+    if (screenshots) await page.screenshot({ path: `${screenshots}/owned-queue-${width}.png` });
+    await list.getByRole('button', {name:/现在可拨/}).click();
+    await expect(list.getByText('目前没有符合当地时段及联系条件的商家')).toBeVisible();
+    await list.getByRole('button', {name:'查看名下商家', exact:true}).click();
+    await expect(list.getByRole('listitem')).toHaveCount(3);
+    expect(writes).toEqual([]);
+    await list.getByRole('listitem').filter({hasText:'名下待联系商家'}).getByRole('button', {name:'开始联系'}).click();
+    await expect(page.getByRole('heading', {name:'名下待联系商家', exact:true})).toBeVisible();
+    expect(writes.map(w => w.path)).toEqual(['/api/v1/sales-leads/workbench/manual-task/503']);
+  });
+}
+
+test('主管在分配回执只能查看名下商家，不能代为开始联系或回退到其他员工', async ({ page }) => {
+  const { writes } = await fixture(page, { user: { ...employee, id: 1, role: 'sales_manager' }, manualLead: true });
+  const url = base + '/sales-workbench?scope=assigned&lead_id=503&sales_employee_id=';
+  await page.goto(url + '27');
+  const list = page.getByRole('region', { name:'销售名单' });
+  await expect(list.getByRole('button', { name:'名下待联系商家', exact: true })).toBeVisible();
+  await expect(list.getByRole('button', { name:'开始联系', exact: true })).toHaveCount(0);
+  await page.goto(url + '999');
+  await expect(page.getByText('该销售不在当前可查看范围，请选择可访问的销售人员。')).toBeVisible();
+  await expect(list).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+
+for (const editing of ['空闲', '写草稿', '已拨号待记录']) {
+  test(`领取后按销售当前操作决定是否自动定位（${editing}）`, async ({ page }) => {
+    const data = await fixture(page, { industryChoice: true });
+    if (editing === '已拨号待记录') await page.addInitScript(date => {
+      sessionStorage.setItem('t24:sales-workbench:pending-dial:v2:27', JSON.stringify({
+        userId:27, salesId:27, date, taskId:902, leadId:502, createdAt:Date.now(),
+      }));
+    }, day());
+    await open(page, 390);
+    await expect(page.getByRole('heading', {name:'甲商家2', exact:true})).toBeVisible();
+    if (editing === '写草稿') await notes(page).fill('当前正在记录，领取不要切换');
+    await page.getByRole('button', {name:'领取名单', exact:true}).click();
+    await page.getByRole('group', {name:'领取时区'}).getByRole('button', {name:'山地'}).click();
+    await page.getByLabel('首拨名单目标数量').selectOption('1');
+    await page.getByRole('button', {name:'领取餐厅名单', exact:true}).click();
+    await expect(page.getByRole('button', {name:'查看任务 · 新餐厅'})).toBeVisible();
+    await expect(page.getByRole('heading', {name: editing === '空闲' ? '新餐厅' : '甲商家2', exact:true})).toBeVisible();
+    if (editing === '写草稿') await expect(notes(page)).toHaveValue('当前正在记录，领取不要切换');
+    expect(data.writes.map(w => w.path)).toEqual(['/api/v1/sales-leads/workbench/prepare-industry']);
+  });
+}
+
+test('历史分配回执读取当前归属，打开跨北京零点也能继续查看', async ({ page }) => {
+  await page.clock.install({time:new Date('2026-11-17T23:59:55+08:00')});
+  const { reads, writes } = await fixture(page, {manualLead:true});
+  await page.goto(base + '/sales-workbench?scope=assigned&lead_id=503&sales_employee_id=27&target_date=2025-10-21');
+  const list = page.getByRole('region', {name:'销售名单'});
+  await expect(list.getByRole('button', {name:'名下待联系商家', exact:true})).toBeVisible();
+  await expect.poll(() => reads.some(r => r.includes('/workbench/owned?target_date=2026-11-17'))).toBe(true);
+  await page.clock.fastForward(10_000);
+  await expect.poll(() => reads.some(r => r.includes('/workbench/owned?target_date=2026-11-18'))).toBe(true);
+  await expect(list.getByRole('button', {name:'名下待联系商家', exact:true})).toBeVisible();
+  expect(reads.some(r => r.includes('target_date=2025-10-21'))).toBe(false);
+  expect(writes).toEqual([]);
+});
+
+test('跨零点编辑中的历史任务保留草稿，当前归属仍能打开', async ({page}) => {
+  await page.clock.install({time:new Date('2026-11-17T23:59:55+08:00')});
+  await fixture(page);
+  await open(page);
+  await notes(page).fill('保留在昨天的任务草稿');
+  await page.clock.fastForward(10_000);
+  await expect(page.getByRole('heading', {name:'拨打记录',exact:true})).toBeVisible();
+  await expect(notes(page)).toHaveValue('保留在昨天的任务草稿');
+  await page.getByRole('button', {name:/已分配给我/}).click();
+  await expect(page.getByRole('region', {name:'销售名单'}).getByRole('listitem')).toHaveCount(2);
+});
+
+test('今日待拨只列出待拨，全部任务能单独查看已记录商家', async ({page}) => {
+  await fixture(page, {completedFirst:true});
+  await open(page);
+  const pending = page.getByRole('button', {name:'今日待拨 1',exact:true});
+  await expect(pending).toHaveAttribute('aria-pressed','true');
+  const queue = page.getByRole('complementary', {name:'今日客户队列'});
+  await expect(queue.locator('[data-lead-id]')).toHaveCount(1);
+  await queue.getByRole('button',{name:'全部',exact:true}).click();
+  await expect(queue.locator('[data-lead-id]')).toHaveCount(2);
+  await expect(pending).toHaveAttribute('aria-pressed','false');
+  await pending.click();
+  await expect(queue.locator('[data-lead-id]')).toHaveCount(1);
+});
+
+test('多家领取直接定位第一家，展开回执可以切换第二家而不会自动拨号', async ({page}) => {
+  const {writes} = await fixture(page,{industryChoice:true, multiClaim:true});
+  await open(page);
+  await page.getByRole('button', {name:'领取名单',exact:true}).click();
+  await page.getByRole('group',{name:'领取时区'}).getByRole('button',{name:'山地'}).click();
+  await page.getByLabel('首拨名单目标数量').selectOption('5');
+  await page.getByRole('button',{name:'领取餐厅名单',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'新餐厅',exact:true})).toBeVisible();
+  const receipt = page.locator('.sw-claim-receipt').filter({hasText:'已补充 2 家餐厅'});
+  await receipt.getByRole('button',{name:'第二家餐厅',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'第二家餐厅',exact:true})).toBeVisible();
+  expect(writes.map(w => w.path)).toEqual(['/api/v1/sales-leads/workbench/prepare-industry']);
+});

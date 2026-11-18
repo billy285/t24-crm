@@ -28,3 +28,13 @@ export function nextSalesWorkbenchTask<T extends QueueTask>(queue: T[], saved: Q
   }
   return null;
 }
+
+type ContactSchedule = { local_time?: string | null; next_window_at?: string | null; in_contact_window?: boolean | null };
+
+export function localQueueSchedule(context: ContactSchedule): string {
+  const { local_time: local, next_window_at: next, in_contact_window: within } = context;
+  if (!local) return '时区待确认';
+  // The service emits merchant-local ISO times including their UTC offset.
+  const opening = next ? `${local.slice(0,10) === next.slice(0,10) ? '今天' : next.slice(5,10)} ${next.slice(11,16)} 起建议联系` : '';
+  return [`当地 ${local.slice(11,16)}`, within ? '建议联系时段内' : opening].filter(Boolean).join(' · ');
+}

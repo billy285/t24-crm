@@ -47,6 +47,7 @@ def test_placeholder_street_does_not_increase_profile_completeness():
 
 @pytest.mark.asyncio
 async def test_quota_fills_suitable_local_time_first_without_reassigning_other_sales(sales_app_client, monkeypatch):
+    from routers import sales_leads
     from services import sales_lead_cycle
     class Clock(datetime):
         @classmethod
@@ -54,6 +55,7 @@ async def test_quota_fills_suitable_local_time_first_without_reassigning_other_s
             value = cls(2026, 11, 10, 15, tzinfo=timezone.utc)
             return value.astimezone(tz) if tz else value.replace(tzinfo=None)
     monkeypatch.setattr(sales_lead_cycle, 'datetime', Clock)
+    monkeypatch.setattr(sales_leads, 'datetime', Clock)
     admin = _auth_headers('admin', 1, 'Admin')
     sales = _auth_headers('sales', 11, 'Sales A')
     ids = []
