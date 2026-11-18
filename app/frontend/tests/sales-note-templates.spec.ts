@@ -1,163 +1,182 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { fixture, notes, open, save, screenshots } from './fixtures/sales-workbench';
 
-const fixtureOrigin = process.env.T24_SALES_NOTE_TEMPLATES_BASE_URL || 'http://127.0.0.1:8906';
-const templates = [
-  { label: '本次未接通', text: '本次未接通。' },
-  { label: '前台／老板不在', text: '前台接听，老板不在。' },
-  { label: '英文沟通', text: '对方讲英文，暂未能有效沟通。' },
-  { label: '老板有兴趣／忙', text: '老板有兴趣，目前比较忙。' },
-  { label: '先看资料', text: '希望先看资料，关注：____。' },
-  { label: '已有服务商', text: '已有服务商，补充：____。' },
-  { label: '暂时不需要', text: '暂时不需要，原因：____。' },
-  { label: '要求不再联系', text: '对方明确要求不再联系。' },
-];
+const group = (page: Page) => page.getByRole('group', { name: '本次沟通 可多选' });
+const choice = (page: Page, name: string) => group(page).getByRole('button', { name, exact: true });
+const note = (page: Page, label: string) => choice(page, '备注：' + label);
+const gatekeeper = { id: 'gatekeeper', label: '前台／老板不在', text: '前台接听，老板不在。' };
+const english = { id: 'english', label: '英文沟通', text: '对方讲英文，暂未能有效沟通。' };
 
-async function openFixture(page: Page, options: { width?: number; mode?: string } = {}) {
-  const unexpected: string[] = [];
-  page.on('request', request => {
-    const url = new URL(request.url());
-    if (url.origin !== fixtureOrigin || url.pathname.startsWith('/api/')) unexpected.push(request.url());
-  });
-  await page.route('**/*', route => {
-    const url = new URL(route.request().url());
-    return url.origin === fixtureOrigin && !url.pathname.startsWith('/api/') ? route.continue() : route.abort('blockedbyclient');
-  });
-  const width = options.width || 1093;
-  await page.setViewportSize({ width, height: 844 });
-  await page.goto(`${fixtureOrigin}/${options.mode ? `?mode=${options.mode}` : ''}`);
-  const surface = options.mode === 'record' ? page.getByTestId('isolated-call-record')
-    : page.getByTestId(width < 768 ? 'sales-workbench-mobile' : 'sales-workbench-desktop');
-  await expect(surface.getByLabel('沟通记录', { exact: true })).toBeVisible();
-  const group = surface.getByRole('group', { name: '快捷备注模板', exact: true });
-  const templateButtons = group.getByRole('button', { name: /^插入模板：/ });
-  if (width < 768) {
-    await expect(templateButtons).toHaveCount(4);
-    const more = group.getByRole('button', { name: '更多备注（4）', exact: true });
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await more.click();
-  }
-  await expect(templateButtons).toHaveCount(8);
-  return { surface, group, notes: surface.getByLabel('沟通记录', { exact: true }), unexpected };
+async function expand(page: Page) {
+  const more = page.getByRole('button', { name: /^更多选项/ });
+  if (await more.count()) await more.click();
 }
 
-async function expectNoAutomaticBusinessChanges(page: Page, surface: Locator, unexpected: string[]) {
-  await expect(page.getByLabel('请求保存次数')).toContainText('沟通结果保存 0');
-  await expect(page.getByLabel('请求保存次数')).toContainText('独立资料保存 0');
-  await expect(page.getByLabel('请求保存次数')).toContainText('一并提交资料 0');
-  await expect(page.getByLabel('请求保存次数')).toContainText('演示拨号 尚未拨号');
-  const isolated = surface.getByTestId('isolated-save-count');
-  if (await isolated.count()) await expect(isolated).toHaveText('0');
-  expect(unexpected, '模板和草稿不能发起真实业务 API 或外部请求').toEqual([]);
-}
-
-for (const [index, template] of templates.entries()) {
-  test(`“${template.label}”追加完整模板并保留手工内容、结果和跟进时间`, async ({ page }) => {
-    const { surface, group, notes, unexpected } = await openFixture(page);
-    await surface.getByRole('button', { name: '待回访', exact: true }).click();
-    await surface.getByLabel(/^下次跟进/).fill('2026-10-20T10:30');
-    // Include meaningful trailing whitespace and alternate an existing newline.
-    const previous = `已手工记录：店主姓陈，下午联系。  ${index % 2 ? '\n' : ''}`;
-    await notes.fill(previous);
-    await group.getByRole('button', { name: `插入模板：${template.label}`, exact: true }).click();
-    const expected = `${previous}${previous.endsWith('\n') ? '' : '\n'}${template.text}`;
-    await expect(notes).toHaveValue(expected);
-    await expect(notes).toBeFocused();
-    await expect.poll(() => notes.evaluate(element => {
-      const textarea = element as HTMLTextAreaElement;
-      return [textarea.selectionStart, textarea.selectionEnd];
-    })).toEqual([expected.length, expected.length]);
-    await expect(surface.getByRole('button', { name: '待回访', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(surface.getByLabel(/^下次跟进/)).toHaveValue('2026-10-20T10:30');
-    await notes.fill(`${expected.replace('____', 'Google 广告')}\n销售补充：下周二继续确认。`);
-    await expect(notes).toHaveValue(`${expected.replace('____', 'Google 广告')}\n销售补充：下周二继续确认。`);
-    await expectNoAutomaticBusinessChanges(page, surface, unexpected);
-  });
-}
-
-test('空白记录可连续组合模板，拒绝联系等文字不会自动改变通话结果', async ({ page }) => {
-  const { surface, group, notes, unexpected } = await openFixture(page, { width: 390 });
-  for (const template of templates) await group.getByRole('button', { name: `插入模板：${template.label}`, exact: true }).click();
-  await expect(notes).toHaveValue(templates.map(template => template.text).join('\n'));
-  await expect(surface.getByText('确认商家要求不再联系时，请选择下方「禁止再联系」并保存。')).toBeVisible();
-  await expect(surface.locator('.sc-outcomes button[aria-pressed="true"]')).toHaveCount(0);
-  await expect(surface.getByLabel(/^下次跟进/)).toHaveCount(0);
-  await expectNoAutomaticBusinessChanges(page, surface, unexpected);
-});
-
-test('10000字上限允许恰好填满，再插入保留原文并明确提示', async ({ page }) => {
-  const { surface, group, notes, unexpected } = await openFixture(page);
-  const text = templates[0].text;
-  const previous = '中'.repeat(10000 - text.length - 1);
-  await notes.fill(previous);
-  await group.getByRole('button', { name: `插入模板：${templates[0].label}`, exact: true }).click();
-  const limit = `${previous}\n${text}`;
-  expect(limit.length).toBe(10000);
-  await expect(notes).toHaveValue(limit);
-  await group.getByRole('button', { name: `插入模板：${templates[1].label}`, exact: true }).click();
-  await expect(page.getByText('插入后会超出字数上限，请先删减沟通记录', { exact: true })).toBeVisible();
-  await expect(notes).toHaveValue(limit);
-  await expect(surface.locator('.sc-outcomes button[aria-pressed="true"]')).toHaveCount(0);
-  await expectNoAutomaticBusinessChanges(page, surface, unexpected);
-});
-
-test('保存中与受保护记录禁用全部模板，恢复后保留原手工记录', async ({ page }) => {
-  const { surface, group, notes, unexpected } = await openFixture(page, { mode: 'record' });
-  await notes.fill('保护前的手工记录，不可覆盖。');
-  for (const name of ['模拟保存中', '模拟禁止联系']) {
-    await surface.getByRole('button', { name, exact: true }).click();
-    await expect(notes).toBeDisabled();
-    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.label}`, exact: true })).toBeDisabled();
-    await expect(notes).toHaveValue('保护前的手工记录，不可覆盖。');
-    await surface.getByRole('button', { name, exact: true }).click();
-    await expect(notes).toBeEnabled();
-    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.label}`, exact: true })).toBeEnabled();
-  }
-  await expect(notes).toHaveValue('保护前的手工记录，不可覆盖。');
-  await expectNoAutomaticBusinessChanges(page, surface, unexpected);
-});
-
-test('模板与手工补充一起恢复草稿，结果及跟进时间保持原值', async ({ page }) => {
-  const { surface, group, notes, unexpected } = await openFixture(page, { width: 390 });
-  await surface.getByRole('button', { name: '有意向', exact: true }).click();
-  await surface.getByLabel(/^下次跟进/).fill('2026-10-20T10:30');
-  await notes.fill('原记录：对方咨询官网。');
-  await group.getByRole('button', { name: `插入模板：${templates[3].label}`, exact: true }).click();
-  await notes.press('End');
-  await notes.press('Enter');
-  await notes.pressSequentially('手工补充：周二下午老板在店。');
-  const expected = await notes.inputValue();
-  await page.reload();
-  await expect(notes).toHaveValue(expected);
-  await expect(surface.getByRole('button', { name: '有意向', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(surface.getByLabel(/^下次跟进/)).toHaveValue('2026-10-20T10:30');
-  await expectNoAutomaticBusinessChanges(page, surface, unexpected);
-});
-
-for (const width of [1093, 390, 320]) {
-  test(`快捷模板在${width}px均完整显示、可点击且不横向挤出`, async ({ page }) => {
-    const { surface, group, notes, unexpected } = await openFixture(page, { width });
-    for (const template of templates) {
-      const button = group.getByRole('button', { name: `插入模板：${template.label}`, exact: true });
-      await button.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }));
-      await expect(button).toBeInViewport({ ratio: 1 });
-      const metrics = await button.evaluate(element => {
-        const box = element.getBoundingClientRect();
-        const range = document.createRange();
-        range.selectNodeContents(element);
-        const text = range.getBoundingClientRect();
-        const target = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-        return { height: box.height, fits: text.left >= box.left - 1 && text.right <= box.right + 1 && text.top >= box.top - 1 && text.bottom <= box.bottom + 1, hit: Boolean(target && (element === target || element.contains(target))) };
-      });
-      expect(metrics.fits, '简短模板标签必须完整显示').toBe(true);
-      expect(metrics.hit, '模板中心点不能被固定控件遮挡').toBe(true);
-      expect(metrics.height).toBeGreaterThanOrEqual(width < 768 ? 44 : 32);
-      await button.click();
-      await expect(notes).toBeFocused();
+for (const width of [390, 1440]) {
+  test(`兼容结果和备注可多选，恢复草稿后只产生一次提交（${width}）`, async ({ page }) => {
+    const { writes } = await fixture(page);
+    await open(page, width);
+    await notes(page).fill('客户周二有空。');
+    await choice(page, '有意向').click();
+    await choice(page, '待回访').click();
+    await choice(page, '已预约').click();
+    await note(page, gatekeeper.label).click();
+    await note(page, english.label).click();
+    await page.getByLabel(/^下次跟进/).fill('2026-12-20T10:30');
+    await page.reload();
+    const expectedNotes = ['客户周二有空。', gatekeeper.text, english.text].join('\n');
+    await expect(notes(page)).toHaveValue(expectedNotes);
+    await expect(group(page).getByRole('button', { pressed: true })).toHaveCount(5);
+    await expect(page.getByLabel(/^下次跟进/)).toHaveValue('2026-12-20T10:30');
+    if (screenshots) {
+      await group(page).evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await page.screenshot({ path: `${screenshots}/communication-choices-${width}.png` });
     }
-    const sizes = await surface.evaluate(element => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth, surface: element.clientWidth, scroll: element.scrollWidth }));
-    expect(sizes.document).toBeLessThanOrEqual(sizes.viewport + 1);
-    expect(sizes.body).toBeLessThanOrEqual(sizes.viewport + 1);
-    expect(sizes.scroll).toBeLessThanOrEqual(sizes.surface + 1);
-    await expectNoAutomaticBusinessChanges(page, surface, unexpected);
+    await save(page).click();
+    await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].body).toMatchObject({ outcome: 'appointment', outcomes: ['interested', 'callback', 'appointment'],
+      quick_notes: [gatekeeper, english], notes: expectedNotes });
+    await expect(notes(page)).toHaveValue('');
+    await expect(group(page).getByRole('button', { pressed: true })).toHaveCount(0);
+  });
+
+  test(`仅勾选普通沟通事实即可保存，并使用中性的已记录沟通（${width}）`, async ({ page }) => {
+    const { writes } = await fixture(page);
+    await open(page, width);
+    await note(page, gatekeeper.label).click();
+    await note(page, english.label).click();
+    await expect(page.getByLabel(/^下次跟进/)).toHaveCount(0);
+    await save(page).click();
+    await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].body).toMatchObject({ outcome: 'recorded', outcomes: [], next_follow_up_at: null, quick_notes: [gatekeeper, english] });
   });
 }
+
+test('取消模板保留手工输入与编辑过的模板内容', async ({ page }) => {
+  const { writes } = await fixture(page);
+  await open(page, 390);
+  await notes(page).fill(gatekeeper.text);
+  await note(page, gatekeeper.label).click();
+  await note(page, english.label).click();
+  await note(page, gatekeeper.label).click();
+  await expect(notes(page)).toHaveValue(gatekeeper.text + '\n' + english.text);
+  await notes(page).fill('张店长：' + gatekeeper.text + '\n' + '暂未能有效沟通，下周约翻译。');
+  await note(page, english.label).click();
+  await expect(notes(page)).toHaveValue('张店长：' + gatekeeper.text + '\n暂未能有效沟通，下周约翻译。');
+  await expect(group(page).getByRole('button', { pressed: true })).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
+test('禁联提醒需明确选择结果；互斥结果自动取消，禁联需亲自取消', async ({ page }) => {
+  const { writes } = await fixture(page);
+  await open(page, 390);
+  await expand(page);
+  await note(page, '要求不再联系').click();
+  await save(page).click();
+  await expect(page.getByRole('alert').filter({ hasText: '请明确选择本次结果' })).toBeVisible();
+  expect(writes).toEqual([]);
+  await choice(page, '有意向').click();
+  await choice(page, '已预约').click();
+  await choice(page, '未接通').click();
+  await expect(choice(page, '有意向')).toHaveAttribute('aria-pressed', 'false');
+  await expect(choice(page, '已预约')).toHaveAttribute('aria-pressed', 'false');
+  await choice(page, '禁止再联系').click();
+  await expect(choice(page, '未接通')).toBeDisabled();
+  await expect(page.getByLabel(/^下次跟进/)).toHaveCount(0);
+  await choice(page, '禁止再联系').click();
+  await expect(choice(page, '未接通')).toBeEnabled();
+  await choice(page, '禁止再联系').click();
+  await save(page).click();
+  await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+  expect(writes[0].body).toMatchObject({ outcome: 'do_not_contact', outcomes: ['do_not_contact'] });
+});
+
+test('超过备注字数上限时保留手工原文和原有选项', async ({ page }) => {
+  const { writes } = await fixture(page);
+  await open(page);
+  const previous = '中'.repeat(4000 - gatekeeper.text.length - 1);
+  await notes(page).fill(previous);
+  await note(page, gatekeeper.label).click();
+  await note(page, english.label).click();
+  await expect(notes(page)).toHaveValue(previous + '\n' + gatekeeper.text);
+  await expect(note(page, english.label)).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByText('沟通内容最多 4000 字，请先删减后再选择备注')).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
+test('老板修改模板后，销售已选择的快捷备注仍按当时所见保存', async ({ page }) => {
+  const { writes } = await fixture(page);
+  let template = { id: 'special', label: '要一份介绍', text: '发中文资料。', enabled: true, industry: 'all', remind_do_not_contact: false };
+  await page.route('**/api/v1/app-config/sales/quick-note-templates', route => route.fulfill({ json: { templates: [template], revision: 'a'.repeat(64) } }));
+  await open(page, 390);
+  await note(page, '要一份介绍').click();
+  template = { ...template, text: '只发英文介绍。', label: '改名后' };
+  await page.reload();
+  await expect(note(page, '要一份介绍')).toHaveAttribute('aria-pressed', 'true');
+  await save(page).click();
+  await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+  expect(writes[0].body.quick_notes).toEqual([{ id: 'special', label: '要一份介绍', text: '发中文资料。' }]);
+});
+
+test('追加跟进重试保留同一个提交流水号和完整多选', async ({ page }) => {
+  await fixture(page, { completedFirst: true });
+  const attempts: Record<string, unknown>[] = [];
+  await page.route('**/api/v1/sales-leads/501/follow-up', async route => {
+    attempts.push(route.request().postDataJSON());
+    await route.fulfill(attempts.length === 1 ? { status: 503, json: { detail: '模拟网络故障' } } : { json: { lead_id: 501 } });
+  });
+  const enter = async () => {
+    const queue = page.getByRole('complementary', { name: '今日客户队列' });
+    await queue.getByRole('button', { name: '全部', exact: true }).click();
+    await queue.locator('[data-lead-id="501"]').click();
+    await page.getByRole('button', { name: '更多客户操作' }).click();
+    await page.getByRole('menuitem', { name: '追加跟进' }).click();
+    return page.getByRole('dialog', { name: /追加跟进/ });
+  };
+  await open(page);
+  const drawer = await enter();
+  await drawer.getByRole('button', { name: '备注：英文沟通' }).click();
+  await drawer.getByRole('button', { name: '保存跟进' }).click();
+  await expect(drawer.getByRole('alert')).toHaveText('保存失败，记录已保留，请重试');
+  await page.reload();
+  await enter();
+  await expect(drawer.getByRole('button', { name: '备注：英文沟通' })).toHaveAttribute('aria-pressed', 'true');
+  await drawer.getByRole('button', { name: '保存跟进' }).click();
+  await expect(drawer).toHaveCount(0);
+  expect(attempts).toHaveLength(2);
+  expect(attempts[0].submission_id).toMatch(/^[a-f0-9-]{36}$/);
+  expect(attempts[1]).toEqual(attempts[0]);
+});
+
+test('320px 手机上多选区完整显示，保护名单不能误记', async ({ page }) => {
+  const { writes } = await fixture(page, { protected: true });
+  await open(page, 320);
+  for (const button of await group(page).getByRole('button').all()) {
+    await expect(button).toBeDisabled();
+    const box = await button.boundingBox();
+    expect(box?.width).toBeGreaterThan(0);
+    expect(await button.evaluate(element => (element as HTMLElement).offsetHeight)).toBeGreaterThanOrEqual(44);
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  }
+  await expect(save(page)).toBeDisabled();
+  expect(writes).toEqual([]);
+});
+
+test('历史弹窗可读出多个结果与模板快照，并兼容旧记录', async ({ page }) => {
+  await fixture(page);
+  await page.route('**/api/v1/sales-leads/501/call-history', route => route.fulfill({ json: [
+    { id: 91, outcome: 'appointment', outcome_label: '已预约', outcome_labels: ['有意向','待回访','已预约'],
+      quick_notes: [gatekeeper], notes: '周二看演示。', called_at: '2026-11-17T01:15:00Z' },
+    { id: 77, outcome: 'no_answer', outcome_label: '未接通', notes: '周二再联系。', called_at: '2026-11-10T03:00:00Z' },
+  ] }));
+  await open(page, 390);
+  await page.getByRole('button', { name: '更多客户操作' }).click();
+  await page.getByRole('menuitem', { name: '历史联系' }).click();
+  const dialog = page.getByRole('dialog', { name: /历史联系记录/ });
+  for (const text of ['有意向 · 待回访 · 已预约', gatekeeper.label, '周二看演示。', '未接通']) {
+    await expect(dialog.getByText(text, { exact: true })).toBeVisible();
+  }
+});

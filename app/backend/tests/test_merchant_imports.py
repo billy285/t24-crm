@@ -649,31 +649,34 @@ async def test_extended_issue_download_preserves_extra_source_columns(imports_cl
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('blocked_status', ['invalid_phone', 'not_target', 'closed'])
-async def test_quality_blocks_single_and_atomic_bulk_assignment_until_reverified(imports_client, monkeypatch, blocked_status):
+async def test_quality_blocks_single_and_atomic_bulk_assignment_until_reverified(imports_client, blocked_status):
     from models.employees import Employees
-    from routers import merchant_pool
+    from models.operation_logs import Operation_logs
+    from services.prospect_verification import initial_prospect_quality, quality_for
     client, maker = imports_client
+    def quality_entry(status, revision):
+        after = {**initial_prospect_quality(), "status": status, "revision": revision}
+        return Operation_logs(user_id="10", action_type="prospect_quality:pool:102",
+            action_detail=json.dumps({"entity_kind": "pool", "entity_id": 102, "after": after}))
     async with maker() as session:
         session.add(Employees(id=11, user_id='sales-quality-test', name='Sales', role='sales', status='active', supervisor='Manager 10'))
         session.add_all([MerchantPool(id=101, business_name='Pending A', phone='+12125550123', country='US', data_source='test', pool_status='pending', created_by_id=10), MerchantPool(id=102, business_name='Pending B', phone='+14155550123', country='US', data_source='test', pool_status='pending', created_by_id=10)])
+        session.add(quality_entry(blocked_status, 1))
         await session.commit()
-    status = blocked_status
-    async def quality_one(db, kind, entity_id):
-        return {'status': status if entity_id == 102 else 'pending'}
-    async def quality_many(db, kind, ids):
-        return {i: await quality_one(db, kind, i) for i in ids}
-    monkeypatch.setattr(merchant_pool, 'quality_for', quality_one)
-    monkeypatch.setattr(merchant_pool, 'quality_for_many', quality_many)
     blocked = await client.post('/api/v1/merchant-pool/102/convert-to-lead', headers=auth(), json={})
     assert blocked.status_code == 409, blocked.text
     bulk = await client.post('/api/v1/merchant-pool/bulk-convert-to-lead', headers=auth(), json={'merchant_ids': [101, 102], 'assigned_sales_id': 11})
     assert bulk.status_code == 409, bulk.text
     assert await count(maker, SalesLeads) == 0
-    status = 'valid'
+    async with maker.begin() as session:
+        session.add(quality_entry("valid", 2))
     allowed = await client.post('/api/v1/merchant-pool/bulk-convert-to-lead', headers=auth(), json={'merchant_ids': [101, 102], 'assigned_sales_id': 11})
     assert allowed.status_code == 200, allowed.text
     assert allowed.json()['converted_count'] == 2
     assert await count(maker, SalesLeads) == 2
+    async with maker() as session:
+        inherited = await quality_for(session, "lead", allowed.json()["lead_ids"][1])
+        assert inherited["status"] == "valid" and inherited["origin"]["revision"] == 2
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String, Text, func
 
 
 class SalesCallActivities(Base):
@@ -15,6 +15,7 @@ class SalesCallActivities(Base):
     sales_employee_id = Column(Integer, nullable=False, index=True)
     sales_employee_name = Column(String, nullable=True)
     outcome = Column(String, nullable=False, index=True)
+    communication_record = Column(JSON(none_as_null=True), nullable=True)
     notes = Column(Text, nullable=True)
     next_follow_up_at = Column(DateTime(timezone=True), nullable=True, index=True)
     call_duration_seconds = Column(Integer, nullable=True)

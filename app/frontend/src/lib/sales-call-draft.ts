@@ -1,6 +1,7 @@
 import type { SalesCallValues } from '@/components/SalesCallRecord';
 import { emptyContact } from '@/lib/sales-intelligence';
 import { wasExplicitlyLoggedOut } from '@/lib/auth-storage';
+import { compatibleCallOutcomes, primaryCallOutcome, type SelectedQuickNote } from './sales-call-selection';
 
 export type SalesCallDraftScope = { userId?: number; salesId?: number; leadId?: number; taskId?: number; date: string; supplemental?: boolean };
 export type DraftPersistence = 'session' | 'memory';
@@ -40,13 +41,38 @@ function matchingLegacyKey(key: string, legacyKey?: string) {
 const boundedString = (value: unknown, limit: number) => typeof value === 'string' && value.length <= limit;
 function parseValues(raw: string, options: { value: string }[], legacy = false): SalesCallValues | null {
   try {
-    if (raw.length > 20000) return null;
+    if (raw.length > 180000) return null;
     const draft = JSON.parse(raw);
     const values = draft?.values;
     if (legacy ? draft?.version !== undefined && draft.version !== 1 : draft?.version !== 2) return null;
     if (!Number.isFinite(draft?.updatedAt) || draft.updatedAt <= 0 || draft.updatedAt > Date.now() + 60000 || !values || typeof values !== 'object' || Array.isArray(values)) return null;
     if (!boundedString(values.outcome, 40) || (values.outcome && !options.some(option => option.value === values.outcome)) || !boundedString(values.notes, 10000) || !boundedString(values.nextFollowUpAt, 40) || values.nextFollowUpAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(values.nextFollowUpAt)) return null;
     const result: SalesCallValues = { outcome: values.outcome, notes: values.notes, nextFollowUpAt: values.nextFollowUpAt };
+    if (values.outcomes !== undefined) {
+      const selected: unknown = values.outcomes;
+      if (!Array.isArray(selected) || selected.length > options.length || new Set(selected).size !== selected.length ||
+          !selected.every(id => typeof id === 'string' && options.some(o => o.value === id)) ||
+          !selected.every(a => selected.every(b => compatibleCallOutcomes(a, b))) || primaryCallOutcome(selected) !== values.outcome) return null;
+      result.outcomes = selected;
+    }
+    if (values.quickNotes !== undefined) {
+      if (!Array.isArray(values.quickNotes) || values.quickNotes.length > 60) return null;
+      const snapshots: SelectedQuickNote[] = [];
+      for (const note of values.quickNotes) {
+        if (!note || typeof note.id !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(note.id) ||
+            !boundedString(note.label, 24) || !note.label || !boundedString(note.text, 1000) || !note.text ||
+            snapshots.some(item => item.id === note.id)) return null;
+        const start = note.start;
+        const anchored = Number.isSafeInteger(start) && start >= 0 && values.notes.slice(start, start + note.text.length) === note.text;
+        snapshots.push({ id: note.id, label: note.label, text: note.text, start: anchored ? start : undefined,
+          insertedNewline: anchored && note.insertedNewline === true, remindDoNotContact: note.remindDoNotContact === true });
+      }
+      result.quickNotes = snapshots;
+    }
+    if (values.submissionId !== undefined) {
+      if (typeof values.submissionId !== 'string' || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(values.submissionId)) return null;
+      result.submissionId = values.submissionId;
+    }
     if (values.contactDetails !== undefined) {
       const contact = values.contactDetails;
       if (!contact || typeof contact !== 'object' || Array.isArray(contact)) return null;
@@ -63,7 +89,7 @@ function parseValues(raw: string, options: { value: string }[], legacy = false):
   } catch { return null; }
 }
 export function hasSalesCallDraft(values: SalesCallValues) {
-  return Boolean(values.outcome || values.notes || values.nextFollowUpAt || values.contactDetails && (values.contactDetails.reached_person !== 'unknown' || values.contactDetails.rejection_reason || values.contactDetails.need_summary || values.contactDetails.next_step));
+  return Boolean(values.outcome || values.quickNotes?.length || values.notes || values.nextFollowUpAt || values.contactDetails && (values.contactDetails.reached_person !== 'unknown' || values.contactDetails.rejection_reason || values.contactDetails.need_summary || values.contactDetails.next_step));
 }
 export function writeSalesCallDraft(key: string | null, values: SalesCallValues): DraftPersistence {
   if (!validKey(key)) return 'memory';

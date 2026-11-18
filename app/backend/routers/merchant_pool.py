@@ -28,8 +28,8 @@ from services.phone_numbers import normalize_phone_country, parse_phone_number, 
 from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_industries import merchant_industry_facets, merchant_industry_filter, normalize_merchant_industry
 from services.merchant_identity import has_concrete_name_and_address
-from services.prospect_verification import inherit_pool_quality, quality_for, quality_for_many, quality_status_expression, source_metadata_from_raw, unpack
-from services.sales_contact_protection import ensure_phone_contact_allowed
+from services.prospect_verification import inherit_pool_quality, quality_for_many, quality_status_expression, source_metadata_from_raw, unpack
+from services.sales_contact_protection import PROTECTION_NOTICE, blocked_phone_keys
 from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_labels import sales_label_filter, target_labels
 from services.sales_timezones import (GROUP_ZONES, STATE_CODES, STATE_NAMES, address_timezone_evidence,
@@ -448,52 +448,59 @@ async def _create_sales_lead_from_merchant(
     assigned_sales_name: Optional[str],
     team_manager_id: Optional[int],
 ) -> SalesLeads:
-    await lock_sales_workflow(db)
+    leads = await _create_sales_leads_from_merchants(db, [(merchant, team_manager_id)], user,
+                                                     assigned_sales_id, assigned_sales_name)
+    return leads[0]
+
+
+async def _create_sales_leads_from_merchants(
+    db: AsyncSession,
+    assignments: list[tuple[MerchantPool, Optional[int]]],
+    user: UserResponse,
+    assigned_sales_id: Optional[int],
+    assigned_sales_name: Optional[str],
+) -> list[SalesLeads]:
+    """Validate once under the workflow lock and create the batch in input order."""
     from services.sales_dossiers import next_sales_lead_id
-    quality = await quality_for(db, "pool", merchant.id)
-    if quality["status"] in {"invalid_phone", "not_target", "closed"}:
+    if not assignments:
+        return []
+    await lock_sales_workflow(db)
+    ids = [row.id for row, _ in assignments]
+    qualities = await quality_for_many(db, "pool", ids)
+    if any(quality["status"] in {"invalid_phone", "not_target", "closed"} for quality in qualities.values()):
         raise HTTPException(status_code=409, detail="该记录已核验为号码无效、非目标或停业，不能分配；请先由有权限的人员重新核验")
-    # Importing or assigning a fresh pool record must not bypass a previous
-    # merchant request to stop contact, even if the old lead was deleted.
-    await ensure_phone_contact_allowed(db, merchant.phone, merchant.country)
-    lead = SalesLeads(
-        id=await next_sales_lead_id(db),
-        business_name=merchant.business_name,
-        contact_name=merchant.contact_name,
-        phone=merchant.phone or "",
-        industry=normalize_merchant_industry(merchant.industry),
-        country=merchant.country,
-        state=merchant.state,
-        city=merchant.city,
-        address=merchant.address,
-        website=merchant.website,
-        source=f"merchant_pool:{merchant.data_source}",
-        merchant_pool_id=merchant.id,
-        assigned_sales_id=assigned_sales_id,
-        assigned_sales_name=assigned_sales_name,
-        team_manager_id=team_manager_id,
-        created_by_id=_employee_id(user),
-        created_by_name=user.name,
-    )
-    latest_analysis = (await db.execute(
-        select(MerchantAiAnalyses)
-        .where(MerchantAiAnalyses.merchant_id == merchant.id)
-        .order_by(MerchantAiAnalyses.generated_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if latest_analysis:
-        lead.analysis_snapshot = latest_analysis.analysis_json
-    db.add(lead)
+    keys = {key for row, _ in assignments if (key := phone_match_key(row.phone, row.country))}
+    if await blocked_phone_keys(db, keys):
+        raise HTTPException(409, PROTECTION_NOTICE)
+    first_id = await next_sales_lead_id(db, count=len(assignments))
+    latest = select(MerchantAiAnalyses.merchant_id, MerchantAiAnalyses.analysis_json, func.row_number().over(
+        partition_by=MerchantAiAnalyses.merchant_id,
+        order_by=(MerchantAiAnalyses.generated_at.desc(), MerchantAiAnalyses.id.desc()),
+    ).label("ordinal")).where(MerchantAiAnalyses.merchant_id.in_(ids)).subquery()
+    snapshots = dict((await db.execute(select(latest.c.merchant_id, latest.c.analysis_json)
+                                       .where(latest.c.ordinal == 1))).all())
+    leads = []
+    for offset, (merchant, manager_id) in enumerate(assignments):
+        lead = SalesLeads(
+            id=first_id + offset, business_name=merchant.business_name, contact_name=merchant.contact_name,
+            phone=merchant.phone or "", industry=normalize_merchant_industry(merchant.industry),
+            country=merchant.country, state=merchant.state, city=merchant.city, address=merchant.address,
+            website=merchant.website, source=f"merchant_pool:{merchant.data_source}", merchant_pool_id=merchant.id,
+            assigned_sales_id=assigned_sales_id, assigned_sales_name=assigned_sales_name, team_manager_id=manager_id,
+            created_by_id=_employee_id(user), created_by_name=user.name, analysis_snapshot=snapshots.get(merchant.id),
+        )
+        db.add(lead)
+        evidence = address_timezone_evidence(merchant.raw_payload)
+        if evidence:
+            db.add(SalesLeadProfiles(lead_id=lead.id, revision=1, payload_json=json.dumps(
+                {"prospect_source": {"address_timezone": evidence}}, ensure_ascii=False)))
+        await inherit_pool_quality(db, merchant, lead, user, qualities[merchant.id])
+        merchant.pool_status = "converted"
+        merchant.converted_lead_id = lead.id
+        merchant.isolation_reason = "已人工确认并转入独立电话销售线索库"
+        leads.append(lead)
     await db.flush()
-    evidence = address_timezone_evidence(merchant.raw_payload)
-    if evidence:
-        db.add(SalesLeadProfiles(lead_id=lead.id, revision=1, payload_json=json.dumps(
-            {"prospect_source": {"address_timezone": evidence}}, ensure_ascii=False)))
-    await inherit_pool_quality(db, merchant, lead, user)
-    merchant.pool_status = "converted"
-    merchant.converted_lead_id = lead.id
-    merchant.isolation_reason = "已人工确认并转入独立电话销售线索库"
-    return lead
+    return leads
 
 
 async def _manual_assignment_receipt(db, leads, user):

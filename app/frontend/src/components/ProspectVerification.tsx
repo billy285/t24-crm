@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { NativeSelect } from '@/components/ui/native-select';
+import { Dialog, DialogTitle, CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody } from '@/components/ui/dialog';
 import './prospect-verification.css';
 import { useUnsavedChanges } from '@/lib/use-unsaved-changes';
 
@@ -18,14 +19,14 @@ export type ProspectVerificationResponse = {
   can_edit: boolean; read_only_reason?: string; contact_protection?: { can_contact: boolean; reason?: string };
   history: { revision: number; created_at: string; actor: { name?: string }; after: { status: Status; notes?: string } }[];
 };
-type Props = { entityKind: 'pool' | 'lead'; entityId: number; onSaved?: (data: ProspectVerificationResponse) => void; className?: string };
+type Props = { entityKind: 'pool' | 'lead'; entityId: number; onSaved?: (data: ProspectVerificationResponse) => void; onClose?: () => void; className?: string };
 type Draft = { status: Status; method: 'call' | 'source_review'; notes: string; business_name: string; address: string; contact_name: string; chinese_service: ChineseService };
 const labels: Record<Status,string> = { pending:'未标记', valid:'有效门店', invalid_phone:'号码无效', not_target:'非目标商家', closed:'已停业' };
 const empty: Draft = { status:'pending', method:'call', notes:'', business_name:'', address:'', contact_name:'', chinese_service:'unknown' };
 function errorText(error: any, fallback: string) { const detail=error?.response?.data?.detail ?? error?.data?.detail; return typeof detail==='string' ? detail : Array.isArray(detail) ? '核验资料格式有误，请检查必填字段。' : error?.response ? fallback : error?.message || fallback; }
 const showDate = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { timeZone:'Asia/Shanghai', hour12:false }) : '尚未核验';
 
-export default function ProspectVerification({ entityKind, entityId, onSaved, className='' }: Props) {
+export default function ProspectVerification({ entityKind, entityId, onSaved, onClose, className='' }: Props) {
   const [data,setData] = useState<ProspectVerificationResponse | null>(null);
   const [draft,setDraft] = useState<Draft>(empty);
   const [open,setOpen] = useState(false);
@@ -83,13 +84,13 @@ export default function ProspectVerification({ entityKind, entityId, onSaved, cl
   }
   const quality=data?.prospect_quality;
   const source=data?.prospect_source;
-  return <section className={`prospect-verification ${className}`} aria-label="门店标记">
-    <div className="pv-heading"><div><strong>门店标记</strong><Badge variant="outline">{quality ? labels[quality.status] : '读取中'}</Badge></div><Button type="button" size="sm" variant="ghost" onClick={()=>setOpen(value=>!value)} aria-expanded={open}>{open?'收起':'标记门店'}</Button></div>
+  const content = <section className={`prospect-verification ${className}`} aria-label={onClose ? '门店资料纠错' : '门店标记'}>
+    {!onClose && <div className="pv-heading"><div><strong>门店标记</strong><Badge variant="outline">{quality ? labels[quality.status] : '读取中'}</Badge></div><Button type="button" size="sm" variant="ghost" onClick={()=>setOpen(value=>!value)} aria-expanded={open}>{open?'收起':'标记门店'}</Button></div>}
     {source && <p className="pv-source">{source.verification_type==='recruitment_contact'?'招聘联系点 · 店名及地址待确认':source.verification_type==='public_business_profile'?'具名公开商家资料':'公开商家线索'}{source.source_date && ` · 来源日期 ${source.source_date}`}{source.source_url && /^https?:\/\//i.test(source.source_url) && <> · <a href={source.source_url} target="_blank" rel="noopener noreferrer">查看原始来源</a></>}</p>}
     {quality?.verified_at && <p className="pv-source">最近标记：{quality.verified_by_name || '员工'} · {showDate(quality.verified_at)}（北京时间）</p>}
     {error && <p className="pv-error" role="alert">{error}<Button type="button" size="sm" variant="ghost" disabled={loading || saving} onClick={()=>void load(dirty.current)}>读取最新记录</Button></p>}
     {notice && <p className="pv-notice" role="status">{notice}</p>}
-    {open && <div className="pv-body">
+    {(open || onClose) && <div className="pv-body">
       <p className="pv-help">联系后可在这里标记门店或号码情况。未接、意向和回访请记在通话结果中。{source?.verification_type === 'recruitment_contact' && '招聘广告日期不代表当前营业状态。'}</p>
       {data?.read_only_reason && <p className="pv-help">{data.read_only_reason}</p>}
       {data?.contact_protection?.can_contact===false && <p className="pv-help">{data.contact_protection.reason || '此商家已有联系保护，请先核对档案。'}</p>}
@@ -106,4 +107,13 @@ export default function ProspectVerification({ entityKind, entityId, onSaved, cl
       {data?.history?.length>0 && <details className="pv-history"><summary>核验修改历史（{data.history.length}）</summary>{data.history.map(item=><article key={item.revision}><strong>第 {item.revision} 次 · {labels[item.after.status]} · {item.actor.name || '员工'}</strong><time>{showDate(item.created_at)}</time><p>{item.after.notes}</p></article>)}</details>}
     </div>}
   </section>;
+  if (!onClose) return content;
+  return <Dialog open onOpenChange={next => {
+    if (!next && !submitting.current && draftGuard.confirmDiscard()) onClose();
+  }}>
+    <CrmFormDialogContent className="sales-center-ui crm-sales-dialog-polish">
+      <CrmFormDialogHeader><DialogTitle>门店资料纠错</DialogTitle></CrmFormDialogHeader>
+      <CrmFormDialogBody>{content}</CrmFormDialogBody>
+    </CrmFormDialogContent>
+  </Dialog>;
 }

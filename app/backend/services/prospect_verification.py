@@ -113,9 +113,10 @@ async def ensure_quality_history_retained(db, entity_kind, entity_ids):
         raise HTTPException(409, '商家已有人工核验历史，请使用归档保留资料和修订记录，不能永久删除')
 
 
-async def inherit_pool_quality(db, merchant, lead, actor):
+async def inherit_pool_quality(db, merchant, lead, actor, previous=None):
     """Called within the locked assignment transaction; never reads another lead."""
-    previous = await quality_for(db, 'pool', merchant.id)
+    if previous is None:
+        previous = await quality_for(db, 'pool', merchant.id)
     if not previous['revision'] or (await quality_for(db, 'lead', lead.id))['revision']:
         return
     now = datetime.now(timezone.utc)

@@ -55,8 +55,8 @@ async def blocked_phone_keys(db, keys):
     keys = set(keys)
     if not keys:
         return set()
-    ledger = {row.phone_key: row.blocked for row in (await db.execute(
-        select(SalesPhoneSuppression).where(SalesPhoneSuppression.phone_key.in_(keys)))).scalars()}
+    ledger = dict((await db.execute(select(SalesPhoneSuppression.phone_key, SalesPhoneSuppression.blocked)
+        .where(SalesPhoneSuppression.phone_key.in_(keys)))).all())
     blocked = {key for key, value in ledger.items() if value}
     missing = keys - set(ledger)
     if missing:

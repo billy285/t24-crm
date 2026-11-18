@@ -6,8 +6,9 @@ from typing import Any, Callable, Dict, Literal
 from core.database import get_db
 from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from schemas.auth import UserResponse
+from schemas.sales_communication import SalesQuickNoteSnapshot
 from services.schema_readiness import (
     APP_SETTINGS_TABLE,
     SchemaUnavailableError,
@@ -35,29 +36,10 @@ SALES_QUICK_NOTE_CONFIG = "sales_quick_note_templates_v1"
 SALES_QUICK_NOTE_ROLES = {"super_admin", "admin", "sales_manager", "sales"}
 
 
-class SalesQuickNoteTemplate(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    id: StrictStr = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
-    label: StrictStr = Field(min_length=1, max_length=24)
-    text: StrictStr = Field(min_length=1, max_length=1000)
+class SalesQuickNoteTemplate(SalesQuickNoteSnapshot):
     industry: Literal["all", "restaurant", "beauty"] = "all"
     enabled: StrictBool = True
     remind_do_not_contact: StrictBool = False
-
-    @field_validator("label")
-    @classmethod
-    def validate_label(cls, value: str) -> str:
-        if not value.isprintable():
-            raise ValueError("按钮名称不能包含换行或控制字符")
-        return value
-
-    @field_validator("text")
-    @classmethod
-    def validate_text(cls, value: str) -> str:
-        if any(not char.isprintable() and char not in "\t\r\n" for char in value):
-            raise ValueError("备注正文不能包含控制字符")
-        return value
 
 
 class SalesQuickNoteUpdate(BaseModel):

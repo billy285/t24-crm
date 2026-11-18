@@ -1,8 +1,9 @@
+import hashlib
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
@@ -17,6 +18,8 @@ from models.ringcentral_call_records import RingCentralCallRecords
 from models.sales_leads import SalesLeads
 from models.sales_intelligence import SalesContactDetails
 from schemas.sales_intelligence import ContactDetails
+from schemas.sales_communication import CALL_OUTCOMES, NO_CONVERSATION_EVIDENCE, SalesCallSelection, activity_selections
+from routers.app_config import SALES_QUICK_NOTE_CONFIG, read_config_value, sales_quick_note_result
 from models.sales_call_activities import SalesCallActivities
 from models.sales_call_ai_analyses import SalesCallAiAnalyses
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
@@ -81,23 +84,13 @@ SALES_EDITABLE_FIELDS = {
 DEFAULT_DAILY_TARGET = 100
 MAX_DAILY_TARGET = 300
 BUSINESS_TIMEZONE = ZoneInfo("Asia/Shanghai")
-CALL_OUTCOMES = {
-    "no_answer": "未接通",
-    "callback": "待回访",
-    "interested": "有意向",
-    "appointment": "已预约",
-    "not_now": "暂时不需要",
-    "existing_provider": "已有服务商",
-    "not_interested": "无意向",
-    "do_not_contact": "禁止再联系",
-}
 
 
 def _provider_connected(activity: SalesCallActivities) -> bool:
     """Prefer provider truth, while preserving legacy manual-only records."""
     if activity.sync_status == "verified":
         return bool(activity.ringcentral_connected)
-    return activity.outcome != "no_answer"
+    return activity.outcome not in NO_CONVERSATION_EVIDENCE
 
 
 def _ringcentral_result_label(result: Optional[str], connected: bool) -> str:
@@ -120,6 +113,7 @@ def _ringcentral_result_label(result: Optional[str], connected: bool) -> str:
 # These are suggestions, not forced schedules. Sales can always select a more
 # appropriate time before saving the call result.
 FOLLOW_UP_RULES = {
+    "recorded": (None, "已保存沟通备注"),
     "no_answer": (1, "未接通：建议下一个工作日回拨"),
     "callback": (1, "待回访：建议在约定时间前再次确认"),
     "interested": (1, "有意向：建议 24 小时内跟进需求或报价"),
@@ -168,7 +162,7 @@ def _ensure_lead_role(user: UserResponse) -> None:
         raise HTTPException(status_code=403, detail="无权访问电话销售中心")
 
 
-def _validate_manual_call_result(payload: "SalesCallResultCreate") -> None:
+async def _validate_manual_call_result(db: AsyncSession, payload: "SalesCallResultCreate") -> None:
     notes = (payload.notes or "").strip()
     if payload.outcome == "callback" and not payload.next_follow_up_at:
         raise HTTPException(status_code=400, detail="待回访必须设置下次跟进时间")
@@ -176,6 +170,14 @@ def _validate_manual_call_result(payload: "SalesCallResultCreate") -> None:
         raise HTTPException(status_code=400, detail="有意向或已预约必须填写跟进内容和下次跟进时间")
     if payload.outcome == "do_not_contact" and not notes:
         raise HTTPException(status_code=400, detail="禁止再联系必须填写商家要求或原因")
+    if payload.outcome == "recorded":
+        if payload.next_follow_up_at is not None:
+            raise HTTPException(400, "另约回访时间请选择待回访结果")
+        config = await read_config_value(db, SALES_QUICK_NOTE_CONFIG)
+        protected_templates = {entry["id"] for entry in sales_quick_note_result(config.value)["templates"]
+                               if entry.get("remind_do_not_contact")}
+        if any(note.id in protected_templates for note in payload.quick_notes):
+            raise HTTPException(400, "所选备注涉及停止联系，请确认本次结果或选择禁止再联系")
 
 
 class SalesLeadCreate(BaseModel):
@@ -303,11 +305,11 @@ class SalesDailyQuotaUpdate(BaseModel):
     target_date: Optional[date] = None
 
 
-class SalesCallResultCreate(BaseModel):
+class SalesCallResultCreate(SalesCallSelection):
     dial_attempt_id: Optional[int] = Field(default=None, ge=1)
+    submission_id: Optional[UUID] = None
     enrichment: Optional[SalesEnrichmentUpdate] = None
     contact_details: Optional[ContactDetails] = None
-    outcome: str
     notes: Optional[str] = Field(default=None, max_length=4000)
     next_follow_up_at: Optional[datetime] = None
 
@@ -317,14 +319,6 @@ class SalesCallResultCreate(BaseModel):
         if value is None:
             return None
         return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
-
-
-    @field_validator("outcome")
-    @classmethod
-    def validate_outcome(cls, value: str) -> str:
-        if value not in CALL_OUTCOMES:
-            raise ValueError("无效的通话结果")
-        return value
 
 
 class SalesCallAiGenerateRequest(BaseModel):
@@ -590,6 +584,11 @@ def _apply_automation_outcome(lead: SalesLeads, outcome: str, now: datetime, nex
 
 async def _apply_contact_outcome(db, lead, outcome, now, next_follow_up_at, user):
     prior = lead.status
+    if outcome == "recorded":
+        lead.last_contact_at = now
+        if prior == "new":
+            lead.status = "contacted"
+        return _as_utc(lead.next_follow_up_at)
     positive = prior if prior in POSITIVE else None
     if outcome == "no_answer" and not positive:
         positive = await previous_interest(db, lead.id)
@@ -1011,7 +1010,7 @@ async def prepare_sales_industry(
     payload: Optional[SalesIndustryPick] = None,
     timezone_group: Optional[Literal["eastern", "central", "mountain", "pacific"]] = None,
     window_only: bool = False,
-    batch_size: int = Query(default=10, ge=1, le=10),
+    batch_size: int = Query(default=10, ge=1, le=100),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1542,6 +1541,7 @@ async def get_sales_call_history(
     )).scalars().all()
     return [{
         "id": row.id, "outcome": row.outcome, "outcome_label": CALL_OUTCOMES.get(row.outcome, row.outcome),
+        **activity_selections(row),
         "notes": row.notes, "next_follow_up_at": row.next_follow_up_at, "called_at": row.called_at,
         "sales_employee_id": row.sales_employee_id, "sales_employee_name": row.sales_employee_name,
         "call_duration_seconds": row.call_duration_seconds, "sync_status": row.sync_status,
@@ -2351,7 +2351,7 @@ async def sales_performance_dashboard(
         appointments = sum(item.outcome == "appointment" for item in employee_activities)
         documented = sum(bool((item.notes or "").strip()) and len((item.notes or "").strip()) >= 12 for item in employee_activities)
         compliant = sum(
-            item.outcome == "no_answer"
+            item.outcome in NO_CONVERSATION_EVIDENCE
             or (item.outcome in {"callback", "interested", "appointment"} and bool(item.next_follow_up_at) and bool((item.notes or "").strip()))
             or (item.outcome in {"not_interested", "do_not_contact"} and bool((item.notes or "").strip()))
             for item in employee_activities
@@ -2478,7 +2478,6 @@ async def record_daily_call_result(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
-    _validate_manual_call_result(payload)
     task = (await db.execute(select(SalesDailyDialTasks).where(SalesDailyDialTasks.id == task_id))).scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="每日任务不存在")
@@ -2495,6 +2494,7 @@ async def record_daily_call_result(
     if lead.assigned_sales_id != task.sales_employee_id:
         raise HTTPException(status_code=409, detail="线索归属已变更，请刷新任务队列")
 
+    await _validate_manual_call_result(db, payload)
     dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id, task=task)
     if dial_attempt:
         await ensure_phone_contact_allowed(db, dial_attempt.dial_phone, lead.country)
@@ -2513,6 +2513,7 @@ async def record_daily_call_result(
         dial_phone=dial_attempt.dial_phone if dial_attempt else task.dial_phone,
         dial_attempt_id=dial_attempt.id if dial_attempt else None,
         outcome=payload.outcome,
+        communication_record=payload.selection_snapshot(),
         notes=payload.notes,
         next_follow_up_at=next_follow_up_at,
         called_at=now,
@@ -2567,8 +2568,28 @@ async def record_supplemental_follow_up(
 ):
     """Record another valid call without reopening or inflating a completed daily task."""
     _ensure_lead_role(current_user)
-    _validate_manual_call_result(payload)
     await lock_sales_workflow(db, lead_ids=[lead_id])
+    selection = payload.selection_snapshot()
+    if payload.submission_id:
+        # The per-lead sales workflow lock serializes attempts, including
+        # supplemental notes made without a provider dial-attempt ID.
+        submission_id = str(payload.submission_id)
+        actor_id = _employee_id(current_user)
+        normalized = json.dumps(payload.model_dump(mode="json"), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        fingerprint = hashlib.sha256(normalized.encode()).hexdigest()
+        previous = await db.scalar(select(SalesCallActivities).where(
+            SalesCallActivities.lead_id == lead_id,
+            SalesCallActivities.communication_record["submission_id"].as_string() == submission_id,
+            SalesCallActivities.communication_record["actor_id"].as_integer() == actor_id))
+        if previous is not None:
+            if previous.communication_record.get("request_hash") != fingerprint:
+                raise HTTPException(409, "这条记录已保存，提交内容有变化，请核对沟通历史")
+            # Cooldown can release ownership during the original write. A replay
+            # may confirm the actor's own submission, but cannot expose a dossier.
+            return {"message": "这条追加跟进已保存", "lead_id": lead_id,
+                    "next_follow_up_at": _as_utc(previous.next_follow_up_at), "replayed": True}
+        selection = {**(selection or {}), "submission_id": submission_id, "actor_id": actor_id,
+                     "request_hash": fingerprint}
     lead = await _get_scoped_lead(db, lead_id, current_user)
     if _role(current_user) == "sales" and lead.assigned_sales_id != _employee_id(current_user):
         raise HTTPException(status_code=403, detail="只能追加本人负责线索的跟进")
@@ -2579,6 +2600,7 @@ async def record_supplemental_follow_up(
     if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
         raise HTTPException(status_code=400, detail="请先通过每日任务完成首次联系，再追加跟进")
 
+    await _validate_manual_call_result(db, payload)
     dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id)
     if dial_attempt:
         await ensure_phone_contact_allowed(db, dial_attempt.dial_phone, lead.country)
@@ -2597,6 +2619,7 @@ async def record_supplemental_follow_up(
         dial_phone=dial_attempt.dial_phone if dial_attempt else None,
         dial_attempt_id=dial_attempt.id if dial_attempt else None,
         outcome=payload.outcome,
+        communication_record=selection,
         notes=payload.notes,
         next_follow_up_at=next_follow_up_at,
         called_at=now,

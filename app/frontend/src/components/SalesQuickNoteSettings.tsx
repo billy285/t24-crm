@@ -133,7 +133,7 @@ export default function SalesQuickNoteSettings({ onClose, onSaved }: Props) {
     <CrmFormDialogContent className="max-w-2xl" aria-busy={loading || saving}>
       <CrmFormDialogHeader>
         <DialogTitle>管理快捷备注</DialogTitle>
-        <DialogDescription>编辑销售点击按钮后追加的文字，顺序决定手机先显示哪些模板。</DialogDescription>
+        <DialogDescription>销售勾选快捷备注时会填入对应文字。手机优先显示排在前面的备注。</DialogDescription>
       </CrmFormDialogHeader>
       <CrmFormDialogBody className="space-y-3">
         {loading ? <p role="status" className="py-5 text-sm text-muted-foreground">正在读取快捷备注…</p> :

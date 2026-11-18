@@ -47,8 +47,8 @@ HISTORY_MODELS = (SalesDossierSummary, SalesDossierSummaryAudit, SalesDossierGra
     SalesCallAiAnalyses, SalesQuoteRequests, SalesHandoffChecklists, SalesCoachingTasks)
 
 
-async def next_sales_lead_id(db):
-    """Allocate after the caller acquires lock_sales_workflow, never reuse history IDs.
+async def next_sales_lead_id(db, count=1):
+    """Return the first of count IDs under lock_sales_workflow, never reuse history IDs.
 
     Only scalar maximum IDs are read, including orphaned pre-release history.
     This does not expose or modify customer, merchant, suppression or call data.
@@ -59,7 +59,7 @@ async def next_sales_lead_id(db):
     maxima = union_all(*[select(func.max(column).label("retained_id")) for column in columns]).subquery()
     highest = (await db.scalar(select(func.max(maxima.c.retained_id)))) or 0
     maximum = (2**31 - 1) if db.get_bind().dialect.name == "postgresql" else (2**63 - 1)
-    if highest >= maximum:
+    if count < 1 or max(0, highest) + count > maximum:
         raise HTTPException(409, "商家编号已达到数据库上限，本次未创建，请联系管理员")
     return max(0, int(highest)) + 1
 

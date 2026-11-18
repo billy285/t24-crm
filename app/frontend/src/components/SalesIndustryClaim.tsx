@@ -59,7 +59,7 @@ export default function SalesIndustryClaim({ industry, choice, pending, disabled
         仅限当地可联系时段{windowLabel && <span>{windowLabel}</span>}</label>
       <label>首拨名单补至 <select value={choice.size} disabled={disabled} aria-label="首拨名单目标数量"
         onChange={event => onChange({ ...choice, size: Number(event.target.value) })}>
-        {[1, 5, 10].map(size => <option value={size} key={size}>{size} 家</option>)}</select></label>
+        {[1, 5, 10, 100].map(size => <option value={size} key={size}>{size} 家</option>)}</select></label>
     </div>
     <div className="sw-claim-action">
       <span role="status">{unavailable ? '库存暂时无法读取' : available == null ? '正在读取库存…' :

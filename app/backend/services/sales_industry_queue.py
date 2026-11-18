@@ -1,4 +1,4 @@
-"""Let a salesperson prepare a small batch of first calls from one industry."""
+"""Let a salesperson prepare today's first calls from one industry."""
 from collections import Counter
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -75,7 +75,8 @@ async def _batch_state(db, actor, day, industry, now, preserve_task_ids, selecte
         SalesLeads, SalesLeads.id == SalesDailyDialTasks.lead_id).where(
         SalesDailyDialTasks.sales_employee_id == actor.id, SalesDailyDialTasks.task_date == day,
         SalesDailyDialTasks.status.in_(("completed", "pending")),
-        or_(SalesDailyDialTasks.status == "completed", SalesLeads.assigned_sales_id == actor.id)))).all()
+        or_(SalesDailyDialTasks.status == "completed", SalesLeads.assigned_sales_id == actor.id))
+        .execution_options(populate_existing=True))).all()
     profiles = (await queue_context(db, [lead for _, lead in rows], day))[0] if selected_zones is not None else {}
     matching_ids = {task.id for task, lead in rows if workbench_industry_group(lead.industry) == industry and
                     (selected_zones is None or contact_queue_context(lead, now=now, profile=profiles.get(lead.id))["timezone"] in selected_zones)}
@@ -264,7 +265,7 @@ async def industry_stock(db, user, industry):
 
 
 async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve_task_ids, *, group=None, window_only=False, batch_size=BATCH_SIZE):
-    from routers.merchant_pool import _create_sales_lead_from_merchant, _is_closed
+    from routers.merchant_pool import _create_sales_leads_from_merchants, _is_closed
     now = datetime.now(timezone.utc)
     if day != now.astimezone(ZoneInfo("Asia/Shanghai")).date():
         raise HTTPException(400, "只能领取今天的任务")
@@ -311,21 +312,23 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
             qualities = await quality_for_many(db, "pool", pool)
             keys = {ident: phone_match_key(row.phone, row.country) for ident, row in pool.items()}
             unavailable = set(leads) | customers | await blocked_phone_keys(db, {key for key in keys.values() if key})
+            assignments = []
             for ident in shortlist:
                 row = pool.get(ident)
                 key = keys.get(ident)
                 if not row or not key or key in unavailable or _is_closed(row.business_status) or qualities[ident]["status"] not in VALID_QUALITY:
                     continue
-                lead = await _create_sales_lead_from_merchant(db, row, user, actor.id, actor.name,
-                    manager if row.created_by_id == manager else None)
+                assignments.append((row, manager if row.created_by_id == manager else None))
+                unavailable.add(key)
+                if len(chosen) + len(assignments) == limit:
+                    break
+            new_leads = await _create_sales_leads_from_merchants(db, assignments, user, actor.id, actor.name)
+            for (row, _), lead in zip(assignments, new_leads):
                 lead.assigned_at = now
                 lead.automation_state = "assigned"
                 row.isolation_reason = "销售自主领取行业首拨名单"
                 chosen.append(lead)
-                unavailable.add(key)
-                leads[key] = {lead.id}
-                if len(chosen) == limit:
-                    break
+                leads[keys[row.id]] = {lead.id}
         if window_only and len(chosen) < limit:
             region_zones = GROUP_ZONES[group] if group else set().union(*(GROUP_ZONES[g] for g in REGIONS))
             closed_zones = region_zones - zones
@@ -336,13 +339,15 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
     replaced = max(0, len(chosen) - free)
     for task in slots[:replaced]:
         task.status = DEFERRED
+    queued_ids = [lead.id for lead in chosen]
+    tasks = {task.lead_id: task for task in (await db.scalars(select(SalesDailyDialTasks).where(
+        SalesDailyDialTasks.lead_id.in_(queued_ids), SalesDailyDialTasks.sales_employee_id == actor.id,
+        SalesDailyDialTasks.task_date == day))).all()} if queued_ids else {}
     for lead in chosen:
         if lead.assigned_sales_id is None:
             lead.assigned_sales_id, lead.assigned_sales_name = actor.id, actor.name
             lead.assigned_at, lead.automation_state = now, "assigned"
-        task = await db.scalar(select(SalesDailyDialTasks).where(
-            SalesDailyDialTasks.lead_id == lead.id, SalesDailyDialTasks.sales_employee_id == actor.id,
-            SalesDailyDialTasks.task_date == day))
+        task = tasks.get(lead.id)
         if task is None:
             db.add(SalesDailyDialTasks(sales_employee_id=actor.id, task_date=day, lead_id=lead.id,
                                        queue_category="new", status="pending"))
@@ -351,7 +356,6 @@ async def prepare_industry_batch(db, user, industry, day, quota_reader, preserve
         db.add(SalesLeadAssignmentLogs(lead_id=lead.id, action="industry_pick", to_sales_employee_id=actor.id,
             to_sales_employee_name=actor.name, operated_by_id=actor.id, operated_by_name=actor.name,
             reason=f"本人领取{label}首拨任务", created_at=now))
-    queued_ids = [lead.id for lead in chosen]
     await db.commit()
     created = len(queued_ids)
     shortfall = None

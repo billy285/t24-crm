@@ -6,20 +6,11 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from services.sales_timezones import address_timezone_evidence, resolve_contact_timezone
+from schemas.sales_communication import CALL_OUTCOMES as LABELS, NO_CONVERSATION_EVIDENCE, activity_selections
 
 TZ = ZoneInfo("Asia/Shanghai")
 POSITIVE = {"interested", "appointment"}
 NEGATIVE = {"not_interested", "not_now", "existing_provider"}
-LABELS = {
-    "no_answer": "未接通",
-    "callback": "待回访",
-    "interested": "有意向",
-    "appointment": "已预约",
-    "not_interested": "无意向",
-    "not_now": "暂时不需要",
-    "existing_provider": "已有服务商",
-    "do_not_contact": "禁止再联系",
-}
 POTENTIAL_LABELS = {
     "priority": "优先推进",
     "nurture": "持续培育",
@@ -175,7 +166,7 @@ def summarize_lead(
     first_appointment = next(
         (a for a in activities if a.outcome == "appointment"), None
     )
-    substantive = [a for a in activities if a.outcome != "no_answer"]
+    substantive = [a for a in activities if a.outcome not in NO_CONVERSATION_EVIDENCE]
     latest = substantive[-1] if substantive else None
     latest_positive = next(
         (a for a in reversed(activities) if a.outcome in POSITIVE), None
@@ -183,7 +174,7 @@ def summarize_lead(
     all_mapped = {a.id for a in activities if a.id in by_activity}
     mapped_outcomes = defaultdict(list)
     for a in activities:
-        if a.id in by_activity:
+        if a.id in by_activity and a.outcome != "recorded":
             mapped_outcomes[by_activity[a.id]["key"]].append(a)
     connected = [c for c in calls if c["connected"]]
     rejection_calls = sum(
@@ -253,6 +244,7 @@ def summarize_lead(
     for a in activities:
         c = by_activity.get(a.id)
         d = details.get(a.id)
+        selection = activity_selections(a)
         timeline.append(
             {
                 "id": f"activity-{a.id}",
@@ -260,7 +252,8 @@ def summarize_lead(
                 "kind": "contact",
                 "at": iso(a.called_at),
                 "outcome": a.outcome,
-                "label": LABELS.get(a.outcome, a.outcome),
+                "label": " · ".join(selection["outcome_labels"]) or LABELS.get(a.outcome, a.outcome),
+                **selection,
                 "notes": a.notes,
                 "salesperson": a.sales_employee_name,
                 "source": "provider_linked" if c else "manual",

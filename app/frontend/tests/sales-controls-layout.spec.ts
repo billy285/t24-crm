@@ -1,8 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-// Runs only against the isolated fixture origin. The fixture blocks real API,
-// dialer, navigation, credentials and beforeunload handlers before imports.
-const fixtureOrigin = process.env.T24_SALES_CONTROLS_BASE_URL || 'http://127.0.0.1:8905';
+import { day, fixture, notes, open, save } from './fixtures/sales-workbench';
+
 const outcomes = [
   { value: 'no_answer', label: '未接通', followUp: true },
   { value: 'callback', label: '待回访', followUp: true },
@@ -22,21 +21,33 @@ const viewports = [
   { width: 320, height: 740 },
 ];
 
-async function openFixture(page: Page, width: number, height: number) {
-  const escapedOrigin = fixtureOrigin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const allowed = new RegExp(`^${escapedOrigin}(?:/|$)`);
-  await page.route('**/*', async route => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (!allowed.test(url.href) || url.pathname.startsWith('/api/')) return route.abort('blockedbyclient');
-    return route.continue();
+const longMerchantName = 'InternationalRestaurantAndHospitalityManagementCompany';
+async function openLayout(page: Page, width: number, height: number) {
+  const data = await fixture(page);
+  await page.route('**/api/v1/sales-leads/workbench/today?*', route => {
+    const items = [longMerchantName, '下一位合成商家'].map((business_name, index) => ({
+      task_id: 901 + index, task_status: 'pending', priority: 'normal', queue_category: 'new',
+      lead: { id: 501 + index, business_name, phone: '+12025550123', country: 'US', status: 'new',
+        do_not_contact: false, is_blacklisted: false },
+    }));
+    return route.fulfill({ json: { salesperson: { id: 27, name: '模拟销售甲' }, target_date: day(),
+      quota: 20, assigned_count: 2, completed_count: 0, remaining_count: 2, is_target_complete: false,
+      categories: { unfinished: 2, callback: 0, interested: 0, appointment: 0, new: 2 },
+      performance: { attempted: 0, connected: 0, interested: 0, appointments: 0, callbacks_due: 0, connection_rate: 0 }, items } });
   });
+  await open(page, width);
   await page.setViewportSize({ width, height });
-  await page.goto(fixtureOrigin);
-  const surface = page.getByTestId(width < 768 ? 'sales-workbench-mobile' : 'sales-workbench-desktop');
-  await expect(surface.getByLabel('沟通记录', { exact: true })).toBeVisible();
-  await expect(surface.locator('h2')).toContainText('InternationalRestaurantAndHospitalityManagementCompany');
-  return surface;
+  await expect(page.getByRole('heading', { name: longMerchantName })).toBeVisible();
+  return data;
+}
+
+const selectors = (page: Page) => page.getByRole('group', { name: '本次沟通 可多选' });
+
+async function revealChoice(page: Page, label: string) {
+  const button = selectors(page).getByRole('button', { name: label, exact: true });
+  if (!(await button.isVisible())) await page.getByRole('button', { name: /^更多选项/ }).click();
+  await expect(button).toBeVisible();
+  return button;
 }
 
 async function expectNoHorizontalOverflow(page: Page, surface: Locator) {
@@ -109,38 +120,42 @@ async function expectSelectTextFits(select: Locator) {
 
 for (const viewport of viewports) {
   test(`销售控件完整显示并可操作 ${viewport.width}x${viewport.height}`, async ({ page }) => {
-    const surface = await openFixture(page, viewport.width, viewport.height);
-    await expect(surface.locator('.sc-outcomes button')).toHaveCount(8);
+    const { writes } = await openLayout(page, viewport.width, viewport.height);
+    const surface = page.locator('.sc-workbench');
     await expect(surface.getByLabel('其他通话结果', { exact: true })).toHaveCount(0);
     for (const outcome of outcomes) {
-      const button = surface.getByRole('button', { name: outcome.label, exact: true });
+      const button = await revealChoice(page, outcome.label);
       await expectFullButtonText(button);
       await expectReachable(button);
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');
-      expect(await surface.locator('.sc-outcomes button[aria-pressed="true"]').count()).toBe(1);
+      await expect(surface.getByRole('group', { name: '本次沟通 可多选' }).getByRole('button', { pressed: true })).toHaveCount(1);
       const followUp = surface.getByLabel(/^下次跟进/);
       if (outcome.followUp) await expect(followUp).toBeVisible();
       else await expect(followUp).toHaveCount(0);
+      await button.click();
     }
 
     const header = surface.locator('.sw-customer-heading');
     const edit = header.getByRole('button', { name: '完善资料', exact: true });
-    await expectReachable(edit);
-    await expectFullButtonText(edit);
-    const editBox = await edit.boundingBox();
-    expect(editBox?.width || 0, '完善资料按钮不能继承图标按钮宽度').toBeGreaterThanOrEqual(88);
     for (const name of ['上一位客户', '下一位客户', '更多客户操作']) {
       const control = header.getByRole('button', { name, exact: true });
       await expectReachable(control);
-      const box = await control.boundingBox();
-      expect(box).not.toBeNull();
-      const overlaps = Math.min(editBox!.x + editBox!.width, box!.x + box!.width) > Math.max(editBox!.x, box!.x) + 1
-        && Math.min(editBox!.y + editBox!.height, box!.y + box!.height) > Math.max(editBox!.y, box!.y) + 1;
-      expect(overlaps, '完善资料不能与前后客户或更多按钮相互覆盖').toBe(false);
+      if (viewport.width >= 768) {
+        await expectFullButtonText(edit);
+        const editBox = await edit.boundingBox();
+        const box = await control.boundingBox();
+        expect(editBox?.width || 0, '完善资料按钮不能继承图标按钮宽度').toBeGreaterThanOrEqual(88);
+        const overlaps = Math.min(editBox!.x + editBox!.width, box!.x + box!.width) > Math.max(editBox!.x, box!.x) + 1
+          && Math.min(editBox!.y + editBox!.height, box!.y + box!.height) > Math.max(editBox!.y, box!.y) + 1;
+        expect(overlaps, '完善资料不能与分页操作重叠').toBe(false);
+      }
     }
 
     if (viewport.width < 768) {
+      await header.getByRole('button', { name: '更多客户操作' }).click();
+      await expect(page.getByRole('menuitem', { name: '完善资料' })).toBeVisible();
+      await page.keyboard.press('Escape');
       await surface.getByRole('button', { name: '打开客户队列', exact: true }).click();
       const queue = page.getByRole('dialog', { name: '客户队列', exact: true });
       const select = queue.getByRole('combobox', { name: '筛选资料状态', exact: true });
@@ -170,46 +185,39 @@ for (const viewport of viewports) {
       }
     }
     await expectNoHorizontalOverflow(page, surface);
-    await expect(page.getByLabel('请求保存次数')).toContainText('沟通结果保存 0');
-    await expect(page.getByLabel('请求保存次数')).toContainText('演示拨号 尚未拨号');
+    expect(writes).toEqual([]);
   });
 }
 
 for (const outcome of outcomes) {
-  test(`展开后的 ${outcome.label} 保留原提交结果与跟进语义`, async ({ page }) => {
-    const surface = await openFixture(page, 1093, 824);
-    const button = surface.getByRole('button', { name: outcome.label, exact: true });
-    await button.click();
-    await surface.getByLabel('沟通记录', { exact: true }).fill(`合成验收：${outcome.label}；不产生真实联系记录`);
-    if (outcome.followUp) await surface.getByLabel(/^下次跟进/).fill('2026-10-20T10:30');
-    await surface.getByRole('button', { name: '保存并下一位', exact: true }).click();
-    await expect(page.getByLabel('请求保存次数')).toContainText('沟通结果保存 1');
-    await expect(surface.locator('h2')).toHaveText('下一位合成商家');
-    const log = page.locator('.qa-log article').filter({ hasText: '/result' }).first();
-    const payload = JSON.parse(await log.locator('pre').textContent() || '{}');
-    expect(payload).toMatchObject({
-      outcome: outcome.value,
-      notes: `合成验收：${outcome.label}；不产生真实联系记录`,
+  test(`手机展开 ${outcome.label} 后保存对应结果与跟进时间`, async ({ page }) => {
+    const { writes } = await fixture(page);
+    await open(page, 390);
+    await (await revealChoice(page, outcome.label)).click();
+    const memo = `合成验收：${outcome.label}`;
+    await notes(page).fill(memo);
+    if (outcome.followUp) await page.getByLabel(/^下次跟进/).fill('2026-10-20T10:30');
+    await save(page).click();
+    await expect(page.getByRole('heading', { name: '甲商家2' })).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].body).toMatchObject({
+      outcome: outcome.value, outcomes: [outcome.value], quick_notes: [], notes: memo,
       next_follow_up_at: outcome.followUp ? '2026-10-20T02:30:00.000Z' : null,
     });
-    expect(payload).not.toHaveProperty('enrichment');
-    await expect(page.getByLabel('请求保存次数')).toContainText('独立资料保存 0');
-    await expect(page.getByLabel('请求保存次数')).toContainText('一并提交资料 0');
+    expect(writes[0].body).not.toHaveProperty('enrichment');
   });
 }
 
-test('展开结果选择继续保留未保存草稿且不发生真实网络请求', async ({ page }) => {
-  const unexpected: string[] = [];
-  page.on('request', request => {
-    const url = new URL(request.url());
-    if (url.origin !== fixtureOrigin || url.pathname.startsWith('/api/')) unexpected.push(request.url());
-  });
-  const surface = await openFixture(page, 390, 844);
-  await surface.getByRole('button', { name: '已有服务商（90天后轮换）', exact: true }).click();
-  await surface.getByLabel('沟通记录', { exact: true }).fill('合成草稿：已有供应商，约定下次再联系');
+test('手机更多选项中选择已有服务商，刷新后无需再展开即可找到草稿', async ({ page }) => {
+  const { writes } = await fixture(page);
+  await open(page, 390);
+  const label = '已有服务商（90天后轮换）';
+  const selected = selectors(page).getByRole('button', { name: label, exact: true });
+  await expect(selected).toHaveCount(0);
+  await (await revealChoice(page, label)).click();
+  await notes(page).fill('合成草稿：已有供应商，约定下次再联系');
   await page.reload();
-  await expect(surface.getByRole('button', { name: '已有服务商（90天后轮换）', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(surface.getByLabel('沟通记录', { exact: true })).toHaveValue('合成草稿：已有供应商，约定下次再联系');
-  await expect(page.getByLabel('请求保存次数')).toContainText('沟通结果保存 0');
-  expect(unexpected).toEqual([]);
+  await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(notes(page)).toHaveValue('合成草稿：已有供应商，约定下次再联系');
+  expect(writes).toEqual([]);
 });

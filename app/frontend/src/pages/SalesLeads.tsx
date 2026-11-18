@@ -102,7 +102,7 @@ type SalesCallReport = {
   employees: { sales_employee_id: number; salesperson: string; connection_status?: string; extension_number?: string; last_synced_at?: string; needs_attention?: boolean; connection_message?: string; sync_coverage?: SyncCoverage; provider_calls: number; connected: number; not_connected: number; connection_rate: number; total_talk_seconds: number; average_talk_seconds: number; crm_records: number; linked_records: number; link_rate: number; interested: number; appointments: number; no_answer_records: number; conversions: number; assigned: number; completed: number; completion_rate: number }[];
   recent_calls: { id: number; lead_id?: number; salesperson: string; business_name?: string; remote_phone?: string; started_at?: string; connected: boolean; duration_seconds: number; result: string; crm_recorded: boolean }[];
 };
-type CallHistoryItem = { id: number; outcome: string; outcome_label: string; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
+type CallHistoryItem = { id: number; outcome: string; outcome_label: string; outcome_labels?: string[]; quick_notes?: { label: string }[]; notes?: string; next_follow_up_at?: string; called_at: string; sales_employee_name?: string };
 const statusOptions = [
   { value: 'new', label: '新线索' },
   { value: 'contacted', label: '已联系' },
@@ -1011,7 +1011,7 @@ function SalesLeadWorkspace() {
                   {hasFollowUpDraft() && <div className="slr-draft-state"><span role="status">{followUpPersistence === 'session' ? '草稿已暂存' : '草稿仅保留在当前页面'}</span><Button type="button" size="sm" variant="ghost" aria-label="清空跟进草稿" onClick={discardFollowUpDraft}><Trash2 size={14} /></Button></div>}
                   <div className="slr-followup-save-row"><Button type="button" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>{['interested', 'appointment'].includes(followUpForm.outcome) && <Button type="button" variant="outline" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp('quote')}>保存并登记成交</Button>}</div>
                 </fieldset>}
-            <details className="slr-followup-history"><summary><History size={16} />历史记录 <span>{callHistory.length}</span><ChevronDown size={15} /></summary>{historyLoading ? <p>正在加载…</p> : callHistory.length ? callHistory.map(item => <article key={item.id}><div><strong>{item.outcome_label}</strong><time>{formatDate(item.called_at)}</time></div><p>{item.notes || '未填写沟通内容'}</p><small>{item.sales_employee_name || '—'} · 下次：{formatDate(item.next_follow_up_at)}</small></article>) : <p>暂无历史记录</p>}</details>
+            <details className="slr-followup-history"><summary><History size={16} />历史记录 <span>{callHistory.length}</span><ChevronDown size={15} /></summary>{historyLoading ? <p>正在加载…</p> : callHistory.length ? callHistory.map(item => <article key={item.id}><div><strong>{item.outcome_labels?.join(' · ') || item.outcome_label}</strong><time>{formatDate(item.called_at)}</time></div>{Boolean(item.quick_notes?.length) && <small>{item.quick_notes?.map(note => note.label).join(' · ')}</small>}<p>{item.notes || '未填写沟通内容'}</p><small>{item.sales_employee_name || '—'} · 下次：{formatDate(item.next_follow_up_at)}</small></article>) : <p>暂无历史记录</p>}</details>
           </>}
         </SheetContent>
       </Sheet>

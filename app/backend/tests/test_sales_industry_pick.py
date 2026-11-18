@@ -13,6 +13,7 @@ from services.sales_industry_queue import prepare_industry_batch
 from models.employees import Employees
 from models.merchant_pool import MerchantPool
 from models.sales_call_activities import SalesCallActivities
+from models.sales_contact_protection import SalesPhoneSuppression
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 from models.sales_daily_quotas import SalesDailyQuotas
 from models.sales_leads import SalesLeads
@@ -69,6 +70,86 @@ async def test_full_queue_swaps_only_untouched_and_keeps_owner_and_progress(sale
         assert (await db.get(SalesLeads, 10)).assigned_sales_id == 12
     manual = await sales_app_client.post(f"{WORK}/manual-task/5", params={"target_date": TODAY}, headers=SALES)
     assert manual.status_code == 200 and manual.json()["task_status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_one_hundred_pool_claim_respects_region_and_retries_keep_the_same_leads(sales_app_client):
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([merchant(i, industry="餐厅") for i in range(1, 102)])
+        db.add(merchant(102, industry="餐厅", state="CA", city="San Diego"))
+        await db.commit()
+    params = {"industry": "restaurant", "target_date": TODAY, "timezone_group": "eastern", "batch_size": 100}
+    async def claim():
+        response = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES, params=params)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    first = await claim()
+    assert first["created"] == first["pending_in_industry"] == 100
+    assert len(set(first["queued_lead_ids"])) == 100
+    again = await claim()
+    assert again["created"] == 0 and again["reason"] == "already_ready"
+    assert set(again["ready_lead_ids"]) == set(first["queued_lead_ids"])
+    async for db in app.dependency_overrides[get_db]():
+        leads = (await db.scalars(select(SalesLeads))).all()
+        assert len(leads) == len({row.phone for row in leads}) == 100
+        assert all(row.assigned_sales_id == 11 and row.state == "NY" for row in leads)
+        assert (await db.get(MerchantPool, 102)).pool_status == "pending"
+    invalid = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES,
+        params={**params, "batch_size": 101})
+    assert invalid.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_hundred_target_tops_up_existing_first_calls_without_displacing_callback(sales_app_client):
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([SalesDailyQuotas(sales_employee_id=11, target_date=TODAY, target_count=40),
+                    lead(101, "美业", status="follow_up"), task(101, queue_category="follow_up")])
+        for ident in range(1, 61):
+            db.add(lead(ident, "餐厅"))
+            if ident <= 10:
+                db.add(task(ident))
+        await db.commit()
+    receipt = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES,
+        params={"industry": "restaurant", "target_date": TODAY, "batch_size": 100})
+    assert receipt.status_code == 200, receipt.text
+    data = receipt.json()
+    assert data["created"] == 29 and data["total"] == 40 and data["pending_in_industry"] == 39
+    assert data["replaced"] == 0 and data["shortfall_reason"] == "quota_full"
+
+
+@pytest.mark.asyncio
+async def test_batch_fails_atomically_when_only_one_unused_id_remains(sales_app_client):
+    async for db in app.dependency_overrides[get_db]():
+        db.add_all([merchant(1, industry="餐厅"), merchant(2, industry="餐厅"),
+                    SalesPhoneSuppression(phone_key="+12125559000", reason="Retained history",
+                                          blocked=True, source_lead_id=2**63 - 2)])
+        await db.commit()
+    response = await sales_app_client.post(f"{WORK}/prepare-industry", headers=SALES,
+        params={"industry": "restaurant", "target_date": TODAY, "batch_size": 100})
+    assert response.status_code == 409, response.text
+    async for db in app.dependency_overrides[get_db]():
+        assert not (await db.scalars(select(SalesLeads.id))).all()
+        assert not (await db.scalars(select(SalesDailyDialTasks.id))).all()
+        assert (await db.scalars(select(MerchantPool.pool_status))).all() == ["pending", "pending"]
+
+
+@pytest.mark.asyncio
+async def test_claim_rechecks_phone_blocked_since_it_was_last_read(dispatch_db):
+    first = merchant(1, industry="餐厅")
+    released = SalesPhoneSuppression(phone_key=first.phone, blocked=False, reason="Released")
+    dispatch_db.add_all([first, merchant(2, industry="餐厅"), released])
+    await dispatch_db.commit()
+    async with dispatch_db.info["sessions"]() as other:
+        updated = await other.get(SalesPhoneSuppression, first.phone)
+        updated.blocked = True
+        await other.commit()
+    assert released.blocked is False
+    result = await prepare_industry_batch(dispatch_db, user("sales", "21", "A"), "restaurant",
+                                          TODAY, _daily_quota, set(), batch_size=100)
+    assert result["created"] == 1
+    claimed = await dispatch_db.get(SalesLeads, result["queued_lead_ids"][0])
+    assert claimed.merchant_pool_id == 2 and first.pool_status == "pending"
 
 
 @pytest.mark.asyncio
@@ -157,30 +238,30 @@ async def test_pending_appointments_do_not_fill_first_call_batch_and_cold_picks_
 
 
 @pytest.mark.asyncio
-async def test_concurrent_sellers_claim_distinct_merchants_and_retries_are_idempotent(dispatch_db):
-    dispatch_db.add_all([merchant(ident, industry="餐厅") for ident in range(1, 24)])
+@pytest.mark.parametrize("size", [10, 100])
+async def test_concurrent_sellers_claim_distinct_merchants_and_retries_are_idempotent(dispatch_db, size):
+    dispatch_db.add_all([merchant(ident, industry="餐厅") for ident in range(1, size * 2 + 4)])
     await dispatch_db.commit()
     sessions = dispatch_db.info["sessions"]
 
     async def claim(employee_id):
         async with sessions() as session:
             return await prepare_industry_batch(session, user("sales", str(employee_id), "Sales"),
-                                                "restaurant", TODAY, _daily_quota, set())
+                                                "restaurant", TODAY, _daily_quota, set(), batch_size=size)
 
     first, second = await asyncio.gather(claim(21), claim(22))
-    assert first["created"] == second["created"] == 10
+    assert first["created"] == second["created"] == size
     assert set(first["queued_lead_ids"]).isdisjoint(second["queued_lead_ids"])
     repeated = await asyncio.gather(claim(21), claim(21))
     assert all(result["created"] == 0 for result in repeated)
     leads = (await dispatch_db.scalars(select(SalesLeads))).all()
-    assert len({lead.phone for lead in leads}) == len(leads) == 20
+    assert len({lead.phone for lead in leads}) == len(leads) == size * 2
     assert {lead.assigned_sales_id for lead in leads} == {21, 22}
 
 
 @pytest.mark.asyncio
 async def test_zone_stock_and_claim_share_local_hours_identity_and_permissions(sales_app_client, monkeypatch):
     from services import sales_industry_queue
-    from models.sales_contact_protection import SalesPhoneSuppression
 
     class SummerClock(datetime):
         @classmethod

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
+from schemas.sales_communication import NO_CONVERSATION_EVIDENCE
 from schemas.sales_intelligence import (
     ConfigPublish,
     OperatingConfig,
@@ -903,9 +904,9 @@ async def team(
             and bool((details[r.id].need_summary or "").strip())
             and bool((details[r.id].next_step or "").strip())
             for r in a
-            if r.outcome != "no_answer"
+            if r.outcome not in NO_CONVERSATION_EVIDENCE
         )
-        conversations = sum(r.outcome != "no_answer" for r in a)
+        conversations = sum(r.outcome not in NO_CONVERSATION_EVIDENCE for r in a)
         quality = round(complete / conversations * 100, 1) if conversations else None
         target = chosen.get(e.id)
         t = unpack(target.payload_json) if target else None
@@ -1011,7 +1012,7 @@ async def team(
                         ),
                     )
                     for r in a
-                    if r.outcome != "no_answer"
+                    if r.outcome not in NO_CONVERSATION_EVIDENCE
                 ]
             # Counts remain attributable to the original seller; transferred lead content stays scoped.
             for record in evidence:
