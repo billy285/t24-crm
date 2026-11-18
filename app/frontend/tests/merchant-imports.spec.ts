@@ -111,3 +111,54 @@ test('撤销可取消且有后续修改时保持原入池结果和明确错误',
   await expect(dialog.getByRole('region', { name: '商家导入批次结果' }).getByText('已入池', { exact: true })).toBeVisible();
   expect(writes.filter(path => path.endsWith('/revert'))).toHaveLength(1);
 });
+
+
+test('老板在手机创建竞品标签并随批次预检提交', async ({ page }) => {
+  const owner = { ...employee, id: 1, name: '标签验收老板', role: 'super_admin' };
+  const labels: { id: number; kind: string; name: string; industry: string; archived: boolean }[] = [];
+  let uploadedLabel = false;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(emp => {
+    localStorage.setItem('token', 'mock-label-token');
+    localStorage.setItem('emp_auth_token', 'mock-label-token');
+    localStorage.setItem('emp_auth_data', JSON.stringify(emp));
+  }, owner);
+  await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    let data: unknown = { items: [], total: 0 };
+    if (path.endsWith('/emp-auth/me')) data = owner;
+    if (path === '/api/v1/merchant-pool/stats') data = { total: 0, pending: 0, converted: 0, isolated: 0, duplicates: 0, archived: 0 };
+    if (path.endsWith('/sales-leads/assignees')) data = [];
+    if (path === '/api/v1/sales-labels') {
+      if (request.method() === 'POST') {
+        const label = { ...request.postDataJSON(), id: 7 };
+        labels.push(label);
+        data = label;
+      } else data = { items: labels };
+    }
+    if (path === '/api/v1/merchant-imports/preview') {
+      uploadedLabel = (request.postDataBuffer()?.toString() ?? '').includes('name="label_ids"\r\n\r\n7');
+      data = { ...receipt, import_defaults: { label_ids: [7] } };
+    }
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
+  });
+  await page.goto(`${baseUrl}/merchant-pool`);
+  await page.getByRole('button', { name: '管理标签', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await dialog.getByLabel('标签名称').fill('MenuSifu');
+  await dialog.getByLabel('标签类别').selectOption('provider');
+  await dialog.getByLabel('适用行业').selectOption('restaurant');
+  await dialog.getByRole('button', { name: '新增标签' }).click();
+  await expect(dialog.getByText('在用系统：MenuSifu', { exact: true })).toHaveCount(1);
+  await dialog.getByRole('button', { name: '完成' }).click();
+  await page.getByRole('button', { name: '导入商家数据' }).click();
+  dialog = page.getByRole('dialog');
+  await dialog.locator('summary').filter({ hasText: '给本批添加标签' }).click();
+  await dialog.getByRole('checkbox', { name: /在用系统.*MenuSifu/ }).check();
+  await upload(page);
+  await expect(dialog.getByText('本批标签：在用系统：MenuSifu', { exact: true })).toBeVisible();
+  expect(labels).toEqual([{ name: 'MenuSifu', kind: 'provider', industry: 'restaurant', archived: false, id: 7 }]);
+  expect(uploadedLabel).toBeTruthy();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});

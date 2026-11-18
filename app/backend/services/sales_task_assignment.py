@@ -5,7 +5,9 @@ from sqlalchemy import func, select
 from models.sales_intelligence import SalesInsightEvents
 from models.sales_daily_dial_tasks import SalesDailyDialTasks
 
-CLOSING_EVENTS = ("closing_claim", "closing_follow_up", "closing_take_over", "closing_lost")
+CLOSING_EVENTS = ("closing_claim", "closing_follow_up", "closing_take_over", "closing_pause",
+                  "closing_take_over_paused", "closing_delegate", "closing_delegate_paused",
+                  "closing_resume", "closing_lost")
 
 
 def active_closing_leads():

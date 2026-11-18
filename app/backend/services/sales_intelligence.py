@@ -297,17 +297,22 @@ def summarize_lead(
                 }
             )
     for e in events:
+        details = unpack(e.payload_json)
+        label = {"closing_qualified": "已确认意向", "closing_claim": "已接手踢单",
+                 "closing_follow_up": "踢单跟进", "closing_take_over": "老板接手踢单",
+                 "closing_pause": "暂缓跟进", "closing_take_over_paused": "老板接手暂缓线索",
+                 "closing_resume": "恢复跟进", "closing_lost": "踢单未成交"}.get(e.kind, "商机／分类更新")
+        if e.kind in {"closing_delegate", "closing_delegate_paused"}:
+            label = f"转给主管跟进 · {details.get('closer_name') or '销售主管'}"
         timeline.append(
             {
                 "id": f"event-{e.id}",
                 "kind": e.kind,
                 "at": iso(e.created_at),
-                "label": {"closing_qualified": "已确认意向", "closing_claim": "已接手踢单",
-                          "closing_follow_up": "踢单跟进", "closing_take_over": "老板接手踢单",
-                          "closing_lost": "踢单未成交"}.get(e.kind, "商机／分类更新"),
+                "label": label,
                 "salesperson": e.actor_name,
                 "source": "review",
-                "details": unpack(e.payload_json),
+                "details": details,
             }
         )
     timeline.sort(key=lambda e: (e["at"] or "", e["id"]), reverse=True)

@@ -8,12 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getToken, invokeWithAuth, refreshToken } from '@/lib/tokenStore';
+import { SalesLabelChoices } from '@/components/SalesLabels';
+import { salesLabelText, useSalesLabels } from '@/lib/sales-labels';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import { MERCHANT_IMPORT_EXAMPLE, MERCHANT_IMPORT_EXTENDED_HEADERS, MERCHANT_IMPORT_HEADERS, merchantImportRepairAdvice, type MerchantImportIssueRow } from '@/lib/merchant-import';
 
-const statusNames: Record<string, string> = { preview: '待确认', committed: '已入池', reverted: '已撤销', pending: '未分配', no_phone: '电话待补齐', duplicate: '重复隔离', existing_customer: '正式客户隔离', closed: '停业隔离', error: '不导入' };
+const statusNames: Record<string, string> = { preview: '待确认', committed: '已入池', reverted: '已撤销', pending: '未分配', no_phone: '电话待补齐', duplicate: '重复隔离', existing_customer: '正式客户隔离', closed: '停业隔离', matched_existing: '仅补标签', error: '不导入' };
 type ImportRow = MerchantImportIssueRow & { row: number; business_name: string; phone: string; phone_country?: string; normalized_phone?: string; warnings: string[]; raw: Record<string, string>; merchant_id?: number; source_metadata?: { source_url?: string; source_date?: string; verification_type?: string } };
-type ImportBatch = { id: string; filename: string; status: string; row_count: number; created_at: string; duplicate_upload?: boolean; template_headers?: string[]; import_defaults?: { industry?: string }; summary: { pending: number; isolated: number; errors: number; importable: number }; rows?: ImportRow[] };
+type ImportBatch = { id: string; filename: string; status: string; row_count: number; created_at: string; duplicate_upload?: boolean; template_headers?: string[]; import_defaults?: { industry?: string; label_ids?: number[] }; summary: { pending: number; isolated: number; errors: number; importable: number; matched_existing?: number }; rows?: ImportRow[] };
 
 function errorMessage(error: unknown): string {
   const e = error as { data?: { detail?: unknown }; response?: { data?: { detail?: unknown } }; message?: string };
@@ -57,6 +59,8 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
   const [visibleCount, setVisibleCount] = useState(30);
   const [rowFilter, setRowFilter] = useState('all');
   const [defaultIndustry, setDefaultIndustry] = useState('');
+  const [labelIds, setLabelIds] = useState<number[]>([]);
+  const labels = useSalesLabels(open);
 
   const loadHistory = async () => {
     try {
@@ -78,6 +82,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
     try {
       const data = new FormData(); data.append('file', file);
       if (defaultIndustry) data.append('default_industry', defaultIndustry);
+      for (const labelId of labelIds) data.append('label_ids', String(labelId));
       const response = await authenticatedFetch('/api/v1/merchant-imports/preview', { method: 'POST', body: data });
       showBatch(await response.json());
       await loadHistory();
@@ -100,7 +105,10 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
     try {
       const response = await invokeWithAuth({ url: `/api/v1/merchant-imports/${batch.id}/${action}`, method: 'POST' });
       showBatch(response.data);
-      toast.success(action === 'confirm' ? '批次已入池，请选择销售负责人分配' : '批次已撤销，原导入结果仍可追溯');
+      const result = response.data as ImportBatch;
+      toast.success(action === 'confirm'
+        ? result.summary.matched_existing && result.summary.pending === 0 ? '已给既有商家补充标签' : '批次已入池，请选择销售负责人分配'
+        : '批次已撤销，原导入结果仍可追溯');
       await Promise.all([loadHistory(), onImported()]);
     } catch (e) {
       setError(errorMessage(e));
@@ -122,7 +130,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
       downloadBlob(await response.blob(), `商家导入问题行-${batch.id}.csv`);
     } catch (e) { setError(errorMessage(e)); }
   };
-  const rows = (batch?.rows || []).filter(row => rowFilter === 'all' || (rowFilter === 'error' ? row.status === 'error' : row.status !== 'pending' && row.status !== 'error'));
+  const rows = (batch?.rows || []).filter(row => rowFilter === 'all' || (rowFilter === 'error' ? row.status === 'error' : row.status !== 'pending' && row.status !== 'error' && row.status !== 'matched_existing'));
   const previewing = batch?.status === 'preview';
 
   return <Dialog open={open} onOpenChange={value => !busy && onOpenChange(value)}>
@@ -143,6 +151,13 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
             <Button disabled={busy} onClick={() => fileRef.current?.click()}><FileUp className="mr-2 h-4 w-4" />{busy ? '正在处理…' : batch ? '选择另一个文件' : '选择文件并预检'}</Button>
           </div>
           <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-700">文件未填行业时使用<select aria-label="导入默认行业" value={defaultIndustry} disabled={busy} onChange={event => setDefaultIndustry(event.target.value)} className="rounded-md border border-slate-300 bg-white px-3 py-2"><option value="">待分类</option><option value="美业">美业</option><option value="餐厅">餐厅</option></select></label>
+          {Boolean(labels.data?.length) && <details className="mt-3 rounded-md border p-3">
+            <summary className="cursor-pointer text-sm font-medium">给本批添加标签{labelIds.length > 0 ? `（${labelIds.length}）` : ''}</summary>
+            <div className="mt-2 space-y-2">
+              <SalesLabelChoices labels={labels.data ?? []} values={labelIds} onChange={setLabelIds} disabled={busy} caption="本批标签" />
+              <p className="text-xs text-muted-foreground">导入的在用系统标为待确认。完全相同的门店会给既有记录补标签。</p>
+            </div>
+          </details>}
           <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer font-medium">填写标准与示例</summary><div className="mt-3 space-y-3">
             <dl className="space-y-2"><div><dt className="font-medium text-slate-800">电话</dt><dd>一个单元格只填一个号码，格式设为文本；保留 + 国家码、前导零。分机写为 ext 009，勿加入 **、说明文字或遮罩。</dd></div><div><dt className="font-medium text-slate-800">地区</dt><dd>填写“城市, 州/省, 国家”，例如 New York, NY, US 或 Toronto, ON, CA。国家未知时保留原文；本地号码会待补齐，不默认美国。</dd></div><div><dt className="font-medium text-slate-800">名称与来源</dt><dd>商家名称必填、不超过 200 字；来源填写平台或文件名、不超过 50 字，留空记录为 CSV 导入。</dd></div></dl>
             <div className="overflow-x-auto rounded-lg border border-slate-200"><table aria-label="商家导入填写示例" className="w-full min-w-[560px] text-left text-xs"><thead className="bg-slate-50"><tr>{MERCHANT_IMPORT_HEADERS.map(header => <th key={header} className="p-2 font-medium">{header}</th>)}</tr></thead><tbody><tr>{MERCHANT_IMPORT_EXAMPLE.map((value, index) => <td key={index} className="p-2">{value}</td>)}</tr></tbody></table></div>
@@ -155,9 +170,14 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
         {batch && <section aria-label="商家导入批次结果" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="break-words font-semibold text-slate-900">{batch.filename}</p><p className="mt-1 break-all text-xs text-slate-500">批次 {batch.id}</p></div><Badge>{statusNames[batch.status] || '处理中'}</Badge></div>
           <p className="text-xs text-slate-600">本批默认行业：{batch.import_defaults?.industry || '待分类'}；行内行业优先。全部记录初始为待核验。</p>
-          {batch.duplicate_upload && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">这份文件已有导入批次，已打开原结果和原行业设置，避免重复入池。</div>}
+          {!!batch.import_defaults?.label_ids?.length && <p className="text-xs text-muted-foreground">本批标签：{batch.import_defaults.label_ids.map(id => {
+            const label = labels.data?.find(item => item.id === id);
+            return label ? salesLabelText(label) : `标签 ${id}`;
+          }).join('、')}</p>}
+          {!!batch.summary.matched_existing && <p className="text-sm font-medium">匹配既有商家 {batch.summary.matched_existing} 家，仅补标签</p>}
+          {batch.duplicate_upload && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">这份文件已有导入批次，已打开原结果和导入设置，避免重复入池。</div>}
           <div className="grid grid-cols-3 gap-2">{[['未分配', batch.summary.pending], ['隔离待处理', batch.summary.isolated], ['格式错误不导入', batch.summary.errors]].map(([label, count]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-semibold text-slate-900">{count}</p></div>)}</div>
-          <p className="text-sm leading-6 text-slate-600">{previewing ? `确认后将 ${batch.summary.importable} 条记录写入商家池；隔离记录也会保留，格式错误行不会入池。正式客户和财务不会变动。` : batch.status === 'reverted' ? '本批入池记录已撤销，批次原始资料和处理结果仍保留。' : '本批记录已入池。导入后选择销售负责人分配，分配后转为销售线索；隔离记录按问题提示处理。'}</p>
+          <p className="text-sm leading-6 text-slate-600">{previewing ? `确认后处理 ${batch.summary.importable} 条记录；隔离记录也会保留，格式错误行不会入池。正式客户和财务不会变动。` : batch.status === 'reverted' ? '本批入池记录已撤销，批次原始资料和处理结果仍保留。' : batch.summary.matched_existing && batch.summary.pending === 0 && batch.summary.isolated === 0 ? '本批仅给既有商家补标签，原商家记录继续使用。' : '本批记录已入池。导入后选择销售负责人分配，分配后转为销售线索；隔离记录按问题提示处理。'}</p>
           <div className="flex flex-wrap items-center gap-2"><div aria-label="导入行筛选" className="flex gap-1">{[['all', '全部行'], ['isolated', '隔离行'], ['error', '格式错误']].map(([value, label]) => <Button key={value} size="sm" variant={rowFilter === value ? 'default' : 'outline'} onClick={() => { setRowFilter(value); setVisibleCount(30); }}>{label}</Button>)}</div>{batch.summary.errors + batch.summary.isolated > 0 && <Button size="sm" variant="outline" onClick={() => void downloadIssues()}><Download className="mr-1 h-4 w-4" />下载问题行</Button>}</div>
           <div className="max-h-80 overflow-auto rounded-xl border border-slate-200"><table className="mi-preview-table w-full text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs text-slate-600"><tr><th className="p-3">原行号</th><th className="p-3">商家资料</th><th className="p-3">处理结果</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.slice(0, visibleCount).map(row => {
             const advice = merchantImportRepairAdvice(row);
@@ -170,7 +190,7 @@ export default function MerchantImportDialog({ open, onOpenChange, onImported, o
         </section>}
         <details className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-700"><History className="mr-2 inline h-4 w-4" />最近导入批次</summary><div className="mt-3 space-y-2">{historyError ? <div role="alert" className="text-sm text-amber-800">批次历史暂时未能读取。<Button size="sm" variant="ghost" onClick={() => void loadHistory()}><RefreshCw className="mr-1 h-4 w-4" />重试</Button></div> : history.length ? history.map(item => <Button key={item.id} variant="ghost" className="h-auto w-full justify-between gap-3 whitespace-normal border px-3 py-3 text-left" disabled={busy} onClick={() => void openBatch(item.id)}><span className="min-w-0 break-words">{item.filename}<small className="mt-1 block font-normal text-slate-500">{item.row_count} 行 · {item.created_at?.slice(0, 16).replace('T', ' ')}</small></span><Badge>{statusNames[item.status] || '处理中'}</Badge></Button>) : <p className="text-sm text-slate-500">暂无导入批次</p>}</div></details>
       </div></CrmFormDialogBody>
-{batch && <CrmFormDialogFooter><div className="mi-import-actions flex flex-wrap justify-end gap-2">{previewing && <Button disabled={busy || !batch.summary.importable} onClick={() => void perform('confirm')}>确认入池 {batch.summary.importable} 条</Button>}{batch.status === 'committed' && onAssignBatch && <Button disabled={busy} onClick={() => onAssignBatch({ id: batch.id, filename: batch.filename })}>分配本批商家</Button>}{batch.status === 'committed' && <Button variant="outline" disabled={busy} onClick={() => void perform('revert')}><Undo2 className="mr-2 h-4 w-4" />撤销本批导入</Button>}</div></CrmFormDialogFooter>}
+{batch && <CrmFormDialogFooter><div className="mi-import-actions flex flex-wrap justify-end gap-2">{previewing && <Button disabled={busy || !batch.summary.importable} onClick={() => void perform('confirm')}>确认入池 {batch.summary.importable} 条</Button>}{batch.status === 'committed' && batch.summary.pending > 0 && onAssignBatch && <Button disabled={busy} onClick={() => onAssignBatch({ id: batch.id, filename: batch.filename })}>分配本批商家</Button>}{batch.status === 'committed' && !batch.summary.matched_existing && <Button variant="outline" disabled={busy} onClick={() => void perform('revert')}><Undo2 className="mr-2 h-4 w-4" />撤销本批导入</Button>}</div></CrmFormDialogFooter>}
 
 </CrmFormDialogContent>
   </Dialog>;

@@ -16,12 +16,15 @@ router = APIRouter(prefix="/api/v1/merchant-imports", tags=["merchant-imports"])
 
 
 @router.post("/preview")
-async def preview(file: UploadFile = File(...), default_industry: str | None = Form(None, max_length=100), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def preview(file: UploadFile = File(...), default_industry: str | None = Form(None, max_length=100),
+                  label_ids: list[int] = Form(default=[]), user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     batch_scope(user)
+    if len(label_ids) > 20 or any(label_id <= 0 for label_id in label_ids):
+        raise HTTPException(422, "最多选择 20 个有效标签")
     content = await file.read(MAX_FILE_BYTES + 1)
     if len(content) > MAX_FILE_BYTES:
         raise HTTPException(400, "文件超过 10MB，请拆分后上传")
-    return await preview_import(db, user, file.filename or "", content, default_industry=default_industry)
+    return await preview_import(db, user, file.filename or "", content, default_industry=default_industry, label_ids=label_ids)
 
 
 @router.get("")

@@ -3,7 +3,7 @@ import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDi
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, SlidersHorizontal, Timer, Trash2, Users,
+  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, SlidersHorizontal, Star, Tags, Timer, Trash2, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,6 +20,9 @@ import SalesPhoneConnections, { type SyncCoverage } from '@/components/SalesPhon
 import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesDealHandoffQueue from '@/components/SalesDealHandoffQueue';
 import SalesClosingQueue from '@/components/SalesClosingQueue';
+import SalesLeadMarkers from '@/components/SalesLeadMarkers';
+import { SalesLabelBadges, SalesLabelEditor, SalesLabelFilter } from '@/components/SalesLabels';
+import { salesLabelText, useSalesLabels, type SalesLabel } from '@/lib/sales-labels';
 import SalesIndustryReport, { type SalesIndustryBreakdown } from '@/components/SalesIndustryReport';
 import SalesSharedDossiers from '@/components/SalesSharedDossiers';
 import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
@@ -70,6 +73,9 @@ type SalesLead = {
   next_follow_up_at?: string;
   last_contact_at?: string;
   created_at: string;
+  starred?: boolean;
+  priority?: boolean;
+  labels?: SalesLabel[];
 };
 
 const workspaceViews = {
@@ -212,11 +218,17 @@ function SalesLeadWorkspace() {
   const [statusFilter, setStatusFilter] = useState(() => statusOptions.some(item => item.value === initialParams.get('status')) ? initialParams.get('status')! : '');
   const [dueRange, setDueRange] = useState(() => ['today', 'overdue'].includes(initialParams.get('due_range') || '') ? initialParams.get('due_range')! : '');
   const [contactFilter, setContactFilter] = useState(() => ['contactable', 'do_not_contact', 'blacklisted'].includes(initialParams.get('contact_rule') || '') ? initialParams.get('contact_rule')! : '');
+  const [starredOnly, setStarredOnly] = useState(() => initialParams.get('starred') === 'true');
+  const [priorityOnly, setPriorityOnly] = useState(() => initialParams.get('priority') === 'true');
+  const [tagFilter, setTagFilter] = useState(() => /^[1-9]\d*$/.test(initialParams.get('label_id') || '') ? initialParams.get('label_id')! : '');
+  const [tagLeadId, setTagLeadId] = useState<number | null>(null);
+  const { data: labelCatalog = [] } = useSalesLabels(view === 'leads');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(initialParams.get('page')) || 1)));
   const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(initialParams.get('page_size'))) ? Number(initialParams.get('page_size')) : 20);
-  const listScope = JSON.stringify([employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, page, pageSize]);
+  const listFilter = [employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter];
+  const listScope = JSON.stringify([...listFilter, page, pageSize]);
   const insightsScopeRef = useRef(listScope);
   insightsScopeRef.current = listScope;
   const leadInsights = insightsState.scope === listScope && itemsScope === listScope ? insightsState.items : {};
@@ -258,16 +270,16 @@ function SalesLeadWorkspace() {
   const safeReturn = /^\/(sales-workbench|sales-leads|merchant-pool)(?:\?|$)/.test(sourceReturn) && !sourceReturn.includes('\\') ? sourceReturn : '';
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const fields = { view: view === 'leads' ? '' : view, search, status: statusFilter, contact_rule: contactFilter, due_range: dueRange, page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' };
+    const fields = { view: view === 'leads' ? '' : view, search, status: statusFilter, contact_rule: contactFilter, due_range: dueRange, starred: starredOnly ? 'true' : '', priority: priorityOnly ? 'true' : '', label_id: tagFilter, page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' };
     Object.entries(fields).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
     window.history.replaceState(window.history.state, '', `/sales-leads${params.size ? `?${params}` : ''}`);
-  }, [view, search, statusFilter, contactFilter, dueRange, page, pageSize]);
+  }, [view, search, statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter, page, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const loadData = async (options?: { page?: number; background?: boolean }) => {
     const requestId = ++loadRequestSeqRef.current;
     const requestPage = options?.page ?? page;
-    const requestListScope = JSON.stringify([employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, requestPage, pageSize]);
+    const requestListScope = JSON.stringify([...listFilter, requestPage, pageSize]);
     if (!options?.background) setLoading(true);
     setAuxiliaryLoading(true);
     const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
@@ -275,6 +287,9 @@ function SalesLeadWorkspace() {
     if (statusFilter) params.set('status', statusFilter);
     if (contactFilter) params.set('contact_rule', contactFilter);
     if (dueRange) params.set('due_range', dueRange);
+    if (starredOnly) params.set('starred', 'true');
+    if (priorityOnly) params.set('priority', 'true');
+    if (tagFilter) params.set('label_id', tagFilter);
     try {
       // The working list can be ready before call reports or management totals.
       // Keep all reads live, but do not hold the rows behind the slowest report.
@@ -350,10 +365,41 @@ function SalesLeadWorkspace() {
     const timer = window.setTimeout(() => void loadData(), search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, performanceDays, callReportDays, inClosingQueue]);
+  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter, performanceDays, callReportDays, inClosingQueue]);
   useEffect(() => () => { loadRequestSeqRef.current += 1; historyRequestRef.current += 1; }, []);
 
   useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !inClosingQueue && !showForm && !dealLeadId });
+
+  const activeFilterCount = [statusFilter, contactFilter, priorityOnly, tagFilter].filter(Boolean).length;
+  const hasLeadFilters = Boolean(activeFilterCount || search || dueRange || starredOnly);
+  const selectedTag = labelCatalog.find(label => String(label.id) === tagFilter);
+  const clearLeadFilters = () => {
+    setSearch('');
+    setStatusFilter('');
+    setContactFilter('');
+    setDueRange('');
+    setStarredOnly(false);
+    setPriorityOnly(false);
+    setTagFilter('');
+    setPage(1);
+  };
+  const renderMarkers = (lead: SalesLead) => (
+    <SalesLeadMarkers
+      leadId={lead.id} starred={lead.starred} priority={lead.priority} canManage={canManage}
+      onChanged={markers => {
+        setItems(current => current.map(row => row.id === lead.id ? { ...row, ...markers } : row));
+        if ((starredOnly && !markers.starred) || (priorityOnly && !markers.priority)) {
+          void loadData({ background: true });
+        }
+      }}
+    />
+  );
+  const renderTagFilters = () => (
+    <>
+      <SalesLabelFilter labels={labelCatalog} value={tagFilter} onChange={value => { setTagFilter(value); setPage(1); }} />
+      <Button type="button" variant="outline" aria-pressed={priorityOnly} onClick={() => { setPriorityOnly(value => !value); setPage(1); }}>只看团队重点</Button>
+    </>
+  );
 
   useEffect(() => {
     if (view !== 'leads' || !items.length || itemsScope !== listScope) return;
@@ -851,13 +897,14 @@ function SalesLeadWorkspace() {
             <div className="slr-list-tools">
               <div className="sl-search-row">
               <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
-              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><SlidersHorizontal className="h-4 w-4" />筛选{statusFilter || contactFilter ? ` · ${Number(Boolean(statusFilter)) + Number(Boolean(contactFilter))}` : ''}</Button>
+              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><SlidersHorizontal className="h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
               </div>
-              <div className="sl-order-list-controls"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部' }, { value: 'today', label: '今天' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav><span className="sl-order-time-label">跟进时间 · 北京时间</span></div>
+              <div className="sl-order-list-controls"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部' }, { value: 'today', label: '今天' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav><Button type="button" variant="ghost" size="sm" aria-pressed={starredOnly} onClick={() => { setStarredOnly(value => !value); setPage(1); }}><Star size={15} fill={starredOnly ? 'currentColor' : 'none'} />只看星标</Button><span className="sl-order-time-label">跟进时间 · 北京时间</span></div>
             </div>
             {filtersExpanded && !isMobile && <div id="sales-lead-extra-filters" className="calm-sales-extra-filters">
               <label><span className="sc-filter-label">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
               <label><span className="sc-filter-label">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
+              {renderTagFilters()}
               {!isMobile && <div><span className="sc-filter-label">列表密度</span><div className="sl-density"><button type="button" aria-pressed={!compactRows} onClick={() => setCompactRows(false)}>标准</button><button type="button" aria-pressed={compactRows} onClick={() => setCompactRows(true)}>紧凑</button></div></div>}
             </div>}
             {isMobile && <Sheet open={filtersExpanded} onOpenChange={setFiltersExpanded}>
@@ -869,12 +916,13 @@ function SalesLeadWorkspace() {
                 <div className="mt-5 grid gap-4">
                   <div><Label htmlFor="mobile-lead-status-filter">线索状态</Label><NativeSelect id="mobile-lead-status-filter" aria-label="线索状态" value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></div>
                   <div><Label htmlFor="mobile-lead-contact-filter">联系规则</Label><NativeSelect id="mobile-lead-contact-filter" aria-label="联系规则" value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></div>
-                  {(search || statusFilter || contactFilter || dueRange) && <Button type="button" variant="ghost" onClick={() => { setSearch(''); setStatusFilter(''); setContactFilter(''); setDueRange(''); setPage(1); }}>清空筛选</Button>}
+                  {renderTagFilters()}
+                  {hasLeadFilters && <Button type="button" variant="ghost" onClick={clearLeadFilters}>清空筛选</Button>}
                   <Button type="button" onClick={() => setFiltersExpanded(false)}>返回列表</Button>
                 </div>
               </SheetContent>
             </Sheet>}
-            {(search || statusFilter || contactFilter || dueRange) && <div className="slr-active-filters"><span>{dueRange ? dueRange === 'today' ? '今天需跟进 · ' : '逾期 · ' : ''}{statusFilter ? statusLabels[statusFilter] || statusFilter : '全部状态'}{contactFilter ? ` · ${contactFilter === 'contactable' ? '允许联系' : contactFilter === 'do_not_contact' ? '禁止再联系' : '黑名单'}` : ''}{search && ` · “${search}”`}</span><button type="button" onClick={() => { setSearch(''); setStatusFilter(''); setContactFilter(''); setDueRange(''); setPage(1); }}>清空筛选</button></div>}
+            {hasLeadFilters && <div className="slr-active-filters"><span>{dueRange ? dueRange === 'today' ? '今天需跟进 · ' : '逾期 · ' : ''}{statusFilter ? statusLabels[statusFilter] || statusFilter : '全部状态'}{contactFilter ? ` · ${contactFilter === 'contactable' ? '允许联系' : contactFilter === 'do_not_contact' ? '禁止再联系' : '黑名单'}` : ''}{starredOnly && ' · 我的星标'}{priorityOnly && ' · 团队重点'}{tagFilter && ` · ${selectedTag ? salesLabelText(selectedTag) : '标签筛选'}`}{search && ` · “${search}”`}</span><button type="button" onClick={clearLeadFilters}>清空筛选</button></div>}
           </div>
           {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
           {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
@@ -887,11 +935,12 @@ function SalesLeadWorkspace() {
                   <article key={lead.id} data-testid="sales-lead-mobile-card" className={`slr-mobile-card ${protectedLead ? 'bg-rose-50/40' : 'bg-white'}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <button type="button" className="slr-card-name sl-order-name" onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>
+                        <div className="sales-lead-marked-name"><button type="button" className="slr-card-name sl-order-name" onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>{renderMarkers(lead)}</div>
                         <p className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</p>
                       </div>
                       <Badge className={`sl-order-status shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
                     </div>
+                    <SalesLabelBadges labels={lead.labels} />
                     {Boolean(protectedLead || lead.converted_customer_id) && <div className="slr-card-flags">{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}{protectedLead && !lead.do_not_contact && !lead.is_blacklisted && <Badge className="bg-rose-100 text-rose-700">已停止联系</Badge>}{lead.converted_customer_id && <Badge className="bg-emerald-100 text-emerald-700">已转正式客户</Badge>}</div>}
                     {!protectedLead && !lead.converted_customer_id && leadInsights[lead.id]?.profile.next_step && <p className="mfc-lead-next-step" title={leadInsights[lead.id].profile.next_step}><span>下一步</span>{leadInsights[lead.id].profile.next_step}</p>}
                     <div className="sl-order-phone sl-order-secondary"><span className={protectedLead ? 'line-through' : ''}>{formatPhoneNumber(lead.phone, lead.country)}</span>{lead.industry && <span>{lead.industry}</span>}</div>
@@ -903,6 +952,7 @@ function SalesLeadWorkspace() {
                         <DropdownMenuTrigger asChild><Button className="h-11 w-11 p-0" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
                           <DropdownMenuItem className="min-h-11" onSelect={() => setDossierId(lead.id)}>累计档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}
+                          <DropdownMenuItem className="min-h-11" onSelect={() => setTagLeadId(lead.id)}><Tags className="mr-2 h-4 w-4" />商家标签</DropdownMenuItem>
                           <DropdownMenuItem className="min-h-11" disabled={protectedLead} onSelect={() => { void copyLeadPhone(lead); }}><Clipboard className="mr-2 h-4 w-4" />复制电话</DropdownMenuItem>
                           {canManage && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead)}><Edit3 className="mr-2 h-4 w-4" />编辑线索资料</DropdownMenuItem>}
                           {!lead.converted_customer_id && !protectedLead && <DropdownMenuItem className="min-h-11" onSelect={() => { void openDealControl(lead); }}><ClipboardCheck className="mr-2 h-4 w-4" />{['interested', 'appointment'].includes(lead.status) ? '登记成交' : '登记成交'}</DropdownMenuItem>}
@@ -924,11 +974,11 @@ function SalesLeadWorkspace() {
                   const protectedLead = isLeadContactStopped(lead);
                   return <tr key={lead.id} className={protectedLead ? 'sl-protected-row' : ''}>
                     {canManage && <td className="sl-select-cell"><input type="checkbox" aria-label={`选择 ${lead.business_name}`} disabled={listError} checked={selectedLeadIds.includes(lead.id)} onChange={event => setSelectedLeadIds(current => event.target.checked ? [...current, lead.id] : current.filter(id => id !== lead.id))} /></td>}
-                    <td className="sl-identity-cell"><div className="slr-compact-identity"><button type="button" className="sl-business-name sl-order-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button><div className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</div><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span><span className="sl-order-secondary">{lead.industry}</span></div></div></td>
+                    <td className="sl-identity-cell"><div className="slr-compact-identity"><div className="sales-lead-marked-name"><button type="button" className="sl-business-name sl-order-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>{renderMarkers(lead)}</div><SalesLabelBadges labels={lead.labels} /><div className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</div><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span><span className="sl-order-secondary">{lead.industry}</span></div></div></td>
                     <td className="sl-order-history"><LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} /></td>
                     <td><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />{leadInsights[lead.id]?.profile.next_step && <p className="sl-order-secondary">{leadInsights[lead.id].profile.next_step}</p>}</td>
                     <td className="sl-order-status-column"><Badge className={`sl-order-status ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <p className="sl-order-secondary">{lead.is_blacklisted ? '黑名单 · 禁止拨打' : '禁止再联系'}</p>}{lead.converted_customer_id && <p className="sl-order-secondary">已转正式客户</p>}</td>
-                    <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => protectedLead ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{protectedLead ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
+                    <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem><DropdownMenuItem onSelect={() => setTagLeadId(lead.id)}><Tags className="mr-2 h-4 w-4" />商家标签</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => protectedLead ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{protectedLead ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                   </tr>;
                 })}
               </tbody>
@@ -1008,6 +1058,7 @@ function SalesLeadWorkspace() {
 </CrmFormDialogContent>
       </Dialog>}
 
+      {tagLeadId != null && <SalesLabelEditor key={tagLeadId} leadId={tagLeadId} onClose={() => setTagLeadId(null)} onSaved={() => void loadData({ background: true })} />}
       <SalesDealHandoffDialog leadId={dealLeadId} onClose={() => setDealLeadId(null)} onOpenDossier={setDossierId} onRegistered={async () => { setHandoffQueueVersion(value => value + 1); if (!inClosingQueue) await loadData(); }} />
     </div>
   );

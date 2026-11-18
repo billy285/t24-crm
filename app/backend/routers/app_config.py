@@ -1,12 +1,12 @@
 import hashlib
 import json
 import re
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Literal
 
 from core.database import get_db
 from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 from schemas.auth import UserResponse
 from services.schema_readiness import (
     APP_SETTINGS_TABLE,
@@ -31,6 +31,54 @@ DEFAULT_CUSTOMER_FOLLOWUP_STATUSES = (
     "renewal_followup:续费跟进,upsell_discussion:增购沟通,paused_service:暂停服务,"
     "service_ended:服务结束,service_follow_later:后续跟进"
 )
+SALES_QUICK_NOTE_CONFIG = "sales_quick_note_templates_v1"
+SALES_QUICK_NOTE_ROLES = {"super_admin", "admin", "sales_manager", "sales"}
+
+
+class SalesQuickNoteTemplate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id: StrictStr = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    label: StrictStr = Field(min_length=1, max_length=24)
+    text: StrictStr = Field(min_length=1, max_length=1000)
+    industry: Literal["all", "restaurant", "beauty"] = "all"
+    enabled: StrictBool = True
+    remind_do_not_contact: StrictBool = False
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, value: str) -> str:
+        if not value.isprintable():
+            raise ValueError("按钮名称不能包含换行或控制字符")
+        return value
+
+    @field_validator("text")
+    @classmethod
+    def validate_text(cls, value: str) -> str:
+        if any(not char.isprintable() and char not in "\t\r\n" for char in value):
+            raise ValueError("备注正文不能包含控制字符")
+        return value
+
+
+class SalesQuickNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: StrictStr = Field(pattern=r"^[a-f0-9]{64}$")
+    templates: list[SalesQuickNoteTemplate] = Field(max_length=60)
+
+
+DEFAULT_SALES_QUICK_NOTES = {
+    "templates": [entry.model_dump() for entry in (
+        SalesQuickNoteTemplate(id="no_answer", label="本次未接通", text="本次未接通。"),
+        SalesQuickNoteTemplate(id="gatekeeper", label="前台／老板不在", text="前台接听，老板不在。"),
+        SalesQuickNoteTemplate(id="english", label="英文沟通", text="对方讲英文，暂未能有效沟通。"),
+        SalesQuickNoteTemplate(id="owner_interested", label="老板有兴趣／忙", text="老板有兴趣，目前比较忙。"),
+        SalesQuickNoteTemplate(id="materials", label="先看资料", text="希望先看资料，关注：____。"),
+        SalesQuickNoteTemplate(id="existing_provider", label="已有服务商", text="已有服务商，补充：____。"),
+        SalesQuickNoteTemplate(id="not_now", label="暂时不需要", text="暂时不需要，原因：____。"),
+        SalesQuickNoteTemplate(id="do_not_contact", label="要求不再联系", text="对方明确要求不再联系。", remind_do_not_contact=True),
+    )],
+}
 
 
 DEFAULT_APP_CONFIGS: Dict[str, Any] = {
@@ -264,6 +312,7 @@ DEFAULT_APP_CONFIGS: Dict[str, Any] = {
         "includeSocialLinks": True,
     },
     "payroll_sheets_v1": {"version": 1, "updated_at": None, "sheets": []},
+    SALES_QUICK_NOTE_CONFIG: DEFAULT_SALES_QUICK_NOTES,
 }
 
 
@@ -334,24 +383,24 @@ async def require_config_table(db: AsyncSession) -> None:
         raise HTTPException(status_code=503, detail="数据库结构尚未升级，暂时无法保存系统配置，请联系管理员") from exc
 
 
-async def save_dictionary_cas(db: AsyncSession, build: Callable[[dict], dict]) -> dict:
-    """Full-row SQL CAS lets service-only revisions merge concurrent other fields.
+async def save_config_object_cas(db: AsyncSession, key: str, build: Callable[[dict], dict]) -> dict:
+    """Full-row SQL CAS keeps independent updates from replacing newer values.
 
-    A retry always rereads the dictionary. No stale read can replace a newer
-    service field or unrelated dictionary value, including first-row creation.
+    A retry rereads the current object before applying the mutation. The
+    first-row insertion is conditional too.
     """
     await require_config_table(db)
     for _attempt in range(6):
-        result = await db.execute(text("SELECT value_json FROM app_settings WHERE config_key = :key"), {"key": "dict_config"})
+        result = await db.execute(text("SELECT value_json FROM app_settings WHERE config_key = :key"), {"key": key})
         row = result.fetchone()
         try:
             previous = json.loads(row[0]) if row else {}
         except (ValueError, TypeError) as exc:
-            raise HTTPException(status_code=409, detail="现有业务字典格式异常，请先核对配置") from exc
+            raise HTTPException(status_code=409, detail="现有配置格式异常，请先核对配置") from exc
         if not isinstance(previous, dict):
-            raise HTTPException(status_code=409, detail="现有业务字典格式异常，请先核对配置")
+            raise HTTPException(status_code=409, detail="现有配置格式异常，请先核对配置")
         updated = build(previous)
-        params = {"key": "dict_config", "value_json": json.dumps(updated, ensure_ascii=False)}
+        params = {"key": key, "value_json": json.dumps(updated, ensure_ascii=False)}
         try:
             if row:
                 params["previous_json"] = row[0]
@@ -368,6 +417,10 @@ async def save_dictionary_cas(db: AsyncSession, build: Callable[[dict], dict]) -
                 raise
         await db.rollback()
     raise HTTPException(status_code=409, detail="配置正在由其他同事更新，请重新读取后重试")
+
+
+async def save_dictionary_cas(db: AsyncSession, build: Callable[[dict], dict]) -> dict:
+    return await save_config_object_cas(db, "dict_config", build)
 
 
 def get_default_config(key: str) -> Any:
@@ -395,6 +448,8 @@ def ensure_can_read_config(key: str, user: UserResponse) -> None:
         raise HTTPException(status_code=403, detail="Partner portal does not expose application configuration")
     if key in SENSITIVE_CONFIG_KEYS and user.role not in ADMIN_CONFIG_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
+    if key == SALES_QUICK_NOTE_CONFIG and user.role not in SALES_QUICK_NOTE_ROLES:
+        raise HTTPException(status_code=403, detail="当前账号没有查看销售快捷备注的权限")
 
 
 async def read_config_value(
@@ -440,6 +495,8 @@ async def get_all_app_configs(
     app_settings_available = await tables_available(db, {APP_SETTINGS_TABLE})
     items = {}
     for key in DEFAULT_APP_CONFIGS:
+        if key == SALES_QUICK_NOTE_CONFIG:
+            continue
         if key in SENSITIVE_CONFIG_KEYS and current_user.role not in ADMIN_CONFIG_ROLES:
             continue
         items[key] = (
@@ -482,6 +539,59 @@ async def update_customer_followup_statuses(
     return customer_followup_result(await save_dictionary_cas(db, apply))
 
 
+def sales_quick_note_result(value: dict) -> dict:
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=409, detail="现有快捷备注配置格式异常，请先核对配置")
+    templates = value.get("templates", DEFAULT_SALES_QUICK_NOTES["templates"])
+    serialized = json.dumps(templates, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {"templates": templates, "revision": hashlib.sha256(serialized.encode()).hexdigest()}
+
+
+@router.get("/sales/quick-note-templates")
+async def get_sales_quick_note_templates(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_can_read_config(SALES_QUICK_NOTE_CONFIG, current_user)
+    config = await read_config_value(db, SALES_QUICK_NOTE_CONFIG)
+    result = sales_quick_note_result(config.value)
+    if current_user.role != "super_admin":
+        result["templates"] = [entry for entry in result["templates"] if entry["enabled"]]
+    return result
+
+
+@router.patch("/sales/quick-note-templates")
+async def update_sales_quick_note_templates(
+    payload: SalesQuickNoteUpdate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="仅老板可以维护销售快捷备注")
+    templates = [entry.model_dump() for entry in payload.templates]
+    new_ids = {entry["id"] for entry in templates}
+    if len(new_ids) != len(templates):
+        raise HTTPException(status_code=422, detail="快捷备注标识必须唯一")
+    for industry in ("restaurant", "beauty"):
+        labels = [
+            entry["label"].casefold()
+            for entry in templates
+            if entry["enabled"] and entry["industry"] in {"all", industry}
+        ]
+        if len(labels) != len(set(labels)):
+            raise HTTPException(status_code=422, detail="同一行业内启用的按钮名称不能重复")
+
+    def apply(previous: dict) -> dict:
+        current = sales_quick_note_result(previous)
+        if current["revision"] != payload.expected_revision:
+            raise HTTPException(status_code=409, detail="快捷备注已更新，请重新读取后再修改")
+        if not {entry["id"] for entry in current["templates"]} <= new_ids:
+            raise HTTPException(status_code=422, detail="不用的快捷备注请停用")
+        return {"templates": templates}
+
+    return sales_quick_note_result(await save_config_object_cas(db, SALES_QUICK_NOTE_CONFIG, apply))
+
+
 @router.get("/{key}", response_model=AppConfigValue)
 async def get_app_config(
     key: str,
@@ -489,6 +599,8 @@ async def get_app_config(
     db: AsyncSession = Depends(get_db),
 ):
     get_default_config(key)
+    if key == SALES_QUICK_NOTE_CONFIG:
+        raise HTTPException(status_code=403, detail="请通过销售快捷备注入口读取")
     ensure_can_read_config(key, current_user)
     return await read_config_value(db, key)
 
@@ -501,6 +613,8 @@ async def update_app_config(
     db: AsyncSession = Depends(get_db),
 ):
     get_default_config(key)
+    if key == SALES_QUICK_NOTE_CONFIG:
+        raise HTTPException(status_code=403, detail="销售快捷备注须通过专用管理入口修改")
     ensure_can_update_config(key, current_user)
     if key == "dict_config":
         if not isinstance(payload.value, dict):

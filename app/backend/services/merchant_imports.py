@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 from fastapi import HTTPException
 from openpyxl import load_workbook
 from pydantic import ValidationError
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
@@ -24,6 +24,7 @@ from models.merchant_ai_analyses import MerchantAiAnalyses
 from models.merchant_import_batches import MerchantImportBatch
 from models.merchant_pool import MerchantPool
 from models.sales_leads import SalesLeads
+from models.sales_labels import SalesLabelAssignment
 from routers.merchant_pool import (
     ADMIN_ROLES, IMPORT_OPTIONAL_HEADERS, IMPORT_TEMPLATE_FIELDS, IMPORT_TEMPLATE_HEADERS, MerchantRecord,
     _decode_csv, _employee_id, _ensure_pool_role, _is_closed, _normalize_text,
@@ -35,6 +36,8 @@ from services.merchant_row_locks import lock_merchant_rows
 from services.merchant_identity import concrete_location_key
 from services.merchant_industries import normalize_merchant_industry
 from services.sales_timezones import import_address_timezone
+from services.sales_workflow_locks import lock_sales_workflow
+from services.sales_labels import active_labels, add_labels, label_applies
 
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_EXPANDED_BYTES = 30 * 1024 * 1024
@@ -251,6 +254,50 @@ async def evaluate_rows(db: AsyncSession, rows: list[dict]) -> list[dict]:
     return result
 
 
+
+async def mark_label_matches(db, user, rows, labels):
+    from routers.sales_leads import _scope_condition
+
+    reference_ids = {row["duplicate_of_id"] for row in rows if row.get("duplicate_of_id")}
+    references = (await db.execute(select(MerchantPool).where(MerchantPool.id.in_(reference_ids)))).scalars().all()
+    leads = {}
+    lead_ids = {merchant.converted_lead_id for merchant in references if merchant.converted_lead_id is not None}
+    if lead_ids:
+        scope = await _scope_condition(db, user)
+        query = select(SalesLeads).where(SalesLeads.id.in_(lead_ids))
+        if scope is not None:
+            query = query.where(scope)
+        leads = {lead.id: lead for lead in (await db.execute(query)).scalars()}
+    by_id = {merchant.id: merchant for merchant in references}
+    for row in rows:
+        if row["status"] == "error":
+            continue
+        record = MerchantRecord.model_validate(row["data"])
+        if any(not label_applies(label, record.industry) for label in labels):
+            row["warnings"].append("部分批量标签与此行行业不匹配，不会加到该行")
+        merchant = by_id.get(row.get("duplicate_of_id"))
+        if row["status"] != "duplicate" or not merchant or merchant.pool_status not in {"pending", "converted", "no_phone"}:
+            continue
+        if _role(user) not in ADMIN_ROLES and merchant.created_by_id != _employee_id(user):
+            continue
+        target = leads.get(merchant.converted_lead_id) if merchant.converted_lead_id is not None else merchant
+        if target is None or not any(label_applies(label, target.industry) for label in labels):
+            continue
+        location = concrete_location_key(record)
+        if not location or location != concrete_location_key(target):
+            continue
+        if any(left and right and _normalize_text(left) != _normalize_text(right)
+               for left, right in ((record.city, target.city), (record.state, target.state), (record.country, target.country))):
+            continue
+        contact_phone = phone_match_key(record.phone, record.country)
+        locality_known = bool(record.city and target.city and record.state and target.state)
+        if not locality_known and (not contact_phone or contact_phone != phone_match_key(target.phone, target.country)):
+            continue
+        row["status"] = "matched_existing"
+        row["reason"] = "门店名称及完整地址一致；仅给历史商家补标签，不另建拨打名单"
+        row["matched_merchant_id"] = merchant.id
+
+
 def summarize(rows: list[dict]) -> dict:
     counts = {"pending": 0, "isolated": 0, "errors": 0, "importable": 0}
     for row in rows:
@@ -258,7 +305,10 @@ def summarize(rows: list[dict]) -> dict:
             counts["errors"] += 1
         else:
             counts["importable"] += 1
-            counts["pending" if row["status"] == "pending" else "isolated"] += 1
+            if row["status"] == "matched_existing":
+                counts["matched_existing"] = counts.get("matched_existing", 0) + 1
+            else:
+                counts["pending" if row["status"] == "pending" else "isolated"] += 1
     return counts
 
 
@@ -286,33 +336,45 @@ async def get_batch(db: AsyncSession, user: UserResponse, batch_id: str) -> Merc
     return batch
 
 
-async def preview_import(db: AsyncSession, user: UserResponse, filename: str, content: bytes, default_industry: str | None = None) -> dict:
+async def preview_import(db: AsyncSession, user: UserResponse, filename: str, content: bytes,
+                         default_industry: str | None = None, label_ids: list[int] | None = None) -> dict:
     scope = batch_scope(user)
     rows = parse_import_file(filename, content)
     try:
         settings = import_defaults(default_industry)
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
+    label_ids = sorted(set(label_ids or []))
+    labels = await active_labels(db, label_ids) if label_ids else []
+    if label_ids:
+        settings["label_ids"] = label_ids
     for row in rows:
         row["import_defaults"] = settings
     digest = hashlib.sha256(content).hexdigest()
     query = select(MerchantImportBatch).where(MerchantImportBatch.file_sha256 == digest, MerchantImportBatch.status.in_(["preview", "committed"]))
     if scope is not None:
         query = query.where(scope)
-    previous = (await db.execute(query.order_by(MerchantImportBatch.created_at.desc()).limit(1))).scalar_one_or_none()
+    previous_receipts = (await db.execute(query.order_by(MerchantImportBatch.created_at.desc()))).scalars()
+    previous = next((item for item in previous_receipts if not label_ids or
+                     json.loads(item.rows_json)[0].get("import_defaults", {}).get("label_ids") == label_ids), None)
     if previous:
         # Do not rewrite an existing receipt: a concurrent confirmation may have
         # already recorded merchant IDs and undo snapshots. Confirm revalidates.
         return batch_response(previous, duplicate_upload=True)
     checked = await evaluate_rows(db, rows)
+    if labels:
+        await mark_label_matches(db, user, checked, labels)
     version = EXTENDED_TEMPLATE_VERSION if settings or len(rows[0]["headers"]) > 5 else TEMPLATE_VERSION
-    batch = MerchantImportBatch(id=str(uuid4()), filename=PurePath(filename).name[:255], file_sha256=digest, active_file_key=f"{_employee_id(user)}:{digest}", template_version=version, created_by_id=_employee_id(user), created_by_name=user.name, status="preview", row_count=len(rows), rows_json=_json(rows), result_json=_json(checked))
+    upload_key = digest if not label_ids else hashlib.sha256(
+        f"{digest}:labels:{','.join(map(str, label_ids))}".encode()).hexdigest()
+    active_key = f"{_employee_id(user)}:{upload_key}"
+    batch = MerchantImportBatch(id=str(uuid4()), filename=PurePath(filename).name[:255], file_sha256=digest, active_file_key=active_key, template_version=version, created_by_id=_employee_id(user), created_by_name=user.name, status="preview", row_count=len(rows), rows_json=_json(rows), result_json=_json(checked))
     db.add(batch)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        previous = (await db.execute(select(MerchantImportBatch).where(MerchantImportBatch.active_file_key == f"{_employee_id(user)}:{digest}"))).scalar_one_or_none()
+        previous = (await db.execute(select(MerchantImportBatch).where(MerchantImportBatch.active_file_key == active_key))).scalar_one_or_none()
         if not previous:
             raise
         return batch_response(previous, duplicate_upload=True)
@@ -339,25 +401,39 @@ async def confirm_import(db: AsyncSession, user: UserResponse, batch_id: str) ->
     if claimed.rowcount != 1:
         raise HTTPException(409, "批次正在处理，请刷新后查看结果")
     # The preview is informative; current database identities are authoritative.
-    checked = await evaluate_rows(db, json.loads(batch.rows_json))
+    saved_rows = json.loads(batch.rows_json)
+    label_ids = saved_rows[0].get("import_defaults", {}).get("label_ids", []) if saved_rows else []
+    checked = await evaluate_rows(db, saved_rows)
     reference_ids = {row["duplicate_of_id"] for row in checked if row.get("duplicate_of_id")}
     if reference_ids:
         # Serialize new references with batch undo. A reference can disappear
         # while we wait for the lock, so re-evaluate against the current rows.
         references = await lock_merchant_rows(db, reference_ids)
         locked_ids = {merchant.id for merchant in references}
+        if label_ids:
+            lead_ids = [merchant.converted_lead_id for merchant in references if merchant.converted_lead_id is not None]
+            if lead_ids:
+                await lock_sales_workflow(db, lead_ids=lead_ids)
         checked = await evaluate_rows(db, json.loads(batch.rows_json))
         current_references = {row["duplicate_of_id"] for row in checked if row.get("duplicate_of_id")}
         if not current_references.issubset(locked_ids):
             await db.rollback()
             raise HTTPException(409, "商家资料刚被其他操作更新，批次尚未入池，请重新确认")
+    labels = await active_labels(db, label_ids) if label_ids else []
+    if labels:
+        await mark_label_matches(db, user, checked, labels)
     if not summarize(checked)["importable"]:
         await db.rollback()
         raise HTTPException(400, "没有可入池的记录，请下载错误行并修正文件")
     now = datetime.now(timezone.utc)
     created_by_row = {}
+    labelled_targets = []
+    matched_ids = []
     for row in checked:
         if row["status"] == "error":
+            continue
+        if row["status"] == "matched_existing":
+            matched_ids.append(row["duplicate_of_id"])
             continue
         record = MerchantRecord.model_validate(row["data"])
         duplicate_id = row["duplicate_of_id"] or created_by_row.get(row.get("duplicate_row"))
@@ -369,6 +445,14 @@ async def confirm_import(db: AsyncSession, user: UserResponse, batch_id: str) ->
         await db.refresh(merchant)
         created_by_row[row["row"]] = merchant.id
         row.update({"merchant_id": merchant.id, "snapshot": merchant_snapshot(merchant)})
+        if labels and row["status"] in {"pending", "no_phone", "closed"}:
+            row["applied_label_ids"] = sorted(label.id for label in labels if label_applies(label, merchant.industry))
+            labelled_targets.append(merchant)
+    if matched_ids:
+        from routers.sales_labels import _merchant_targets
+        labelled_targets.extend(await _merchant_targets(db, matched_ids, user))
+    if labels and labelled_targets:
+        await add_labels(db, merchants=labelled_targets, labels=labels, batch_id=batch.id)
     batch.status = "committed"
     batch.committed_at = now
     batch.result_json = _json(checked)
@@ -389,6 +473,9 @@ async def revert_import(db: AsyncSession, user: UserResponse, batch_id: str) -> 
     if claimed.rowcount != 1:
         raise HTTPException(409, "批次正在处理，请刷新后重试")
     rows = json.loads(batch.result_json)
+    if any(row["status"] == "matched_existing" for row in rows):
+        await db.rollback()
+        raise HTTPException(409, "该批次补充了既有商家标签，请在对应商家上调整标签")
     merchant_ids = [row["merchant_id"] for row in rows if row.get("merchant_id")]
     merchants = await lock_merchant_rows(db, merchant_ids)
     by_id = {merchant.id: merchant for merchant in merchants}
@@ -396,17 +483,36 @@ async def revert_import(db: AsyncSession, user: UserResponse, batch_id: str) -> 
     analyzed_ids = set((await db.execute(select(MerchantAiAnalyses.merchant_id).where(MerchantAiAnalyses.merchant_id.in_(merchant_ids)))).scalars().all())
     referenced_ids = set((await db.execute(select(MerchantPool.duplicate_of_id).where(MerchantPool.duplicate_of_id.in_(merchant_ids), MerchantPool.id.notin_(merchant_ids)))).scalars().all())
     quality_by_id = await quality_for_many(db, "pool", merchant_ids)
+    label_rows = (await db.execute(select(
+        SalesLabelAssignment.merchant_id, SalesLabelAssignment.label_id,
+        SalesLabelAssignment.import_batch_id, SalesLabelAssignment.confirmed,
+    ).where(SalesLabelAssignment.merchant_id.in_(merchant_ids)))).all()
+    labels_by_merchant = {}
+    updated_label_targets = set()
+    for merchant_id, label_id, source_batch, confirmed in label_rows:
+        if source_batch != batch.id or confirmed:
+            updated_label_targets.add(merchant_id)
+        labels_by_merchant.setdefault(merchant_id, set()).add(label_id)
     conflicts = []
     for row in rows:
         merchant_id = row.get("merchant_id")
         if not merchant_id:
             continue
         merchant = by_id.get(merchant_id)
-        if not merchant or merchant.converted_lead_id or merchant.pool_status == "converted" or merchant_id in linked_leads or merchant_id in analyzed_ids or merchant_id in referenced_ids or quality_by_id[merchant_id]["revision"] > 0 or merchant_snapshot(merchant) != row.get("snapshot"):
+        label_updated = (merchant_id in updated_label_targets
+                         or labels_by_merchant.get(merchant_id, set()) != set(row.get("applied_label_ids", [])))
+        if (not merchant or merchant.converted_lead_id or merchant.pool_status == "converted"
+                or merchant_id in linked_leads or merchant_id in analyzed_ids or merchant_id in referenced_ids
+                or label_updated or quality_by_id[merchant_id]["revision"] > 0
+                or merchant_snapshot(merchant) != row.get("snapshot")):
             conflicts.append(row["row"])
     if conflicts:
         await db.rollback()
         raise HTTPException(409, {"message": "批次已有记录被修改、核验、分析、引用、删除或转为线索，整批未撤销", "rows": conflicts})
+    # Explicitly remove links in the same transaction, also on compatible
+    # SQLite snapshots where foreign-key enforcement was originally disabled.
+    if label_rows:
+        await db.execute(delete(SalesLabelAssignment).where(SalesLabelAssignment.merchant_id.in_(merchant_ids)))
     for merchant in merchants:
         await db.delete(merchant)
     batch.status = "reverted"

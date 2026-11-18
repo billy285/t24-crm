@@ -824,3 +824,59 @@ async def test_imported_address_timezone_survives_claim_and_expires_when_busines
     unknown = await client.get("/api/v1/merchant-pool", headers=auth(),
                                params={"timezone_group": "unknown", "pool_status": "converted"})
     assert unknown.json()["total"] == 1 and unknown.json()["items"][0]["timezone"] is None
+
+
+@pytest.mark.asyncio
+async def test_import_labels_preserve_existing_merchant_and_require_human_provider_confirmation(imports_client):
+    client, maker = imports_client
+    owner = auth("super_admin", 1)
+    sales = auth("sales", 15)
+    label = {"name": "BeyondMenu", "kind": "source", "industry": "restaurant"}
+    assert (await client.post("/api/v1/sales-labels", headers=sales, json=label)).status_code == 403
+    source = (await client.post("/api/v1/sales-labels", headers=owner, json=label)).json()
+    provider = (await client.post("/api/v1/sales-labels", headers=owner,
+        json={"name": "MenuSifu", "kind": "provider", "industry": "restaurant"})).json()
+    source_id, provider_id = source["id"], provider["id"]
+    data = {"default_industry": "餐厅"}
+    request = {"file": ("cafe.csv", csv_file([GOOD]), "text/csv")}
+    first = (await client.post("/api/v1/merchant-imports/preview", headers=owner, files=request, data=data)).json()
+    assert (await client.post(f"/api/v1/merchant-imports/{first['id']}/confirm", headers=owner)).status_code == 200
+    labelled = await client.post("/api/v1/merchant-imports/preview", headers=owner, files=request,
+        data={**data, "label_ids": [str(source_id), str(provider_id)]})
+    assert labelled.status_code == 200, labelled.text
+    assert labelled.json()["summary"]["matched_existing"] == 1
+    batch_id = labelled.json()["id"]
+    assert (await client.post(f"/api/v1/merchant-imports/{batch_id}/confirm", headers=owner)).status_code == 200
+    assert await count(maker, MerchantPool) == 1
+
+    by_source = (await client.get(f"/api/v1/merchant-pool?label_id={source_id}", headers=owner)).json()
+    assert by_source["total"] == 1
+    merchant = by_source["items"][0]
+    labels = {row["id"]: row for row in merchant["sales_labels"]}
+    assert labels[provider_id]["confirmed"] is False
+    assert merchant["data_source"] == "Google Maps"
+    assert (await client.get(f"/api/v1/merchant-pool?label_id={provider_id}&provider_confirmed=true", headers=owner)).json()["total"] == 0
+    merchant_id = merchant["id"]
+    async with maker() as session:
+        lead = SalesLeads(business_name=GOOD[0], phone=GOOD[1], country="US", industry="餐厅", merchant_pool_id=merchant_id, assigned_sales_id=15)
+        session.add(lead)
+        await session.flush()
+        merchant_model = await session.get(MerchantPool, merchant_id)
+        merchant_model.converted_lead_id = lead.id
+        merchant_model.pool_status = "converted"
+        await session.commit()
+        lead_id = lead.id
+
+    endpoint = f"/api/v1/sales-labels/leads/{lead_id}"
+    assert (await client.get(endpoint, headers=auth("sales", 16))).status_code == 404
+    assert (await client.put(endpoint, headers=sales, json={"action": "remove", "label_id": source_id})).status_code == 403
+    assert (await client.put(endpoint, headers=sales, json={"action": "confirm", "label_id": provider_id})).status_code == 200
+    assert (await client.get(f"/api/v1/merchant-pool?label_id={provider_id}&provider_confirmed=true", headers=owner)).json()["total"] == 1
+    combined = await client.get(f"/api/v1/merchant-pool?label_ids={source_id},{provider_id}&provider_confirmed=true", headers=owner)
+    assert combined.status_code == 200
+    assert combined.json()["total"] == 1
+    renamed = await client.put(f"/api/v1/sales-labels/catalog/{source_id}", headers=owner,
+        json={**label, "name": "BeyondMenu 导入名单", "archived": True})
+    assert renamed.status_code == 200
+    after_rename = (await client.get(endpoint, headers=sales)).json()["items"]
+    assert any(row["name"] == "BeyondMenu 导入名单" and row["archived"] for row in after_rename)

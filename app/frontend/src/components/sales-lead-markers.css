@@ -1,0 +1,40 @@
+.sales-lead-markers {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.sales-lead-marker {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.sales-lead-marker[aria-pressed="true"],
+.sales-lead-priority-label {
+  color: hsl(var(--primary));
+}
+
+.sales-lead-priority-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.sales-lead-marked-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .sales-lead-marker {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+}

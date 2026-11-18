@@ -14,6 +14,9 @@
 .sales-center-ui.sw-refined .sw-note-templates > p > span {
   color: #94a3b8;
 }
+.sales-center-ui.sw-refined .sw-note-templates > p > .sw-note-template-manage {
+  margin-inline-start: auto;
+}
 .sales-center-ui.sw-refined .sw-note-templates > div {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -30,6 +33,18 @@
   font-size: 12px;
   line-height: 18px;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.sales-center-ui.sw-refined .sw-note-templates .sw-note-template-more {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.sales-center-ui.sw-refined .sw-note-result-reminder {
+  margin: 0;
+  color: var(--crm-text-muted, #64748b);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .sales-center-ui.sw-refined .sw-note-templates button:hover:enabled {
   border-color: #93b4f5;

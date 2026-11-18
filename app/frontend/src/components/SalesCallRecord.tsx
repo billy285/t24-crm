@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { defaultSalesQuickNotes, type SalesQuickNoteTemplate } from '@/lib/sales-quick-notes';
 import { emptySalesCallValues, hasSalesCallDraft, readSalesCallDraft, removeSalesCallDraft, writeSalesCallDraft, type DraftPersistence, type SalesCallDraft } from '@/lib/sales-call-draft';
 
 export type SalesCallValues = { outcome: string; notes: string; nextFollowUpAt: string; contactDetails?: ContactDetails };
@@ -24,23 +26,18 @@ type Props = {
   onOpenKnowledge?: () => void;
   submitLabel?: string;
   timezone?: string;
+  noteTemplates?: SalesQuickNoteTemplate[];
+  merchantIndustry?: 'restaurant' | 'beauty' | 'other';
+  onManageNoteTemplates?: () => void;
 };
-
-const noteTemplates = [
-  { label: '本次未接通', text: '本次未接通。' },
-  { label: '前台／老板不在', text: '前台接听，老板不在。' },
-  { label: '英文沟通', text: '对方讲英文，暂未能有效沟通。' },
-  { label: '老板有兴趣／忙', text: '老板有兴趣，目前比较忙。' },
-  { label: '先看资料', text: '希望先看资料，关注：____。' },
-  { label: '已有服务商', text: '已有服务商，补充：____。' },
-  { label: '暂时不需要', text: '暂时不需要，原因：____。' },
-  { label: '要求不再联系', text: '对方明确要求不再联系。' },
-];
 
 // The mounting key scopes drafts to employee, salesperson, lead, workday and task.
 // A draft never writes a business record.
-export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disabledReason, providerCall, options, suggestedFollowUp, onSave, onOpenKnowledge, submitLabel = '保存并下一位', timezone }: Props) {
+export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disabledReason, providerCall, options, suggestedFollowUp, onSave, onOpenKnowledge, submitLabel = '保存并下一位', timezone, noteTemplates = defaultSalesQuickNotes, merchantIndustry = 'other', onManageNoteTemplates }: Props) {
   const [initialDraft] = useState<SalesCallDraft>(() => disabledReason ? { values: emptySalesCallValues(), restored: false, persistence: 'session' as DraftPersistence } : readSalesCallDraft(draftKey, options, legacyDraftKey));
+  const isMobile = useIsMobile();
+  const [showMoreTemplates, setShowMoreTemplates] = useState(false);
+  const [doNotContactReminder, setDoNotContactReminder] = useState(false);
   const [values, setValues] = useState(initialDraft.values);
   const [persistence, setPersistence] = useState(initialDraft.persistence);
   const [restored, setRestored] = useState(initialDraft.restored);
@@ -52,6 +49,9 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
   const requiresNotes = ['interested', 'appointment', 'do_not_contact'].includes(values.outcome);
   const requiresFollowUp = ['callback', 'interested', 'appointment'].includes(values.outcome);
   const hidesFollowUp = ['not_interested', 'do_not_contact', 'not_now', 'existing_provider'].includes(values.outcome);
+  const availableTemplates = noteTemplates.filter(template => template.enabled && (template.industry === 'all' || template.industry === merchantIndustry));
+  const hasMoreTemplates = isMobile && availableTemplates.length > 4;
+  const visibleTemplates = hasMoreTemplates && !showMoreTemplates ? availableTemplates.slice(0, 4) : availableTemplates;
   const dirty = hasSalesCallDraft(values);
   useEffect(() => {
     if (!dirty || persistence === 'session') return;
@@ -68,8 +68,9 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
     setDraftInvalid(false);
     setPersistence(writeSalesCallDraft(draftKey, next));
   };
-  const insertNoteTemplate = (text: string) => {
+  const insertNoteTemplate = (template: SalesQuickNoteTemplate) => {
     if (saving || disabledReason || submitting.current) return;
+    const { text } = template;
     const notes = values.notes
       ? `${values.notes}${values.notes.endsWith('\n') ? '' : '\n'}${text}`
       : text;
@@ -78,6 +79,7 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
       return;
     }
     update({ notes });
+    if (template.remind_do_not_contact) setDoNotContactReminder(true);
     requestAnimationFrame(() => {
       notesRef.current?.focus();
       notesRef.current?.setSelectionRange(notes.length, notes.length);
@@ -87,6 +89,7 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
     if (saving || disabledReason || !(dirty || draftInvalid) || !window.confirm('确定丢弃这位商家的本地草稿？尚未保存的记录会被清空。')) return;
     const removed = removeSalesCallDraft(draftKey, legacyDraftKey);
     setValues(emptySalesCallValues());
+    setDoNotContactReminder(false);
     setRestored(false);
     setDraftInvalid(false);
     setValidation(removed ? '' : '草稿已从本页清空，浏览器暂存无法清除，刷新可能恢复。');
@@ -107,6 +110,7 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
       if (await onSave(values)) {
         if (!removeSalesCallDraft(draftKey, legacyDraftKey)) toast.warning('记录已保存；浏览器暂存无法清除，刷新可能恢复旧草稿，请勿重复提交');
         setValues(emptySalesCallValues());
+        setDoNotContactReminder(false);
         setRestored(false);
         setDraftInvalid(false);
       } else { setValidation('保存失败，记录已保留，请重试'); }
@@ -120,8 +124,13 @@ export default function SalesCallRecord({ draftKey, legacyDraftKey, saving, disa
       : '通话已回传 · 待核验'}</div>}
     <fieldset disabled={saving || Boolean(disabledReason)} className="sc-record-fields">
       <div className="sw-note-heading"><Label htmlFor={`${fieldId}-notes`}>沟通记录{requiresNotes && <span className="sc-required"> *</span>}</Label><div className="sw-draft-tools"><span role="status" title="仅保存在当前浏览器页签，明确保存后才写入联系记录">{dirty ? persistence === 'memory' ? '本次页面保留' : restored ? '已恢复草稿' : '草稿已暂存' : ''}</span>{(dirty || draftInvalid) && <Button type="button" variant="ghost" onClick={discard}>丢弃草稿</Button>}</div></div>
-      <div className="sw-note-templates" role="group" aria-label="快捷备注模板"><p>快捷备注<span>点击追加</span></p><div>{noteTemplates.map(template => <button key={template.text} type="button" aria-label={`插入模板：${template.text}`} title={template.text} onClick={() => insertNoteTemplate(template.text)}>{template.label}</button>)}</div></div>
+      {(availableTemplates.length > 0 || onManageNoteTemplates) && <div className="sw-note-templates" role="group" aria-label="快捷备注模板">
+        <p>快捷备注<span>点击追加</span>{onManageNoteTemplates && <button type="button" className="sw-note-template-manage" onClick={onManageNoteTemplates}>管理快捷备注</button>}</p>
+        {visibleTemplates.length > 0 && <div>{visibleTemplates.map(template => <button key={template.id} type="button" aria-label={`插入模板：${template.label}`} title={template.text} onClick={() => insertNoteTemplate(template)}>{template.label}</button>)}</div>}
+        {hasMoreTemplates && <button type="button" className="sw-note-template-more" aria-expanded={showMoreTemplates} onClick={() => setShowMoreTemplates(current => !current)}>{showMoreTemplates ? '收起备注模板' : `更多备注（${availableTemplates.length - 4}）`}</button>}
+      </div>}
       <Textarea ref={notesRef} id={`${fieldId}-notes`} aria-label="沟通记录" maxLength={10000} value={values.notes} onChange={event => update({ notes: event.target.value })} placeholder="记下客户的需求、顾虑和约定的下一步…" rows={5} className="sw-notes" />
+      {doNotContactReminder && values.notes && values.outcome !== 'do_not_contact' && <p className="sw-note-result-reminder" role="status">确认商家要求不再联系时，请选择下方「禁止再联系」并保存。</p>}
       <div className="sw-result-heading">本次结果</div>
       <div className="sw-result-row">
         <div className="sc-outcomes sw-outcomes-expanded" role="group" aria-label="选择通话结果">{options.map(option => {

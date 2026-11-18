@@ -31,13 +31,15 @@ async function fixture(page: Page, role: string, stage = 'pending') {
       writes.push(body);
       if (body.revision !== item.revision) return route.fulfill({ status: 409, json: { detail: '资料已变化' } });
       item.revision++;
-      item.closer_id = employee.id;
-      item.closer_name = employee.name;
-      item.stage = body.action === 'lost' ? 'lost' : 'working';
-      if (body.note) item.note = body.note;
+      item.closer_id = body.action === 'delegate' ? body.manager_id : employee.id;
+      item.closer_name = body.action === 'delegate' ? '主管丙' : employee.name;
+      item.stage = body.action === 'lost' ? 'lost' : body.action === 'pause' ? 'nurturing' : 'working';
+      if (body.loss_reason) Object.assign(item, { loss_reason: body.loss_reason });
+      if (body.note && body.action !== 'delegate') item.note = body.note;
       if (body.next_follow_up_at) item.next_follow_up_at = body.next_follow_up_at;
       return route.fulfill({ json: item });
     }
+    if (url.pathname === api + '/42/managers') return route.fulfill({ json: [{ id: 12, name: '主管丙' }] });
     if (url.pathname.endsWith('/emp-auth/me')) return route.fulfill({ json: employee });
     if (url.pathname.includes('/app-config')) return route.fulfill({ json: { items: {} } });
     if (url.pathname.endsWith('/assignees')) return route.fulfill({ json: [] });
@@ -63,7 +65,7 @@ for (const [role, width] of [['super_admin', 1280], ['sales_manager', 390]] as c
     await expect.poll(() => reads.at(-1)?.searchParams.get('search')).toBe('测试');
     expect(reads.at(-1)?.searchParams.get('source_sales_id')).toBe('5');
     expect(reads.at(-1)?.searchParams.get('stage')).toBe('pending');
-    await queue.getByRole('button', { name: '我来接手' }).click();
+    await queue.getByRole('button', { name: role === 'super_admin' ? '我来跟进' : '我来接手' }).click();
     await expect(queue.getByText('当前筛选下没有商家。')).toBeVisible();
     await queue.getByLabel('踢单阶段').selectOption('working');
     await queue.getByRole('button', { name: '记录进展' }).click();
@@ -112,4 +114,56 @@ test('号码变化时重新校验拨号目标并留在名单中', async ({ page 
   await expect(page.getByText('商家或号码已变化，请刷新名单后重试')).toBeVisible();
   await expect(page).toHaveURL(/view=closing/);
   expect(providerCalls).toBe(0);
+});
+
+test('手机踢单可设置暂缓提醒，恢复后再登记未成交原因', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { writes } = await fixture(page, 'sales_manager');
+  await page.goto(base + '/sales-leads?view=closing');
+  const queue = page.getByRole('region', { name: '意向踢单名单' });
+  await queue.getByRole('button', { name: '我来接手' }).click();
+  await queue.getByRole('button', { name: '更多踢单操作：测试美甲店' }).click();
+  await page.getByRole('menuitem', { name: '暂缓跟进' }).click();
+  const deferDialog = page.getByRole('dialog', { name: '暂缓跟进' });
+  await deferDialog.getByLabel('暂缓原因与下次联系计划').fill('当前合同到期前联系');
+  await deferDialog.getByLabel('重新提醒时间（北京时间）').fill('2030-12-01T11:00');
+  await deferDialog.getByRole('button', { name: '暂缓并设置提醒' }).click();
+  await queue.getByLabel('踢单阶段').selectOption('nurturing');
+  await expect(queue.getByText('当前合同到期前联系')).toBeVisible();
+  await expect(queue.getByRole('button', { name: '拨打电话' })).toHaveCount(0);
+  await queue.getByRole('button', { name: '恢复跟进' }).click();
+  await queue.getByLabel('踢单阶段').selectOption('working');
+  await queue.getByRole('button', { name: '更多踢单操作：测试美甲店' }).click();
+  await page.getByRole('menuitem', { name: '结束踢单' }).click();
+  const lossDialog = page.getByRole('dialog', { name: '结束踢单' });
+  await lossDialog.getByLabel('结束说明').fill('对方续签了当前服务商');
+  await expect(lossDialog.getByRole('button', { name: '确认结束' })).toBeDisabled();
+  await lossDialog.getByLabel('未成交原因').selectOption('renewed_provider');
+  await lossDialog.getByRole('button', { name: '确认结束' }).click();
+  await queue.getByLabel('踢单阶段').selectOption('lost');
+  await expect(queue.getByText('续签其他服务商')).toBeVisible();
+  expect(writes.map(item => item.action)).toEqual(['claim', 'pause', 'resume', 'lost']);
+  expect(writes[1].next_follow_up_at).toBe('2030-12-01T03:00:00.000Z');
+  expect(writes[3].loss_reason).toBe('renewed_provider');
+});
+
+test('老板可把接手的踢单转给可见范围内的主管', async ({ page }) => {
+  const { writes } = await fixture(page, 'super_admin');
+  await page.goto(base + '/sales-leads?view=closing');
+  const queue = page.getByRole('region', { name: '意向踢单名单' });
+  await queue.getByRole('button', { name: '我来跟进' }).click();
+  await queue.getByRole('button', { name: '记录进展' }).click();
+  const progress = page.getByRole('dialog', { name: '记录踢单进展' });
+  await progress.getByLabel('本次进展与下一步').fill('周五和店主确认');
+  await progress.getByRole('button', { name: '保存进展' }).click();
+  await queue.getByRole('button', { name: '更多踢单操作：测试美甲店' }).click();
+  await page.getByRole('menuitem', { name: '转给主管跟进' }).click();
+  const transfer = page.getByRole('dialog', { name: '转给主管跟进' });
+  await expect(transfer.getByText('上次进展：周五和店主确认')).toBeVisible();
+  await transfer.getByLabel('接手主管').selectOption('12');
+  await transfer.getByLabel('交接说明').fill('请继续确认商家需求');
+  await transfer.getByRole('button', { name: '确认转交' }).click();
+  await expect(queue.getByText('踢单人 主管丙')).toBeVisible();
+  await expect(queue.getByText('周五和店主确认')).toBeVisible();
+  expect(writes.at(-1)).toEqual({ action: 'delegate', revision: 2, note: '请继续确认商家需求', manager_id: 12 });
 });

@@ -303,6 +303,8 @@ def handoff_data(row):
 
 
 async def dossier_data(db, lead, actor, permissions):
+    from services.sales_labels import lead_labels
+
     # Only these sales-domain models are queried. No customer or financial joins.
     from routers.sales_intelligence import settings_for
     config, version = await settings_for(db)
@@ -381,6 +383,8 @@ async def dossier_data(db, lead, actor, permissions):
     changes.sort(key=lambda item: (item["at"] or "", item["id"]), reverse=True)
     return {"insight": insight, "enrichment": enrichment, "summary": await summary_for(db, lead),
         "protection": protection, "original": original_data, "permissions": permissions,
+        "sales_labels": (await lead_labels(db, [(lead.id, lead.merchant_pool_id)])).get(lead.id, [])
+                        if permissions["can_edit_profile"] else [],
         "grants": grant_data, "handoffs": [handoff_data(row) for row in handoffs], "candidates": candidates,
         "catalog": await enrichment_catalog(db), "enrichment_history": enrichment_history, "changes": changes}
 

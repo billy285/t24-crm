@@ -1,4 +1,13 @@
 .sales-closing-queue { min-width: 0; color: var(--crm-ink, #172638); }
+.scq-fast-filters, .scq-filter-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.scq-fast-filters { margin-bottom: 10px; }
+.scq-filter-panel { margin-top: 8px; align-items: start; }
+.scq-filter-panel details { flex: 1 0 auto; max-width: 100%; min-width: 0; }
+.scq-filter-panel details[open] { flex-basis: 100%; }
+.scq-filter-panel summary { width: fit-content; min-height: 32px; padding: 6px 10px; color: var(--crm-muted, #637389); cursor: pointer; font-size: 13px; }
+.scq-extra-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.scq-extra-filters label { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; font-size: 13px; }
+.scq-extra-filters input { accent-color: var(--crm-accent, #245ee5); }
 .scq-controls { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(130px, 190px) minmax(110px, 155px); gap: 8px; align-items: center; }
 .scq-search { position: relative; min-width: 0; }
 .scq-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--crm-muted, #637389); }
@@ -19,6 +28,7 @@
 .scq-progress p + p { margin-top: 3px; }
 .scq-progress p > span { margin-right: 6px; color: var(--crm-muted, #637389); font-size: 12px; }
 .scq-overdue { color: var(--crm-warning, #93521e); }
+.scq-last-progress { margin: 0; color: var(--crm-muted, #637389); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .scq-actions, .scq-pagination { display: flex; align-items: center; justify-content: end; flex-wrap: wrap; gap: 6px; }
 .scq-pagination { margin-top: 12px; color: var(--crm-muted, #637389); font-size: 13px; gap: 12px; }
 .scq-message { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 0; padding: 36px 16px; font-size: 14px; color: var(--crm-muted, #637389); border: 1px solid var(--crm-border, #dce3eb); border-radius: 10px; background: var(--crm-surface, white); text-align: center; }
@@ -29,6 +39,10 @@
 @media (max-width: 767px) {
   .t24-system .slr-page .slr-primary-views[data-management="true"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .scq-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scq-fast-filters > button, .scq-filter-panel > button, .scq-filter-panel summary,
+  .scq-extra-filters label { min-height: 44px; }
+  .scq-fast-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .scq-fast-filters > button { min-width: 0; padding-inline: 2px; font-size: 12px; }
   .scq-search { grid-column: 1 / -1; }
   .scq-list > li { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px; }
   .scq-actions { justify-content: start; }

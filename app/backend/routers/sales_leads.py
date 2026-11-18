@@ -36,8 +36,8 @@ from services.ai_config import humanize_ai_error, resolve_ai_runtime_config
 from services.aihub import AIHubService
 from services.deal_payment_sync import sync_payment_from_deal
 from services.sales_task_assignment import lead_has_active_closer, sync_pending_daily_tasks
-from services.sales_closing_queue import (ClosingAction, POSITIVE, closing_list, closing_dial_target, management_actor,
-    previous_interest, record_manual_interest, retain_legacy_interest, update_closing)
+from services.sales_closing_queue import (ClosingAction, ClosingStage, POSITIVE, available_closing_managers, closing_list,
+    closing_dial_target, management_actor, previous_interest, record_manual_interest, retain_legacy_interest, update_closing)
 from services.merchant_industries import workbench_industry_group
 from services.sales_industry_queue import DEFERRED, industry_stock, prepare_industry_batch
 from services.sales_queue_policy import queue_context, contact_queue_context, queue_sort_key
@@ -46,6 +46,8 @@ from services.ringcentral_team import team_connection_statuses
 from services.sales_conversion_reporting import conversion_counts, currency_totals, first_receipts, sales_conversions
 from services.sales_industry_reporting import industry_breakdown
 from services.sales_workflow_locks import lock_sales_workflow
+from services.sales_lead_markers import marker_conditions, markers_for, update_markers
+from services.sales_labels import lead_labels, sales_label_filter
 from services.customer_codes import allocate_customer_code
 from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_contact_protection import (
@@ -273,6 +275,9 @@ class SalesLeadResponse(BaseModel):
     created_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    starred: bool = False
+    priority: bool = False
+    labels: list[dict] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -767,14 +772,20 @@ async def _load_recovery_snapshot(
 
 @router.get("/closing-queue")
 async def get_closing_queue(
-    stage: Literal["active", "all", "pending", "working", "lost", "won"] = "active",
+    stage: ClosingStage = "active",
     source_sales_id: Optional[int] = None, search: str = Query("", max_length=200),
+    industry: Literal["", "餐厅", "美业"] = "", mine: bool = False,
+    label_id: Optional[int] = Query(None, ge=1), provider_confirmed: bool = False,
+    starred: bool = False, priority: bool = False,
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
 ):
     actor = await management_actor(db, current_user)
     return await closing_list(db, await _scope_condition(db, actor),
-                              stage, source_sales_id, search, page, page_size)
+                              stage, source_sales_id, search, page, page_size, industry=industry,
+                              only_closer_id=actor.id if mine else None, label_id=label_id,
+                              provider_confirmed=provider_confirmed, viewer_user_id=current_user.id,
+                              starred=starred, priority=priority)
 
 
 @router.get("/closing-queue/{lead_id}/dial-target")
@@ -786,6 +797,13 @@ async def get_closing_dial_target(
     actor = await management_actor(db, current_user)
     response.headers["Cache-Control"] = "no-store"
     return await closing_dial_target(db, lead_id, actor, await _scope_condition(db, actor), revision)
+
+
+@router.get("/closing-queue/{lead_id}/managers")
+async def get_closing_managers(
+    lead_id: int, current_user: UserResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    return await available_closing_managers(db, lead_id, current_user)
 
 
 @router.post("/closing-queue/{lead_id}")
@@ -848,6 +866,9 @@ async def list_sales_leads(
     lead_status: Optional[str] = Query(None, alias="status"),
     contact_rule: Optional[str] = None,
     due_range: Optional[str] = Query(None, pattern="^(today|overdue)$"),
+    starred: bool = False,
+    priority: bool = False,
+    label_id: Optional[int] = Query(None, ge=1),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
     current_user: UserResponse = Depends(get_current_user),
@@ -856,7 +877,9 @@ async def list_sales_leads(
     _ensure_lead_role(current_user)
     query = select(SalesLeads)
     count_query = select(func.count(SalesLeads.id))
-    conditions = []
+    conditions = marker_conditions(SalesLeads.id, current_user.id, starred=starred, priority=priority)
+    if label_id is not None:
+        conditions.append(sales_label_filter(label_id, merchant_id=SalesLeads.merchant_pool_id, lead_id=SalesLeads.id))
     scope = await _scope_condition(db, current_user)
     if scope is not None:
         conditions.append(scope)
@@ -912,7 +935,39 @@ async def list_sales_leads(
     items = (
         await db.execute(query.order_by(SalesLeads.id.desc()).offset(skip).limit(limit))
     ).scalars().all()
-    return {"items": items, "total": total, "skip": skip, "limit": limit}
+    markers = await markers_for(db, (lead.id for lead in items), current_user.id)
+    labels = await lead_labels(db, [(lead.id, lead.merchant_pool_id) for lead in items])
+    marked_items = [
+        SalesLeadResponse.model_validate(lead).model_copy(update={**markers[lead.id], "labels": labels.get(lead.id, [])})
+        for lead in items
+    ]
+    return {"items": marked_items, "total": total, "skip": skip, "limit": limit}
+
+
+class SalesLeadMarkerUpdate(BaseModel):
+    starred: bool | None = None
+    priority: bool | None = None
+
+
+@router.put("/{lead_id}/markers")
+async def change_sales_lead_markers(
+    lead_id: int,
+    payload: SalesLeadMarkerUpdate,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_lead_role(current_user)
+    if payload.priority is not None and _role(current_user) not in ADMIN_ROLES | {"sales_manager"}:
+        raise HTTPException(status_code=403, detail="只有老板或主管可以调整重点单")
+    if payload.starred is None and payload.priority is None:
+        raise HTTPException(status_code=422, detail="请选择要修改的标记")
+    await lock_sales_workflow(db, lead_ids=[lead_id])
+    await _get_scoped_lead(db, lead_id, current_user)
+    markers = await update_markers(
+        db, lead_id, current_user.id, starred=payload.starred, priority=payload.priority,
+    )
+    await db.commit()
+    return markers
 
 
 @router.post("/workbench/prepare")
@@ -2679,7 +2734,12 @@ async def get_sales_lead(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
-    return await _get_scoped_lead(db, lead_id, current_user)
+    lead = await _get_scoped_lead(db, lead_id, current_user)
+    markers = await markers_for(db, [lead_id], current_user.id)
+    labels = await lead_labels(db, [(lead_id, lead.merchant_pool_id)])
+    return SalesLeadResponse.model_validate(lead).model_copy(update={
+        **markers[lead_id], "labels": labels.get(lead_id, []),
+    })
 
 
 @router.post("", response_model=SalesLeadResponse, status_code=status.HTTP_201_CREATED)

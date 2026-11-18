@@ -1,3 +1,4 @@
+import type { SalesLabel } from '@/lib/sales-labels';
 import { invokeWithAuth } from '@/lib/tokenStore';
 import type { LeadInsight } from '@/lib/sales-intelligence';
 import type { EnrichmentResponse, EnrichmentProduct, EnrichmentHistoryEntry } from '@/lib/sales-lead-enrichment';
@@ -29,6 +30,7 @@ export type SalesDossier = {
   summary: DossierSummary;
   protection: { can_contact: boolean; reason: string; cooldown_until?: string | null; phones?: string[]; protected_phones?: string[] };
   original: DossierOriginal | null;
+  sales_labels?: SalesLabel[];
   permissions: { can_edit: boolean; can_edit_summary: boolean; can_invite: boolean; can_transfer: boolean; can_ack: boolean; can_review: boolean; can_edit_profile: boolean; can_release_protection?: boolean };
   grants: DossierGrant[]; handoffs: DossierHandoff[]; candidates: DossierCandidate[];
   catalog?: EnrichmentProduct[]; enrichment_history?: EnrichmentHistoryEntry[];

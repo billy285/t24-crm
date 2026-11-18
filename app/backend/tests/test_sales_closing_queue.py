@@ -8,10 +8,12 @@ from sqlalchemy import select
 
 from backend.tests.test_sales_dossiers import auth as dossier_auth, dossier_api
 from backend.tests.test_sales_lead_isolation import _auth_headers, sales_app_client
+from models.employees import Employees
 from models.sales_call_activities import SalesCallActivities
 from models.sales_contact_protection import SalesPhoneSuppression
 from models.sales_intelligence import SalesInsightEvents
 from models.sales_leads import SalesLeads
+from services import sales_closing_queue
 
 
 LEADS = "/api/v1/sales-leads"
@@ -301,3 +303,119 @@ async def test_owner_explicit_takeover_keeps_source_and_manager_history(dossier_
         assert [(event.kind, event.actor_id) for event in events] == [
             ("closing_claim", 10), ("closing_follow_up", 10), ("closing_take_over", 1),
         ]
+
+
+@pytest.mark.asyncio
+async def test_deferred_lead_reminds_its_owner_and_keeps_attribution_after_takeover(dossier_api, monkeypatch):
+    client, sessions = dossier_api
+    await seed_historical_contacts(sessions)
+    clock = datetime(2031, 1, 14, 14, tzinfo=timezone.utc)
+
+    class WorkflowClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock.astimezone(tz) if tz else clock.replace(tzinfo=None)
+
+    monkeypatch.setattr(sales_closing_queue, "datetime", WorkflowClock)
+    manager, owner = dossier_auth(10), dossier_auth(1)
+    route = f"{CLOSING}/601"
+    claimed = (await client.post(route, headers=manager, json={"action": "claim", "revision": 0})).json()
+    reminder = datetime(2031, 1, 14, 18, tzinfo=timezone.utc)  # Jan 15 at 02:00 Beijing
+    pause = {"action": "pause", "revision": claimed["revision"], "note": "现有合同到期前再联系",
+             "next_follow_up_at": reminder.isoformat()}
+    assert (await client.post(route, headers=manager, json={**pause, "next_follow_up_at": clock.isoformat()})).status_code == 422
+    response = await client.post(route, headers=manager, json=pause)
+    assert response.status_code == 200, response.text
+    paused = response.json()
+    assert (paused["stage"], paused["closer_id"], paused["source_sales_id"]) == ("nurturing", 10, 11)
+    assert 601 not in {row["lead_id"] for row in (await queue(client, actor=manager))["items"]}
+    assert [row["lead_id"] for row in (await queue(client, actor=manager, stage="nurturing", mine=True))["items"]] == [601]
+    assert (await client.get(f"{route}/dial-target", headers=manager)).status_code == 409
+    assert (await client.post(route, headers=owner, json={"action": "resume", "revision": paused["revision"]})).status_code == 403
+    takeover = await client.post(route, headers=owner, json={
+        "action": "take_over", "revision": paused["revision"], "note": "老板接手换系统意向",
+    })
+    assert takeover.status_code == 200, takeover.text
+    reassigned = takeover.json()
+    assert (reassigned["stage"], reassigned["closer_id"], reassigned["source_sales_id"]) == ("nurturing", 1, 11)
+    assert (reassigned["note"], reassigned["next_follow_up_at"]) == (paused["note"], paused["next_follow_up_at"])
+
+    clock += timedelta(hours=3)
+    following_today = await queue(client, actor=owner, stage="today", mine=True)
+    assert [row["lead_id"] for row in following_today["items"]] == [601]
+    assert not (await queue(client, actor=manager, stage="today", mine=True))["items"]
+    clock += timedelta(hours=2)
+    assert not (await queue(client, actor=owner, stage="today", mine=True))["items"]
+    assert [row["lead_id"] for row in (await queue(client, actor=owner, stage="overdue", mine=True))["items"]] == [601]
+    resumed = await client.post(route, headers=owner, json={"action": "resume", "revision": reassigned["revision"]})
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["stage"] == "working"
+    assert (await client.get(f"{route}/dial-target", headers=owner)).status_code == 200
+
+    async with sessions() as db:
+        actions = (await db.scalars(select(SalesInsightEvents.kind).where(SalesInsightEvents.lead_id == 601)
+                                   .order_by(SalesInsightEvents.id))).all()
+        assert actions == ["closing_claim", "closing_pause", "closing_take_over_paused", "closing_resume"]
+
+
+@pytest.mark.asyncio
+async def test_explicit_stop_contact_at_close_uses_contact_protection(dossier_api):
+    client, sessions = dossier_api
+    await seed_historical_contacts(sessions)
+    manager = dossier_auth(10)
+    route = f"{CLOSING}/601"
+    claimed = (await client.post(route, headers=manager, json={"action": "claim", "revision": 0})).json()
+    stopped = await client.post(route, headers=manager, json={
+        "action": "lost", "revision": claimed["revision"], "loss_reason": "do_not_contact",
+        "note": "客户明确要求停止电话联系",
+    })
+    assert stopped.status_code == 200, stopped.text
+    assert stopped.json()["loss_reason"] == "do_not_contact"
+    assert not stopped.json()["can_contact"]
+    all_leads = await queue(client, actor=dossier_auth(1), stage="all")
+    assert 601 not in {row["lead_id"] for row in all_leads["items"]}
+    async with sessions() as db:
+        lead = await db.get(SalesLeads, 601)
+        suppression = await db.get(SalesPhoneSuppression, lead.phone)
+        assert lead.do_not_contact and lead.next_follow_up_at is None
+        assert suppression.blocked
+
+
+@pytest.mark.asyncio
+async def test_owner_delegates_paused_closing_to_scoped_manager_without_changing_origination(dossier_api):
+    client, sessions = dossier_api
+    await seed_historical_contacts(sessions)
+    async with sessions() as db:
+        db.add(Employees(id=20, name="Elsewhere", role="sales_manager", status="active", user_id="20"))
+        await db.commit()
+    mine, supervisor = dossier_auth(1), dossier_auth(10)
+    route = f"{CLOSING}/601"
+    claimed = await client.post(route, headers=mine, json={"action": "claim", "revision": 0})
+    assert claimed.status_code == 200, claimed.text
+    paused = await client.post(route, headers=mine, json={
+        "action": "pause", "revision": claimed.json()["revision"], "note": "约到合同到期前回访",
+        "next_follow_up_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+    })
+    assert paused.status_code == 200, paused.text
+    row = paused.json()
+    roster = await client.get(f"{route}/managers", headers=mine)
+    assert roster.json() == [{"id": 10, "name": "Manager"}]
+    assert (await client.get(f"{route}/managers", headers=supervisor)).status_code == 403
+    delegate = {"action": "delegate", "revision": row["revision"], "note": "请主管继续联系", "manager_id": 10}
+    assert (await client.post(route, headers=supervisor, json=delegate)).status_code == 403
+    assert (await client.post(route, headers=mine, json={**delegate, "manager_id": 20})).status_code == 409
+    sent = await client.post(route, headers=mine, json=delegate)
+    assert sent.status_code == 200, sent.text
+    update = sent.json()
+    assert (update["stage"], update["closer_id"], update["source_sales_id"]) == ("nurturing", 10, 11)
+    assert (update["note"], update["next_follow_up_at"]) == (row["note"], row["next_follow_up_at"])
+    assert update["handoff_note"] == delegate["note"]
+    assert [item["lead_id"] for item in (await queue(client, actor=supervisor, mine=True, stage="nurturing"))["items"]] == [601]
+    resume = await client.post(route, headers=supervisor, json={"action": "resume", "revision": update["revision"]})
+    assert resume.status_code == 200, resume.text
+
+    async with sessions() as db:
+        lead = await db.get(SalesLeads, 601)
+        assert lead.assigned_sales_id == 11
+        event = await db.scalar(select(SalesInsightEvents).where(SalesInsightEvents.id == update["revision"]))
+        assert (event.kind, event.actor_id, event.owner_id) == ("closing_delegate_paused", 1, 11)

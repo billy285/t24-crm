@@ -29,7 +29,14 @@ async function openFixture(page: Page, options: { width?: number; mode?: string 
     : page.getByTestId(width < 768 ? 'sales-workbench-mobile' : 'sales-workbench-desktop');
   await expect(surface.getByLabel('沟通记录', { exact: true })).toBeVisible();
   const group = surface.getByRole('group', { name: '快捷备注模板', exact: true });
-  await expect(group.getByRole('button')).toHaveCount(8);
+  const templateButtons = group.getByRole('button', { name: /^插入模板：/ });
+  if (width < 768) {
+    await expect(templateButtons).toHaveCount(4);
+    const more = group.getByRole('button', { name: '更多备注（4）', exact: true });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+  }
+  await expect(templateButtons).toHaveCount(8);
   return { surface, group, notes: surface.getByLabel('沟通记录', { exact: true }), unexpected };
 }
 
@@ -51,7 +58,7 @@ for (const [index, template] of templates.entries()) {
     // Include meaningful trailing whitespace and alternate an existing newline.
     const previous = `已手工记录：店主姓陈，下午联系。  ${index % 2 ? '\n' : ''}`;
     await notes.fill(previous);
-    await group.getByRole('button', { name: `插入模板：${template.text}`, exact: true }).click();
+    await group.getByRole('button', { name: `插入模板：${template.label}`, exact: true }).click();
     const expected = `${previous}${previous.endsWith('\n') ? '' : '\n'}${template.text}`;
     await expect(notes).toHaveValue(expected);
     await expect(notes).toBeFocused();
@@ -69,8 +76,9 @@ for (const [index, template] of templates.entries()) {
 
 test('空白记录可连续组合模板，拒绝联系等文字不会自动改变通话结果', async ({ page }) => {
   const { surface, group, notes, unexpected } = await openFixture(page, { width: 390 });
-  for (const template of templates) await group.getByRole('button', { name: `插入模板：${template.text}`, exact: true }).click();
+  for (const template of templates) await group.getByRole('button', { name: `插入模板：${template.label}`, exact: true }).click();
   await expect(notes).toHaveValue(templates.map(template => template.text).join('\n'));
+  await expect(surface.getByText('确认商家要求不再联系时，请选择下方「禁止再联系」并保存。')).toBeVisible();
   await expect(surface.locator('.sc-outcomes button[aria-pressed="true"]')).toHaveCount(0);
   await expect(surface.getByLabel(/^下次跟进/)).toHaveCount(0);
   await expectNoAutomaticBusinessChanges(page, surface, unexpected);
@@ -81,11 +89,11 @@ test('10000字上限允许恰好填满，再插入保留原文并明确提示', 
   const text = templates[0].text;
   const previous = '中'.repeat(10000 - text.length - 1);
   await notes.fill(previous);
-  await group.getByRole('button', { name: `插入模板：${text}`, exact: true }).click();
+  await group.getByRole('button', { name: `插入模板：${templates[0].label}`, exact: true }).click();
   const limit = `${previous}\n${text}`;
   expect(limit.length).toBe(10000);
   await expect(notes).toHaveValue(limit);
-  await group.getByRole('button', { name: `插入模板：${templates[1].text}`, exact: true }).click();
+  await group.getByRole('button', { name: `插入模板：${templates[1].label}`, exact: true }).click();
   await expect(page.getByText('插入后会超出字数上限，请先删减沟通记录', { exact: true })).toBeVisible();
   await expect(notes).toHaveValue(limit);
   await expect(surface.locator('.sc-outcomes button[aria-pressed="true"]')).toHaveCount(0);
@@ -98,11 +106,11 @@ test('保存中与受保护记录禁用全部模板，恢复后保留原手工�
   for (const name of ['模拟保存中', '模拟禁止联系']) {
     await surface.getByRole('button', { name, exact: true }).click();
     await expect(notes).toBeDisabled();
-    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.text}`, exact: true })).toBeDisabled();
+    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.label}`, exact: true })).toBeDisabled();
     await expect(notes).toHaveValue('保护前的手工记录，不可覆盖。');
     await surface.getByRole('button', { name, exact: true }).click();
     await expect(notes).toBeEnabled();
-    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.text}`, exact: true })).toBeEnabled();
+    for (const template of templates) await expect(group.getByRole('button', { name: `插入模板：${template.label}`, exact: true })).toBeEnabled();
   }
   await expect(notes).toHaveValue('保护前的手工记录，不可覆盖。');
   await expectNoAutomaticBusinessChanges(page, surface, unexpected);
@@ -113,7 +121,7 @@ test('模板与手工补充一起恢复草稿，结果及跟进时间保持原�
   await surface.getByRole('button', { name: '有意向', exact: true }).click();
   await surface.getByLabel(/^下次跟进/).fill('2026-10-20T10:30');
   await notes.fill('原记录：对方咨询官网。');
-  await group.getByRole('button', { name: `插入模板：${templates[3].text}`, exact: true }).click();
+  await group.getByRole('button', { name: `插入模板：${templates[3].label}`, exact: true }).click();
   await notes.press('End');
   await notes.press('Enter');
   await notes.pressSequentially('手工补充：周二下午老板在店。');
@@ -129,7 +137,7 @@ for (const width of [1093, 390, 320]) {
   test(`快捷模板在${width}px均完整显示、可点击且不横向挤出`, async ({ page }) => {
     const { surface, group, notes, unexpected } = await openFixture(page, { width });
     for (const template of templates) {
-      const button = group.getByRole('button', { name: `插入模板：${template.text}`, exact: true });
+      const button = group.getByRole('button', { name: `插入模板：${template.label}`, exact: true });
       await button.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }));
       await expect(button).toBeInViewport({ ratio: 1 });
       const metrics = await button.evaluate(element => {

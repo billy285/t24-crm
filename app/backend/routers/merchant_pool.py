@@ -28,6 +28,7 @@ from services.merchant_identity import has_concrete_name_and_address
 from services.prospect_verification import inherit_pool_quality, quality_for, quality_for_many, quality_status_expression, source_metadata_from_raw, unpack
 from services.sales_contact_protection import ensure_phone_contact_allowed
 from services.sales_workflow_locks import lock_sales_workflow
+from services.sales_labels import sales_label_filter, target_labels
 from services.sales_timezones import (GROUP_ZONES, STATE_CODES, STATE_NAMES, address_timezone_evidence,
                                       import_address_timezone, resolve_contact_timezone, sql_matches_contact_zones)
 
@@ -226,6 +227,7 @@ class MerchantResponse(BaseModel):
     updated_at: datetime
     prospect_source: dict = Field(default_factory=dict)
     prospect_quality: dict = Field(default_factory=dict)
+    sales_labels: list[dict] = Field(default_factory=list)
 
     @field_validator("industry")
     @classmethod
@@ -637,6 +639,9 @@ async def list_merchant_pool(
     timezone_group: Optional[Literal["eastern", "central", "mountain", "pacific", "alaska", "hawaii", "unknown"]] = None,
     industry: Optional[str] = None,
     source: Optional[str] = None,
+    label_id: int | None = None,
+    label_ids: str | None = None,
+    provider_confirmed: bool | None = None,
     quality_status: Optional[Literal["pending", "valid", "invalid_phone", "not_target", "closed"]] = None,
     batch_id: Optional[str] = Query(None, min_length=1, max_length=36),
     rating_min: Optional[float] = Query(None, ge=0, le=5),
@@ -695,6 +700,16 @@ async def list_merchant_pool(
             conditions.append(or_(current["country"].ilike(term), current["state"].ilike(term), current["city"].ilike(term)))
     if source:
         conditions.append(MerchantPool.data_source == source)
+    can_read_labels = or_(MerchantPool.converted_lead_id.is_(None), SalesLeads.id.is_not(None))
+    filters = {label_id} if label_id is not None else set()
+    if label_ids:
+        if not re.fullmatch(r"[0-9]{1,12}(,[0-9]{1,12}){0,19}", label_ids):
+            raise HTTPException(422, "最多选择 20 个标签筛选")
+        filters.update(map(int, label_ids.split(",")))
+    if filters:
+        conditions.append(can_read_labels)
+        conditions.extend(sales_label_filter(item, merchant_id=MerchantPool.id, lead_id=SalesLeads.id,
+                                             provider_confirmed=provider_confirmed) for item in sorted(filters))
     if rating_min is not None:
         conditions.append(MerchantPool.rating >= rating_min)
     if timezone_group:
@@ -740,6 +755,9 @@ async def list_merchant_pool(
     rows = (await db.execute(query)).all()
     quality_by_id = await quality_for_many(db, "pool", [row[0].id for row in rows])
     visible_lead_quality = await quality_for_many(db, "lead", [lead.id for _, lead, *_ in rows if lead is not None])
+    visible_merchants, visible_leads = await target_labels(
+        db, [merchant.id for merchant, lead, _ in rows if merchant.converted_lead_id is None or lead is not None],
+        [lead.id for _, lead, _ in rows if lead is not None])
     items = []
     for original, lead, profile_payload in rows:
         item = MerchantResponse.model_validate(original).model_dump()
@@ -753,6 +771,8 @@ async def list_merchant_pool(
         item["prospect_source"] = source_metadata_from_raw(original.raw_payload, record=original)
         quality = visible_lead_quality.get(lead.id) if lead is not None else None
         item["prospect_quality"] = quality if quality and quality["revision"] else quality_by_id[original.id]
+        item["sales_labels"] = visible_merchants.get(original.id, []) + (
+            visible_leads.get(lead.id, []) if lead is not None else [])
         items.append(item)
     return {"items": items, "total": total, "skip": skip, "limit": limit,
             "industry_facets": facets, "facet_total": sum(facet["count"] for facet in facets),
