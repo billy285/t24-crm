@@ -1,9 +1,9 @@
 import '@/pages/crm-sales-visual-polish.css';
 import { CrmFormDialogContent, CrmFormDialogHeader, CrmFormDialogBody, CrmFormDialogFooter } from '@/components/ui/dialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, SlidersHorizontal, Star, Tags, Timer, Trash2, Users,
+  ArrowRightLeft, Ban, BarChart3, CheckCircle2, ChevronDown, Clipboard, ClipboardCheck, Clock3, Edit3, FileText, History, Link2, MoreHorizontal, Phone, PhoneCall, PhoneOff, Plus, Radio, Search, ShieldAlert, Tags, Timer, Trash2, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,6 +12,7 @@ import './sales-workspace.css';
 import './sales-leads-refined.css';
 import './crm-sales-compact.css';
 import './sales-ui-clarity.css';
+import './sales-revisit.css';
 import { callEvidenceState, reportEvidenceState, type CallEvidence } from '@/lib/sales-call-evidence';
 import CompactFinanceTable from '@/components/CompactFinanceTable';
 import SalesIntelligenceCenter from '@/components/SalesIntelligenceCenter';
@@ -21,8 +22,9 @@ import SalesDealHandoffDialog from '@/components/SalesDealHandoffDialog';
 import SalesDealHandoffQueue from '@/components/SalesDealHandoffQueue';
 import SalesClosingQueue from '@/components/SalesClosingQueue';
 import SalesLeadMarkers from '@/components/SalesLeadMarkers';
-import { SalesLabelBadges, SalesLabelEditor, SalesLabelFilter } from '@/components/SalesLabels';
-import { salesLabelText, useSalesLabels, type SalesLabel } from '@/lib/sales-labels';
+import { SalesLabelBadges, SalesLabelEditor } from '@/components/SalesLabels';
+import { useSalesLabels, type SalesLabel } from '@/lib/sales-labels';
+import SalesRevisitFilters, { revisitGroups, type NoteOption } from '@/components/SalesRevisitFilters';
 import SalesIndustryReport, { type SalesIndustryBreakdown } from '@/components/SalesIndustryReport';
 import SalesSharedDossiers from '@/components/SalesSharedDossiers';
 import SalesFollowUpQuick from '@/components/SalesFollowUpQuick';
@@ -36,7 +38,7 @@ import { Button } from '@/components/ui/button';
 import CustomerPhoneDial from '@/components/CustomerPhoneDial';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -76,6 +78,10 @@ type SalesLead = {
   starred?: boolean;
   priority?: boolean;
   labels?: SalesLabel[];
+  last_communication?: {
+    at: string; source: 'crm' | 'ringcentral'; outcome: string; outcome_labels: string[];
+    quick_notes: NoteOption[]; note_at?: string | null; notes?: string | null; provider_connected?: boolean | null; pending_task_id?: number | null;
+  };
 };
 
 const workspaceViews = {
@@ -168,20 +174,41 @@ function LeadCommunication({ notes, insight, loading }: { notes?: string; insigh
   </div>;
 }
 
-function LeadFollowUpTime({ lead, insight }: { lead: SalesLead; insight?: LeadInsight }) {
+function RecentCommunication({ lead }: { lead: SalesLead }) {
+  const latest = lead.last_communication;
+  if (!latest) return null;
+  const outcomes = latest.outcome_labels || [];
+  const notes = (latest.quick_notes || []).map(note => note.label);
+  const provider = latest.source === 'ringcentral';
+  const summary = [...new Set(provider ? outcomes : [...outcomes, ...notes])].join(' · ');
+  return <div className="rv-last-contact">
+    <p>{summary || (provider ? '已拨打' : '已记录沟通')}</p>
+    <small>{provider ? 'RingCentral' : '沟通记录'} · {formatDate(latest.at)}</small>
+    {provider && notes.length > 0 && <p className="rv-note">上次保存 · {notes.join(' · ')}</p>}
+    {latest.notes && <p className="rv-note">{provider && !notes.length ? '上次保存 · ' : ''}{latest.notes}</p>}
+  </div>;
+}
+
+function needsFirstRecord(lead: SalesLead) {
+  // A matched call can predate the salesperson's first manual record.
+  return lead.status === 'new' && (!lead.last_communication || !!lead.last_communication.pending_task_id);
+}
+
+function LeadFollowUpTime({ lead }: { lead: SalesLead }) {
   if (isLeadContactStopped(lead) || lead.converted_customer_id) {
     return <div className="sl-order-due sl-order-secondary">{lead.converted_customer_id ? '已转正式客户' : '已停止联系'}</div>;
   }
   const next = formatBusinessDateTimeInput(lead.next_follow_up_at);
   const difference = next ? businessDateDifference(next.slice(0, 10)) : null;
-  const overdue = Boolean(next && (insight?.overdue || new Date(parseBusinessDateTimeInput(next)).getTime() < Date.now()));
+  const overdue = difference !== null && difference < 0;
   const label = next ? `${difference === 0 ? '今天' : difference === 1 ? '明天' : next.slice(5, 10).replace('-', '/')} ${next.slice(11, 16)}` : '待安排跟进';
   return <div className={`sl-order-due ${overdue ? 'is-overdue' : ''}`}><Clock3 size={14} aria-hidden="true" /><span>{overdue ? '逾期 · ' : ''}{label}</span></div>;
 }
 
 export default function SalesLeads() {
   const { employee, role } = useRole();
-  return <SalesLeadWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}`} />;
+  const location = useLocation();
+  return <SalesLeadWorkspace key={`${employee?.id || 'unknown'}:${role || 'unknown'}:${location.key}`} />;
 }
 
 function SalesLeadWorkspace() {
@@ -189,7 +216,7 @@ function SalesLeadWorkspace() {
   const { role, isAdmin, employee } = useRole();
   const isMobile = useIsMobile();
   const canManage = isAdmin || role === 'sales_manager';
-  const [items, setItems] = useState<SalesLead[]>([]);
+  const [fetchedItems, setItems] = useState<SalesLead[]>([]);
   const [itemsScope, setItemsScope] = useState('');
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, blacklisted: 0, do_not_contact: 0 });
@@ -214,25 +241,35 @@ function SalesLeadWorkspace() {
   const inClosingQueue = view === 'closing';
   const [dossierId, setDossierId] = useState<number | null>(() => { const value = Number(initialParams.get('dossier')); return Number.isSafeInteger(value) && value > 0 ? value : null; });
   const requestedQuoteRef = useRef(false);
+  const [revisit, setRevisit] = useState(() => {
+    if (initialParams.has('contacted_only')) return initialParams.get('contacted_only') === 'true';
+    if (initialParams.has('revisit_group') || initialParams.has('latest_note_id')) return true;
+    return role === 'sales' && initialParams.size === 0;
+  });
   const [search, setSearch] = useState(() => initialParams.get('search')?.slice(0,200) || '');
-  const [statusFilter, setStatusFilter] = useState(() => statusOptions.some(item => item.value === initialParams.get('status')) ? initialParams.get('status')! : '');
+  const [statusFilter, setStatusFilter] = useState(() => !revisit && statusOptions.some(item => item.value === initialParams.get('status')) ? initialParams.get('status')! : '');
   const [dueRange, setDueRange] = useState(() => ['today', 'overdue'].includes(initialParams.get('due_range') || '') ? initialParams.get('due_range')! : '');
-  const [contactFilter, setContactFilter] = useState(() => ['contactable', 'do_not_contact', 'blacklisted'].includes(initialParams.get('contact_rule') || '') ? initialParams.get('contact_rule')! : '');
+  const [contactFilter, setContactFilter] = useState(() => !revisit && ['contactable', 'do_not_contact', 'blacklisted'].includes(initialParams.get('contact_rule') || '') ? initialParams.get('contact_rule')! : '');
   const [starredOnly, setStarredOnly] = useState(() => initialParams.get('starred') === 'true');
   const [priorityOnly, setPriorityOnly] = useState(() => initialParams.get('priority') === 'true');
   const [tagFilter, setTagFilter] = useState(() => /^[1-9]\d*$/.test(initialParams.get('label_id') || '') ? initialParams.get('label_id')! : '');
   const [tagLeadId, setTagLeadId] = useState<number | null>(null);
   const { data: labelCatalog = [] } = useSalesLabels(view === 'leads');
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [page, setPage] = useState(() => Math.max(1, Math.min(100000, Number(initialParams.get('page')) || 1)));
   const [pageSize, setPageSize] = useState(() => [20,50,100].includes(Number(initialParams.get('page_size'))) ? Number(initialParams.get('page_size')) : 20);
-  const listFilter = [employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter];
+  const [revisitGroup, setRevisitGroup] = useState(() => revisit ? revisitGroups.find(item => item.value === initialParams.get('revisit_group'))?.value || '' : '');
+  const [latestNote, setLatestNote] = useState(() => revisit && /^[a-z][a-z0-9_-]{0,63}$/.test(initialParams.get('latest_note_id') || '') ? initialParams.get('latest_note_id')! : '');
+  const [noteOptions, setNoteOptions] = useState<NoteOption[]>([]);
+  const listFilter = [revisit, revisitGroup, latestNote, employee?.id, role, search.trim(), statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter];
   const listScope = JSON.stringify([...listFilter, page, pageSize]);
+  const items = itemsScope === listScope ? fetchedItems : [];
   const insightsScopeRef = useRef(listScope);
   insightsScopeRef.current = listScope;
   const leadInsights = insightsState.scope === listScope && itemsScope === listScope ? insightsState.items : {};
-  const [total, setTotal] = useState(0);
+  const [fetchedTotal, setTotal] = useState(0);
+  const total = itemsScope === listScope ? fetchedTotal : 0;
+  const listPending = loading || itemsScope !== listScope && !listError;
   const [showForm, setShowForm] = useState(false);
   const [followUpOnly, setFollowUpOnly] = useState(false);
   const [editing, setEditing] = useState<SalesLead | null>(null);
@@ -262,6 +299,7 @@ function SalesLeadWorkspace() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>([]);
   const [bulkAssigneeId, setBulkAssigneeId] = useState('');
   const loadRequestSeqRef = useRef(0);
+  const reportsRequestSeq = useRef(0);
   const formBaseline = useRef(JSON.stringify(emptyForm));
   useSalesListPosition(`${employee?.id}:${role}`, !loading);
   const formGuard = useUnsavedChanges(showForm && !followUpOnly && JSON.stringify(form) !== formBaseline.current);
@@ -270,50 +308,69 @@ function SalesLeadWorkspace() {
   const safeReturn = /^\/(sales-workbench|sales-leads|merchant-pool)(?:\?|$)/.test(sourceReturn) && !sourceReturn.includes('\\') ? sourceReturn : '';
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const fields = { view: view === 'leads' ? '' : view, search, status: statusFilter, contact_rule: contactFilter, due_range: dueRange, starred: starredOnly ? 'true' : '', priority: priorityOnly ? 'true' : '', label_id: tagFilter, page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' };
+    const fields = {
+      contacted_only: revisit ? 'true' : view === 'leads' && role === 'sales' ? 'false' : '',
+      revisit_group: revisit ? revisitGroup : '', latest_note_id: revisit ? latestNote : '',
+      view: view === 'leads' ? '' : view, search, status: statusFilter, contact_rule: contactFilter, due_range: dueRange, starred: starredOnly ? 'true' : '', priority: priorityOnly ? 'true' : '', label_id: tagFilter, page: page > 1 ? String(page) : '', page_size: pageSize !== 20 ? String(pageSize) : '' };
     Object.entries(fields).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
     window.history.replaceState(window.history.state, '', `/sales-leads${params.size ? `?${params}` : ''}`);
-  }, [view, search, statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter, page, pageSize]);
+  }, [revisit, revisitGroup, latestNote, role, view, search, statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter, page, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const loadData = async (options?: { page?: number; background?: boolean }) => {
+  const loadList = async (options?: { page?: number; background?: boolean }) => {
     const requestId = ++loadRequestSeqRef.current;
     const requestPage = options?.page ?? page;
     const requestListScope = JSON.stringify([...listFilter, requestPage, pageSize]);
     if (!options?.background) setLoading(true);
-    setAuxiliaryLoading(true);
     const params = new URLSearchParams({ skip: String((requestPage - 1) * pageSize), limit: String(pageSize) });
     if (search.trim()) params.set('search', search.trim());
-    if (statusFilter) params.set('status', statusFilter);
-    if (contactFilter) params.set('contact_rule', contactFilter);
+    if (revisit) {
+      params.set('contacted_only', 'true');
+      if (revisitGroup) params.set('revisit_group', revisitGroup);
+      if (latestNote) params.set('latest_note_id', latestNote);
+    } else if (statusFilter) params.set('status', statusFilter);
+    if (!revisit && contactFilter) params.set('contact_rule', contactFilter);
     if (dueRange) params.set('due_range', dueRange);
     if (starredOnly) params.set('starred', 'true');
     if (priorityOnly) params.set('priority', 'true');
     if (tagFilter) params.set('label_id', tagFilter);
     try {
-      // The working list can be ready before call reports or management totals.
-      // Keep all reads live, but do not hold the rows behind the slowest report.
-      const listRequest = invokeWithAuth({ url: `/api/v1/sales-leads?${params.toString()}`, method: 'GET' }).then(response => {
-        if (requestId !== loadRequestSeqRef.current) return response;
-        const nextItems = response.data?.items || [];
-        setItems(nextItems);
-        setItemsScope(requestListScope);
-        setListError(false);
-        setTotal(response.data?.total || 0);
-        setSelectedLeadIds(current => current.filter(id => nextItems.some((item: SalesLead) => item.id === id)));
-        return response;
-      }, error => {
-        if (requestId === loadRequestSeqRef.current) {
-          setListError(true); setSelectedLeadIds([]);
-          const status = error?.response?.status || error?.data?.status || error?.status;
-          if (status === 401 || status === 403) { setItems([]); setItemsScope(''); setTotal(0); setInsightsState({ scope: '', items: {} }); }
-        }
-        throw error;
-      }).finally(() => {
-        if (requestId === loadRequestSeqRef.current) setLoading(false);
+      const response = await invokeWithAuth({ url: `/api/v1/sales-leads?${params}`, method: 'GET' });
+      if (requestId !== loadRequestSeqRef.current || requestListScope !== insightsScopeRef.current) return;
+      const nextItems: SalesLead[] = response.data?.items || [];
+      const resultTotal = response.data?.total || 0;
+      const finalPage = Math.max(1, Math.ceil(resultTotal / pageSize));
+      if (requestPage > finalPage) setPage(finalPage);
+      const available: NoteOption[] = response.data?.note_options || [];
+      setNoteOptions(previous => {
+        const selected = latestNote && previous.find(note => note.id === latestNote);
+        return selected && !available.some(note => note.id === selected.id) ? [...available, selected] : available;
       });
+      setItems(nextItems);
+      setItemsScope(requestListScope);
+      setListError(false);
+      setTotal(resultTotal);
+      setSelectedLeadIds(current => current.filter(id => nextItems.some(item => item.id === id)));
+    } catch (error: any) {
+      if (requestId !== loadRequestSeqRef.current || requestListScope !== insightsScopeRef.current) return;
+      setListError(true);
+      setSelectedLeadIds([]);
+      const status = error?.response?.status || error?.data?.status || error?.status;
+      if (status === 401 || status === 403) {
+        setItems([]); setItemsScope(''); setTotal(0); setNoteOptions([]); setInsightsState({ scope: '', items: {} });
+      }
+    } finally {
+      if (requestId === loadRequestSeqRef.current) setLoading(false);
+    }
+  };
+
+  const needsReports = !inClosingQueue && (view !== 'leads' || canManage || overviewExpanded);
+  const loadReports = async () => {
+    if (!needsReports) return;
+    const requestId = ++reportsRequestSeq.current;
+    setAuxiliaryLoading(true);
+    try {
       const coreRequests = [
-        listRequest,
         invokeWithAuth({ url: '/api/v1/sales-leads/stats', method: 'GET' }),
         invokeWithAuth({ url: `/api/v1/sales-leads/dashboard/call-report?days=${callReportDays}`, method: 'GET' }),
       ];
@@ -327,11 +384,10 @@ function SalesLeadWorkspace() {
         Promise.allSettled(coreRequests),
         Promise.allSettled(managementRequests),
       ]);
-      if (requestId !== loadRequestSeqRef.current) return;
+      if (requestId !== reportsRequestSeq.current) return;
 
-      const [listResult, statsResult, callReportResult] = coreResults;
+      const [statsResult, callReportResult] = coreResults;
       const failedSections: string[] = [];
-      if (listResult.status !== 'fulfilled') failedSections.push('线索列表');
       if (statsResult.status === 'fulfilled') { setStats(statsResult.value.data || stats); setStatsReady(true); }
       else failedSections.push('统计');
       if (callReportResult.status === 'fulfilled') { setCallReport(callReportResult.value.data || null); setCallReportError(false); }
@@ -352,28 +408,46 @@ function SalesLeadWorkspace() {
         if (recoveryResult?.status === 'fulfilled') setRecoveryOverview(recoveryResult.value.data || null);
         else failedSections.push('保护提醒');
       }
-      setDataErrors(failedSections.filter(section => section !== '线索列表'));
-    } catch (error: any) {
-      if (requestId === loadRequestSeqRef.current) { setListError(true); setSelectedLeadIds([]); }
+      setDataErrors(failedSections);
     } finally {
-      if (requestId === loadRequestSeqRef.current) { setLoading(false); setAuxiliaryLoading(false); }
+      if (requestId === reportsRequestSeq.current) setAuxiliaryLoading(false);
     }
+  };
+  const loadData = async (options?: {page?: number; background?: boolean}) => {
+    await Promise.all([loadList(options), loadReports()]);
   };
 
   useEffect(() => {
     if (inClosingQueue) return;
-    const timer = window.setTimeout(() => void loadData(), search.trim() ? 300 : 0);
+    const timer = window.setTimeout(() => void loadList(), search.trim() ? 300 : 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, search, statusFilter, contactFilter, dueRange, starredOnly, priorityOnly, tagFilter, performanceDays, callReportDays, inClosingQueue]);
+  }, [listScope, inClosingQueue]);
+  useEffect(() => {
+    if (needsReports) void loadReports();
+    else setAuxiliaryLoading(false);
+    return () => { reportsRequestSeq.current += 1; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsReports, callReportDays, performanceDays]);
   useEffect(() => () => { loadRequestSeqRef.current += 1; historyRequestRef.current += 1; }, []);
 
   useAutoRefresh(() => loadData({ background: true }), { intervalMs: 30000, enabled: !inClosingQueue && !showForm && !dealLeadId });
 
-  const activeFilterCount = [statusFilter, contactFilter, priorityOnly, tagFilter].filter(Boolean).length;
-  const hasLeadFilters = Boolean(activeFilterCount || search || dueRange || starredOnly);
-  const selectedTag = labelCatalog.find(label => String(label.id) === tagFilter);
+  const hasLeadFilters = Boolean(revisitGroup || latestNote || statusFilter || contactFilter || priorityOnly || tagFilter || search || dueRange || starredOnly);
+  const changeFilter = <T,>(set: (next: T) => void) => (value: T) => { set(value); setPage(1); };
+  const changeListScope = (next: boolean) => {
+    if (next === revisit) return;
+    setRevisit(next);
+    setStatusFilter('');
+    setContactFilter('');
+    setLatestNote('');
+    setRevisitGroup('');
+    setSelectedLeadIds([]);
+    setPage(1);
+  };
   const clearLeadFilters = () => {
+    setRevisitGroup('');
+    setLatestNote('');
     setSearch('');
     setStatusFilter('');
     setContactFilter('');
@@ -394,15 +468,8 @@ function SalesLeadWorkspace() {
       }}
     />
   );
-  const renderTagFilters = () => (
-    <>
-      <SalesLabelFilter labels={labelCatalog} value={tagFilter} onChange={value => { setTagFilter(value); setPage(1); }} />
-      <Button type="button" variant="outline" aria-pressed={priorityOnly} onClick={() => { setPriorityOnly(value => !value); setPage(1); }}>只看团队重点</Button>
-    </>
-  );
-
   useEffect(() => {
-    if (view !== 'leads' || !items.length || itemsScope !== listScope) return;
+    if (view !== 'leads' || revisit || !items.length || itemsScope !== listScope) { setInsightsLoading(false); return; }
     let current = true;
     const requestScope = listScope;
     const isCurrent = () => current && insightsScopeRef.current === requestScope;
@@ -520,7 +587,8 @@ function SalesLeadWorkspace() {
   };
 
   const recordFollowUp = async (nextAction: 'stay' | 'quote' = 'stay') => {
-    if (!editing || saving || followUpSaving || editing.status === 'new' || isLeadContactStopped(editing) || editing.converted_customer_id) return;
+    if (!editing || saving || followUpSaving || needsFirstRecord(editing) || isLeadContactStopped(editing) || editing.converted_customer_id) return;
+    if (followUpForm.notes.trim().length > 4000) { toast.error('沟通记录最多 4000 字，请精简后保存'); return; }
     if (!followUpForm.notes.trim()) {
       toast.error('请填写本次沟通内容，避免产生空白跟进记录');
       return;
@@ -719,16 +787,21 @@ function SalesLeadWorkspace() {
     const protectedLead = isLeadContactStopped(lead);
     if (protectedLead) return <Button size="sm" variant="outline" onClick={() => openEdit(lead)}>查看保护</Button>;
     if (lead.converted_customer_id) return <Button size="sm" variant="outline" onClick={() => openDealControl(lead)}>查看成交</Button>;
-    if (lead.status === 'new') return <Button className="sl-order-followup" size="sm" variant="outline" onClick={() => openFirstDial(lead)}>首次联系</Button>;
+    if (needsFirstRecord(lead)) return <Button className="sl-order-followup" size="sm" variant="outline" onClick={() => openFirstDial(lead)}>{lead.last_communication ? '记录首拨' : '首次联系'}</Button>;
     return <Button className="sl-order-followup" size="sm" variant="outline" aria-label={`记录跟进：${lead.business_name}`} onClick={() => openEdit(lead, true)}>跟进</Button>;
   };
 
-  const visibleDataErrors = dataErrors.filter(section => view !== 'calls' || section !== '真实通话报告');
+  const visibleDataErrors = needsReports ? dataErrors.filter(section => view !== 'calls' || section !== '真实通话报告') : [];
   const callEvidence = callReport ? reportEvidenceState(callReport) : null;
   const providerValue = (value: number) => callEvidence?.available ? value : '—';
   const providerDuration = (value: number) => callEvidence?.available ? formatDuration(value) : '—';
   const employeeValue = (item: CallEvidence, value: number) => callEvidenceState(item).available ? value : '—';
   const employeeDuration = (item: CallEvidence, value: number) => callEvidenceState(item).available ? formatDuration(value) : '—';
+  const emptyList = <div className="rv-empty">
+    <span>{listError ? '当前名单暂时无法读取' : hasLeadFilters ? '当前筛选没有匹配的商家' : revisit ? '暂无可回访的已拨商家' : '当前范围暂无销售线索'}</span>
+    {!listError && !hasLeadFilters && revisit && <small>保存沟通记录或同步到已关联的外呼后，商家会出现在这里。</small>}
+    {!listError && dueRange && <Button size="sm" variant="ghost" onClick={() => { setDueRange(''); setPage(1); }}>查看全部时间</Button>}
+  </div>;
   const loadedRecentCalls = callReport?.recent_calls || [];
   const filteredRecentCalls = loadedRecentCalls.filter(call => !missingCRMOnly || !call.crm_recorded);
   const visibleRecentCalls = filteredRecentCalls.slice(0, recentCallsVisibleCount);
@@ -736,11 +809,14 @@ function SalesLeadWorkspace() {
   return (
     <div className={`t24-directory-page t24-sales-leads-page mfc-sales-leads sales-center-ui sc-directory sl-clarity calm-sales-page calm-leads-page app-page crm-sales-compact slr-page slr-view-${view}${view === 'leads' ? ' sl-order-page' : ''}`}>
       <div className="sc-section-heading slr-page-heading">
-        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{workspaceViews[view]}</h2>{view === 'leads' && <p className="slr-current-scope" role="status">{scopeText} · {loading ? '正在读取客户' : `共 ${total} 位客户`}</p>}</div>
-        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图"><span className="sl-order-more-label">更多</span><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{isMobile && !canManage && primaryViews.map(item => <DropdownMenuItem key={item} aria-current={view === item ? 'page' : undefined} onSelect={() => setView(item)}>{workspaceViews[item]}{view === item && <CheckCircle2 className="ml-auto h-4 w-4" aria-hidden="true" />}</DropdownMenuItem>)}{view === 'leads' && <DropdownMenuItem onSelect={() => setOverviewExpanded(current => !current)}>{overviewExpanded ? '收起数据一览' : canManage ? '数据与线索保护' : '数据一览'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{!inClosingQueue && canManage && <Button onClick={openCreate} aria-label="新增线索"><Plus className="h-4 w-4" /><span className="sl-order-create-label">新增线索</span></Button>}</div>
+        <div>{safeReturn && <Button size="sm" variant="ghost" onClick={() => navigate(safeReturn)}>返回拨打位置</Button>}<h2>{workspaceViews[view]}</h2>{view === 'leads' && <p className="slr-current-scope" role="status">{scopeText} · {listPending ? '正在读取客户' : listError && itemsScope !== listScope ? '暂时无法读取' : `共 ${total} 家商家`}</p>}</div>
+        <div className="slr-heading-tools"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" aria-label="更多销售视图"><span className="sl-order-more-label">更多</span><MoreHorizontal size={17} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">{isMobile && !canManage && primaryViews.map(item => <DropdownMenuItem key={item} aria-current={view === item ? 'page' : undefined} onSelect={() => setView(item)}>{workspaceViews[item]}{view === item && <CheckCircle2 className="ml-auto h-4 w-4" aria-hidden="true" />}</DropdownMenuItem>)}{view === 'leads' && !isMobile && <DropdownMenuSub><DropdownMenuSubTrigger>列表显示</DropdownMenuSubTrigger><DropdownMenuSubContent>
+          <DropdownMenuRadioGroup value={compactRows ? 'compact' : 'standard'} onValueChange={val => setCompactRows(val === 'compact')}>
+            <DropdownMenuRadioItem value="standard">标准间距</DropdownMenuRadioItem><DropdownMenuRadioItem value="compact">紧凑间距</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup></DropdownMenuSubContent></DropdownMenuSub>}{view === 'leads' && <DropdownMenuItem onSelect={() => setOverviewExpanded(current => !current)}>{overviewExpanded ? '收起数据一览' : canManage ? '数据与线索保护' : '数据一览'}</DropdownMenuItem>}<DropdownMenuItem onSelect={() => setView('intelligence')}>经营中心</DropdownMenuItem><DropdownMenuItem onSelect={() => setView('shared')}>协作档案</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => setView('performance')}>历史跟进参考</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>{!inClosingQueue && canManage && <Button onClick={openCreate} aria-label="新增线索"><Plus className="h-4 w-4" /><span className="sl-order-create-label">新增线索</span></Button>}</div>
       </div>
 
-      {!inClosingQueue && listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">线索列表更新失败，当前显示上次读取的结果；批量操作已暂停。<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
+      {!inClosingQueue && listError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{itemsScope === listScope ? '名单更新失败，显示上次读取的结果。' : '当前筛选的名单读取失败，请重试。'}<Button variant="outline" className="ml-3" onClick={() => void loadData()}>重新加载列表</Button></div>}
       {!inClosingQueue && visibleDataErrors.length > 0 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">部分数据未能更新：{visibleDataErrors.join('、')}。已保留其他可用数据。<Button variant="outline" className="ml-3" onClick={() => void loadData({ background: true })}>重试更新</Button></div>}
       <SalesLeadDossier leadId={dossierId} onClose={() => setDossierId(null)} onSaved={() => {
         if (inClosingQueue) setHandoffQueueVersion(value => value + 1);
@@ -893,42 +969,18 @@ function SalesLeadWorkspace() {
       <section className="sc-lead-panel space-y-4" hidden={view !== 'leads'} aria-label="销售线索列表">
       <Card className={`sc-table-card sl-lead-table ${compactRows ? 'sl-compact' : ''} overflow-hidden border-slate-200 shadow-sm`}>
         <CardContent className="p-0">
-          <div className="sl-table-toolbar sl-order-toolbar">
-            <div className="slr-list-tools">
-              <div className="sl-search-row">
-              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input aria-label="搜索销售线索" className="pl-9" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} placeholder="搜索商家、联系人、电话或城市" /></div>
-              <Button type="button" variant="outline" aria-expanded={filtersExpanded} aria-controls="sales-lead-extra-filters" onClick={() => setFiltersExpanded(current => !current)}><SlidersHorizontal className="h-4 w-4" />筛选{activeFilterCount ? ` · ${activeFilterCount}` : ''}</Button>
-              </div>
-              <div className="sl-order-list-controls"><nav className="sl-due-views" aria-label="回访时间范围">{[{ value: '', label: '全部' }, { value: 'today', label: '今天' }, { value: 'overdue', label: '逾期' }].map(item => <Button key={item.label} variant="ghost" size="sm" aria-pressed={dueRange === item.value} onClick={() => { setDueRange(item.value); setPage(1); }}>{item.label}</Button>)}</nav><Button type="button" variant="ghost" size="sm" aria-pressed={starredOnly} onClick={() => { setStarredOnly(value => !value); setPage(1); }}><Star size={15} fill={starredOnly ? 'currentColor' : 'none'} />只看星标</Button><span className="sl-order-time-label">跟进时间 · 北京时间</span></div>
-            </div>
-            {filtersExpanded && !isMobile && <div id="sales-lead-extra-filters" className="calm-sales-extra-filters">
-              <label><span className="sc-filter-label">线索状态</span><NativeSelect value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></label>
-              <label><span className="sc-filter-label">联系规则</span><NativeSelect value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></label>
-              {renderTagFilters()}
-              {!isMobile && <div><span className="sc-filter-label">列表密度</span><div className="sl-density"><button type="button" aria-pressed={!compactRows} onClick={() => setCompactRows(false)}>标准</button><button type="button" aria-pressed={compactRows} onClick={() => setCompactRows(true)}>紧凑</button></div></div>}
-            </div>}
-            {isMobile && <Sheet open={filtersExpanded} onOpenChange={setFiltersExpanded}>
-              <SheetContent id="sales-lead-extra-filters" side="bottom" className="sales-center-ui mfc-lead-filter-sheet max-h-[86vh] overflow-y-auto rounded-t-2xl px-5 pb-8">
-                <SheetHeader>
-                  <SheetTitle>筛选联系进展</SheetTitle>
-                  <SheetDescription>当前范围：{scopeText}。条件即时生效，返回列表继续处理。</SheetDescription>
-                </SheetHeader>
-                <div className="mt-5 grid gap-4">
-                  <div><Label htmlFor="mobile-lead-status-filter">线索状态</Label><NativeSelect id="mobile-lead-status-filter" aria-label="线索状态" value={statusFilter} onChange={value => { setStatusFilter(value); setPage(1); }} options={[{ value: '', label: '全部状态' }, ...statusOptions]} /></div>
-                  <div><Label htmlFor="mobile-lead-contact-filter">联系规则</Label><NativeSelect id="mobile-lead-contact-filter" aria-label="联系规则" value={contactFilter} onChange={value => { setContactFilter(value); setPage(1); }} options={[{ value: '', label: '全部联系规则' }, { value: 'contactable', label: '允许联系' }, { value: 'do_not_contact', label: '禁止再联系' }, { value: 'blacklisted', label: '黑名单' }]} /></div>
-                  {renderTagFilters()}
-                  {hasLeadFilters && <Button type="button" variant="ghost" onClick={clearLeadFilters}>清空筛选</Button>}
-                  <Button type="button" onClick={() => setFiltersExpanded(false)}>返回列表</Button>
-                </div>
-              </SheetContent>
-            </Sheet>}
-            {hasLeadFilters && <div className="slr-active-filters"><span>{dueRange ? dueRange === 'today' ? '今天需跟进 · ' : '逾期 · ' : ''}{statusFilter ? statusLabels[statusFilter] || statusFilter : '全部状态'}{contactFilter ? ` · ${contactFilter === 'contactable' ? '允许联系' : contactFilter === 'do_not_contact' ? '禁止再联系' : '黑名单'}` : ''}{starredOnly && ' · 我的星标'}{priorityOnly && ' · 团队重点'}{tagFilter && ` · ${selectedTag ? salesLabelText(selectedTag) : '标签筛选'}`}{search && ` · “${search}”`}</span><button type="button" onClick={clearLeadFilters}>清空筛选</button></div>}
-          </div>
-          {insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
-          {canManage && !isMobile && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
-          <div data-testid="sales-leads-mobile-list" aria-busy={loading || insightsLoading} className="slr-mobile-list sl-order-mobile-list divide-y divide-slate-100 md:hidden">
-            {loading ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
-              : items.length === 0 ? <p className="px-4 py-12 text-center text-sm text-slate-400">当前范围暂无销售线索</p>
+          <SalesRevisitFilters mine={role === 'sales'} revisit={revisit} setScope={changeListScope}
+            search={search} setSearch={changeFilter(setSearch)} group={revisitGroup} setGroup={changeFilter(setRevisitGroup)}
+            due={dueRange} setDue={changeFilter(setDueRange)} star={starredOnly} setStar={changeFilter(setStarredOnly)}
+            note={latestNote} setNote={changeFilter(setLatestNote)} noteOptions={noteOptions}
+            status={statusFilter} setStatus={changeFilter(setStatusFilter)} statuses={statusOptions}
+            contact={contactFilter} setContact={changeFilter(setContactFilter)} label={tagFilter} setLabel={changeFilter(setTagFilter)} labels={labelCatalog}
+            priority={priorityOnly} setPriority={changeFilter(setPriorityOnly)} clear={clearLeadFilters}/>
+          {!revisit && insightsError && <div className="sl-inline-error" role="alert">累计联系数据暂时未能加载，商家资料仍可查看。<Button size="sm" variant="ghost" onClick={() => setInsightRetry(value => value + 1)}>重试</Button></div>}
+          {canManage && !isMobile && itemsScope === listScope && !listError && selectedLeadIds.length > 0 && <div className="sc-bulk-bar flex flex-col gap-3 border-b bg-blue-50/60 px-4 py-3 sm:flex-row sm:items-center"><p className="flex-1 text-sm font-medium text-slate-700">当前页已选 {selectedLeadIds.length} 条，可批量补齐待分配线索或调整负责人</p><NativeSelect className="sm:w-52" value={bulkAssigneeId} onChange={setBulkAssigneeId} options={[{ value: '', label: '选择目标销售' }, ...assignees.map(item => ({ value: String(item.id), label: item.name }))]} /><Button size="sm" variant="outline" disabled={!selectedLeadIds.length || !bulkAssigneeId || recoveryBusy === -1} onClick={() => void handleBulkRecovery('reassign', selectedLeadIds)}>批量分配 / 改派</Button></div>}
+          <div data-testid="sales-leads-mobile-list" aria-busy={listPending || !revisit && insightsLoading} className="slr-mobile-list sl-order-mobile-list divide-y divide-slate-100 md:hidden">
+            {listPending ? <p className="px-4 py-12 text-center text-sm text-slate-400">正在加载线索...</p>
+              : items.length === 0 ? emptyList
               : items.map(lead => {
                 const protectedLead = isLeadContactStopped(lead);
                 return (
@@ -941,17 +993,18 @@ function SalesLeadWorkspace() {
                       <Badge className={`sl-order-status shrink-0 ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>
                     </div>
                     <SalesLabelBadges labels={lead.labels} />
+                    {revisit && <RecentCommunication lead={lead} />}
                     {Boolean(protectedLead || lead.converted_customer_id) && <div className="slr-card-flags">{lead.do_not_contact && <Badge className="bg-rose-100 text-rose-700">禁止再联系</Badge>}{lead.is_blacklisted && <Badge className="bg-slate-800 text-white">黑名单</Badge>}{protectedLead && !lead.do_not_contact && !lead.is_blacklisted && <Badge className="bg-rose-100 text-rose-700">已停止联系</Badge>}{lead.converted_customer_id && <Badge className="bg-emerald-100 text-emerald-700">已转正式客户</Badge>}</div>}
                     {!protectedLead && !lead.converted_customer_id && leadInsights[lead.id]?.profile.next_step && <p className="mfc-lead-next-step" title={leadInsights[lead.id].profile.next_step}><span>下一步</span>{leadInsights[lead.id].profile.next_step}</p>}
                     <div className="sl-order-phone sl-order-secondary"><span className={protectedLead ? 'line-through' : ''}>{formatPhoneNumber(lead.phone, lead.country)}</span>{lead.industry && <span>{lead.industry}</span>}</div>
-                    <div className="sl-order-row-footer"><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />
+                    <div className="sl-order-row-footer"><LeadFollowUpTime lead={lead} />
                     <div className="slr-card-actions sl-order-actions">
-                      {renderLeadDial(lead)}
+                      {!revisit && renderLeadDial(lead)}
                       {renderLeadAction(lead)}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button className="h-11 w-11 p-0" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal className="h-5 w-5" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuItem className="min-h-11" onSelect={() => setDossierId(lead.id)}>累计档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}
+                          <DropdownMenuItem className="min-h-11" onSelect={() => setDossierId(lead.id)}>累计档案</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && !needsFirstRecord(lead) && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}
                           <DropdownMenuItem className="min-h-11" onSelect={() => setTagLeadId(lead.id)}><Tags className="mr-2 h-4 w-4" />商家标签</DropdownMenuItem>
                           <DropdownMenuItem className="min-h-11" disabled={protectedLead} onSelect={() => { void copyLeadPhone(lead); }}><Clipboard className="mr-2 h-4 w-4" />复制电话</DropdownMenuItem>
                           {canManage && <DropdownMenuItem className="min-h-11" onSelect={() => openEdit(lead)}><Edit3 className="mr-2 h-4 w-4" />编辑线索资料</DropdownMenuItem>}
@@ -970,22 +1023,22 @@ function SalesLeadWorkspace() {
             <table className="sl-data-table sl-order-table">
               <thead><tr>{canManage && <th className="sl-select-cell"><input type="checkbox" aria-label="选择当前页全部线索" disabled={listError} checked={items.length > 0 && items.every(item => selectedLeadIds.includes(item.id))} onChange={event => setSelectedLeadIds(event.target.checked ? items.map(item => item.id) : [])} /></th>}<th className="slr-merchant-column">商家 / 联系人</th><th className="slr-contact-column">最近沟通</th><th className="slr-next-column">下次跟进</th><th className="sl-order-status-column">进展</th><th className="sl-actions-cell">操作</th></tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">正在加载线索…</td></tr> : items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">当前筛选没有匹配的商家，请调整搜索或筛选条件。</td></tr> : items.map(lead => {
+                {listPending ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">正在加载线索…</td></tr> : items.length === 0 ? <tr><td colSpan={canManage ? 6 : 5} className="sl-empty">{emptyList}</td></tr> : items.map(lead => {
                   const protectedLead = isLeadContactStopped(lead);
                   return <tr key={lead.id} className={protectedLead ? 'sl-protected-row' : ''}>
                     {canManage && <td className="sl-select-cell"><input type="checkbox" aria-label={`选择 ${lead.business_name}`} disabled={listError} checked={selectedLeadIds.includes(lead.id)} onChange={event => setSelectedLeadIds(current => event.target.checked ? [...current, lead.id] : current.filter(id => id !== lead.id))} /></td>}
                     <td className="sl-identity-cell"><div className="slr-compact-identity"><div className="sales-lead-marked-name"><button type="button" className="sl-business-name sl-order-name" title={lead.business_name} onClick={() => setDossierId(lead.id)}>{lead.business_name}</button>{renderMarkers(lead)}</div><SalesLabelBadges labels={lead.labels} /><div className="sl-order-secondary">{[lead.contact_name || '联系人待补充', [lead.city, lead.state].filter(Boolean).join(', '), canManage ? lead.assigned_sales_name || '待分配' : ''].filter(Boolean).join(' · ')}</div><div className={`sl-identity-phone ${protectedLead ? 'sl-blocked' : ''}`}><span className="slr-phone-number">{formatPhoneNumber(lead.phone, lead.country)}</span><span className="sl-order-secondary">{lead.industry}</span></div></div></td>
-                    <td className="sl-order-history"><LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} /></td>
-                    <td><LeadFollowUpTime lead={lead} insight={leadInsights[lead.id]} />{leadInsights[lead.id]?.profile.next_step && <p className="sl-order-secondary">{leadInsights[lead.id].profile.next_step}</p>}</td>
+                    <td className="sl-order-history">{revisit ? <RecentCommunication lead={lead} /> : <LeadCommunication notes={lead.notes} insight={leadInsights[lead.id]} loading={insightsLoading} />}</td>
+                    <td><LeadFollowUpTime lead={lead} />{leadInsights[lead.id]?.profile.next_step && <p className="sl-order-secondary">{leadInsights[lead.id].profile.next_step}</p>}</td>
                     <td className="sl-order-status-column"><Badge className={`sl-order-status ${statusColors[lead.status] || statusColors.new}`}>{statusLabels[lead.status] || lead.status}</Badge>{protectedLead && <p className="sl-order-secondary">{lead.is_blacklisted ? '黑名单 · 禁止拨打' : '禁止再联系'}</p>}{lead.converted_customer_id && <p className="sl-order-secondary">已转正式客户</p>}</td>
-                    <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem><DropdownMenuItem onSelect={() => setTagLeadId(lead.id)}><Tags className="mr-2 h-4 w-4" />商家标签</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && lead.status !== 'new' && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => protectedLead ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{protectedLead ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
+                    <td className="sl-actions-cell"><div className="sl-row-actions sl-order-actions">{!revisit && renderLeadDial(lead)}{renderLeadAction(lead)}<DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label={`更多线索操作：${lead.business_name}`}><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="sales-center-menu"><DropdownMenuItem onSelect={() => setDossierId(lead.id)}>查看档案</DropdownMenuItem><DropdownMenuItem onSelect={() => setTagLeadId(lead.id)}><Tags className="mr-2 h-4 w-4" />商家标签</DropdownMenuItem>{!protectedLead && !lead.converted_customer_id && !needsFirstRecord(lead) && <DropdownMenuItem onSelect={() => openEdit(lead, true)}>记录跟进</DropdownMenuItem>}<DropdownMenuItem onSelect={() => openEdit(lead)}>{canManage ? '编辑资料' : '保护设置'}</DropdownMenuItem>{!lead.converted_customer_id && !protectedLead && <DropdownMenuItem onSelect={() => void openDealControl(lead)}><ClipboardCheck className="mr-2 h-4 w-4" />登记成交</DropdownMenuItem>}{lead.converted_customer_id && <DropdownMenuItem onSelect={() => openDealControl(lead)}>查看成交与交接</DropdownMenuItem>}<DropdownMenuItem onSelect={() => protectedLead ? setDossierId(lead.id) : void updateProtection(lead, 'do_not_contact', true)}>{protectedLead ? '查看禁联保护' : '禁止联系'}</DropdownMenuItem>{canManage && <DropdownMenuItem onSelect={() => lead.is_blacklisted ? setDossierId(lead.id) : void updateProtection(lead, 'is_blacklisted', true)}>{lead.is_blacklisted ? '查看黑名单保护' : '加入黑名单'}</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div></td>
                   </tr>;
                 })}
               </tbody>
             </table>
           </div>}
           <div className="sl-order-pagination flex flex-col gap-3 border-t bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-500">共 {total} 位 · 第 {page}/{totalPages} 页</p>
+            <p className="text-xs text-slate-500">{listPending ? '正在读取名单…' : listError && itemsScope !== listScope ? '名单暂不可用' : `共 ${total} 家 · 第 ${page}/${totalPages} 页`}</p>
             <div className="flex items-center gap-2"><NativeSelect className="w-24" value={String(pageSize)} onChange={value => { setPageSize(Number(value)); setPage(1); }} options={[20, 50, 100].map(value => ({ value: String(value), label: `${value}条` }))} /><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>上一页</Button><Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>下一页</Button></div>
           </div>
         </CardContent>
@@ -1005,11 +1058,11 @@ function SalesLeadWorkspace() {
             {isLeadContactStopped(editing) || editing.converted_customer_id
               ? <div role="status" className="slr-protection-note">{editing.converted_customer_id ? '已转正式客户' : '已停止联系'}{editing.do_not_contact_reason && <p>{editing.do_not_contact_reason}</p>}</div>
               : <fieldset disabled={saving || followUpSaving} className="slr-followup-form">
-                  <div><Label htmlFor="slr-followup-outcome">本次结果</Label><NativeSelect id="slr-followup-outcome" value={followUpForm.outcome} onChange={value => setFollowUpForm(current => ({ ...current, outcome: value }))} options={followUpOutcomeOptions} /></div>
-                  <div><Label htmlFor="slr-followup-notes">沟通记录 *</Label><Textarea id="slr-followup-notes" maxLength={20000} rows={7} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈和约定的下一步…" /></div>
+                  <div><Label htmlFor="slr-followup-outcome">本次结果</Label><NativeSelect id="slr-followup-outcome" aria-label="本次结果" value={followUpForm.outcome} onChange={value => setFollowUpForm(current => ({ ...current, outcome: value }))} options={followUpOutcomeOptions} /></div>
+                  <div><Label htmlFor="slr-followup-notes">沟通记录 *</Label><Textarea id="slr-followup-notes" maxLength={4000} rows={7} value={followUpForm.notes} onChange={event => setFollowUpForm(current => ({ ...current, notes: event.target.value }))} placeholder="记录客户反馈和约定的下一步…" /></div>
                   {!['not_interested', 'do_not_contact'].includes(followUpForm.outcome) && <div><Label htmlFor="slr-followup-time">下次回访 · 北京时间</Label><Input id="slr-followup-time" type="datetime-local" value={followUpForm.next_follow_up_at} onChange={event => setFollowUpForm(current => ({ ...current, next_follow_up_at: event.target.value }))} /><SalesFollowUpQuick value={followUpForm.next_follow_up_at} timezone={contactWindow.timezone} onChange={next_follow_up_at => setFollowUpForm(current => ({ ...current, next_follow_up_at }))} /></div>}
                   {hasFollowUpDraft() && <div className="slr-draft-state"><span role="status">{followUpPersistence === 'session' ? '草稿已暂存' : '草稿仅保留在当前页面'}</span><Button type="button" size="sm" variant="ghost" aria-label="清空跟进草稿" onClick={discardFollowUpDraft}><Trash2 size={14} /></Button></div>}
-                  <div className="slr-followup-save-row"><Button type="button" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>{['interested', 'appointment'].includes(followUpForm.outcome) && <Button type="button" variant="outline" className="slr-followup-save" disabled={followUpSaving || editing.status === 'new'} onClick={() => void recordFollowUp('quote')}>保存并登记成交</Button>}</div>
+                  <div className="slr-followup-save-row"><Button type="button" className="slr-followup-save" disabled={followUpSaving || needsFirstRecord(editing)} onClick={() => void recordFollowUp()}>{followUpSaving ? '保存中…' : '保存跟进'}</Button>{['interested', 'appointment'].includes(followUpForm.outcome) && <Button type="button" variant="outline" className="slr-followup-save" disabled={followUpSaving || needsFirstRecord(editing)} onClick={() => void recordFollowUp('quote')}>保存并登记成交</Button>}</div>
                 </fieldset>}
             <details className="slr-followup-history"><summary><History size={16} />历史记录 <span>{callHistory.length}</span><ChevronDown size={15} /></summary>{historyLoading ? <p>正在加载…</p> : callHistory.length ? callHistory.map(item => <article key={item.id}><div><strong>{item.outcome_labels?.join(' · ') || item.outcome_label}</strong><time>{formatDate(item.called_at)}</time></div>{Boolean(item.quick_notes?.length) && <small>{item.quick_notes?.map(note => note.label).join(' · ')}</small>}<p>{item.notes || '未填写沟通内容'}</p><small>{item.sales_employee_name || '—'} · 下次：{formatDate(item.next_follow_up_at)}</small></article>) : <p>暂无历史记录</p>}</details>
           </>}

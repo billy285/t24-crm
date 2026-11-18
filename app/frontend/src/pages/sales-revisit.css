@@ -1,0 +1,93 @@
+/* List scope, communication result and follow-up time are independent filters. */
+.sl-review-toolbar {
+  color: var(--t24-ink);
+  display: grid;
+  gap: 12px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--t24-border);
+}
+.sl-review-toolbar .rv-top, .sl-review-toolbar .rv-filter-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+}
+.sl-review-toolbar .rv-scope, .sl-review-toolbar .rv-groups {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sl-review-toolbar .rv-scope {
+  background: var(--t24-surface-subtle, var(--t24-primary-soft));
+  border: 1px solid var(--t24-border);
+  padding: 2px;
+  border-radius: 8px;
+}
+.sl-review-toolbar .rv-scope button, .sl-review-toolbar .rv-groups button {
+  color: var(--t24-ink-muted);
+  min-height: 32px;
+  white-space: nowrap;
+  font-size: 13px;
+  border-radius: 5px;
+  padding: 4px 11px;
+}
+.sl-review-toolbar .rv-scope button[aria-pressed=true] {
+  color: var(--t24-primary);
+  background: var(--t24-surface);
+  box-shadow: 0 0 0 1px var(--t24-border);
+  font-weight: 600;
+}
+.sl-review-toolbar .rv-groups button {border:1px solid var(--t24-border)}
+.sl-review-toolbar .rv-groups button[aria-pressed=true], .sl-review-toolbar .rv-star[aria-pressed=true] {
+  color:var(--t24-primary);
+  background:var(--t24-primary-soft);
+  border-color:var(--t24-primary);
+}
+.sl-review-toolbar .rv-search {position:relative; min-width:130px; flex:1; max-width:520px; margin-left:auto}
+.sl-review-toolbar .rv-search > svg {
+  color:var(--t24-ink-muted); position:absolute; top:50%; left:12px; transform:translateY(-50%); pointer-events:none;
+}
+.sl-review-toolbar .rv-search input {width:100%; padding-inline-start:35px}
+.sl-review-toolbar .rv-due {display:inline-flex;align-items:center;gap:7px}
+.sl-review-toolbar .rv-due span, .rv-extra-grid label > span {font-size:12px;color:var(--t24-ink-muted)}
+.sl-review-toolbar .rv-due small {display:block;font-size:11px;line-height:1.3}
+.sl-review-toolbar .rv-due .t24-native-select-wrap {min-width:100px}
+.sl-review-toolbar .rv-due select {font-size:13px}
+.sl-review-toolbar .rv-more {margin-inline-start:auto}
+.sl-review-toolbar .rv-star, .sl-review-toolbar .rv-more {gap:6px}
+.rv-extra-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); align-items:end;
+  gap:10px 12px; padding-top:11px; border-top:1px solid var(--t24-border);
+}
+.rv-extra-grid label {display:grid;min-width:0;gap:5px}
+.rv-extra-grid label.rv-priority {display:flex;align-items:center;gap:6px;min-height:36px;font-size:13px}
+.rv-extra-grid .rv-priority input {accent-color:var(--t24-primary)}
+.sl-review-toolbar .rv-filter-summary {display:flex; align-items:center; flex-wrap:wrap; gap:9px; font-size:12px;color:var(--t24-ink-muted)}
+.sl-review-toolbar .rv-filter-summary span {overflow-wrap:anywhere}
+.sl-review-toolbar .rv-filter-summary button {color:var(--t24-primary)}
+.rv-empty {display:grid;justify-items:center;gap:5px;padding:22px 8px;text-align:center;color:var(--t24-ink-muted)}
+.rv-empty small, .rv-last-contact small {font-size:12px;color:var(--t24-ink-muted)}
+.rv-last-contact {min-width:0;display:grid;gap:3px;overflow-wrap:anywhere}
+.rv-last-contact p {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:1.5}
+.rv-last-contact .rv-note {font-size:12px;color:var(--t24-ink-muted)}
+.rv-filter-sheet {max-height:86dvh;overflow-y:auto;padding:20px max(16px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom));border-radius:14px 14px 0 0}
+.rv-filter-sheet .rv-extra-grid {grid-template-columns:minmax(0,1fr);border:0;margin:10px 0}
+@media(max-width:767px) {
+  .sl-review-toolbar {padding:9px 0 12px;gap:8px}
+  .sl-review-toolbar .rv-top {align-items:stretch;flex-direction:column;gap:7px}
+  .sl-review-toolbar .rv-scope {align-self:start}
+  .sl-review-toolbar .rv-search {margin:0;max-width:none}
+  .sl-review-toolbar .rv-search input {font-size:16px;min-height:44px}
+  .sl-review-toolbar .rv-groups {gap:3px}
+  .sl-review-toolbar .rv-groups button {padding:3px 7px;flex:1 0 auto}
+  .sl-review-toolbar .rv-filter-row {gap:4px 6px}
+  .sl-review-toolbar .rv-due {gap:4px}
+  .sl-review-toolbar .rv-due .t24-native-select-wrap {min-width:84px}
+  .sl-review-toolbar .rv-due select {padding-inline-start:7px}
+  .sl-review-toolbar .rv-due .t24-native-select-wrap,.sl-review-toolbar .rv-due select,
+  .sl-review-toolbar button, .sl-review-toolbar .rv-scope button, .sl-review-toolbar .rv-groups button {min-height:44px!important}
+  .sl-review-toolbar .rv-star,.sl-review-toolbar .rv-more {padding-inline:7px}
+  .sl-review-toolbar .rv-filter-summary button {min-height:32px!important}
+}

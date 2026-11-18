@@ -51,6 +51,7 @@ from services.sales_industry_reporting import industry_breakdown
 from services.sales_workflow_locks import lock_sales_workflow
 from services.sales_lead_markers import marker_conditions, markers_for, update_markers
 from services.sales_labels import lead_labels, sales_label_filter
+from services.sales_revisit import RevisitGroup, can_record_previously_dialed, revisit_page
 from services.customer_codes import allocate_customer_code
 from services.phone_numbers import parse_phone_number, phone_match_key
 from services.sales_contact_protection import (
@@ -290,6 +291,32 @@ class SalesLeadListResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class RevisitNote(BaseModel):
+    id: str
+    label: str
+
+
+class LastCommunication(BaseModel):
+    at: datetime
+    source: Literal["crm", "ringcentral"]
+    outcome: str
+    outcome_labels: list[str]
+    quick_notes: list[RevisitNote]
+    note_at: Optional[datetime]
+    notes: Optional[str]
+    provider_connected: Optional[bool]
+    pending_task_id: Optional[int]
+
+
+class RevisitLeadResponse(SalesLeadResponse):
+    last_communication: LastCommunication
+
+
+class RevisitListResponse(SalesLeadListResponse):
+    items: list[RevisitLeadResponse]
+    note_options: list[RevisitNote]
 
 
 class SalesAssigneeResponse(BaseModel):
@@ -859,10 +886,13 @@ async def get_sales_lead_stats(
     }
 
 
-@router.get("", response_model=SalesLeadListResponse)
+@router.get("", response_model=RevisitListResponse | SalesLeadListResponse)
 async def list_sales_leads(
     search: Optional[str] = None,
     lead_status: Optional[str] = Query(None, alias="status"),
+    contacted_only: bool = False,
+    revisit_group: Optional[RevisitGroup] = None,
+    latest_note_id: Optional[str] = Query(None, pattern=r"^[a-z][a-z0-9_-]{0,63}$"),
     contact_rule: Optional[str] = None,
     due_range: Optional[str] = Query(None, pattern="^(today|overdue)$"),
     starred: bool = False,
@@ -874,8 +904,8 @@ async def list_sales_leads(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_lead_role(current_user)
-    query = select(SalesLeads)
-    count_query = select(func.count(SalesLeads.id))
+    if (revisit_group or latest_note_id) and not contacted_only:
+        raise HTTPException(422, "沟通结果和最近备注筛选需要使用已拨商家名单")
     conditions = marker_conditions(SalesLeads.id, current_user.id, starred=starred, priority=priority)
     if label_id is not None:
         conditions.append(sales_label_filter(label_id, merchant_id=SalesLeads.merchant_pool_id, lead_id=SalesLeads.id))
@@ -884,8 +914,8 @@ async def list_sales_leads(
         conditions.append(scope)
     if due_range:
         day_start = datetime.now(BUSINESS_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0)
-        start_utc = day_start.astimezone(timezone.utc).replace(tzinfo=None)
-        end_utc = (day_start + timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)
+        start_utc = day_start.astimezone(timezone.utc)
+        end_utc = (day_start + timedelta(days=1)).astimezone(timezone.utc)
         conditions.extend([
             SalesLeads.do_not_contact.is_(False),
             SalesLeads.is_blacklisted.is_(False),
@@ -927,20 +957,27 @@ async def list_sales_leads(
             SalesLeads.is_blacklisted.is_(False),
             SalesLeads.do_not_contact.is_(False),
         ])
-    if conditions:
-        query = query.where(*conditions)
-        count_query = count_query.where(*conditions)
-    total = (await db.execute(count_query)).scalar() or 0
-    items = (
-        await db.execute(query.order_by(SalesLeads.id.desc()).offset(skip).limit(limit))
-    ).scalars().all()
+    recent, options = {}, []
+    if contacted_only:
+        items, total, recent, options = await revisit_page(db, conditions, datetime.now(BUSINESS_TIMEZONE).date(),
+                                                          revisit_group, latest_note_id, skip, limit)
+    else:
+        total = await db.scalar(select(func.count(SalesLeads.id)).where(*conditions)) or 0
+        items = (await db.scalars(select(SalesLeads).where(*conditions)
+                                 .order_by(SalesLeads.id.desc()).offset(skip).limit(limit))).all()
     markers = await markers_for(db, (lead.id for lead in items), current_user.id)
     labels = await lead_labels(db, [(lead.id, lead.merchant_pool_id) for lead in items])
-    marked_items = [
-        SalesLeadResponse.model_validate(lead).model_copy(update={**markers[lead.id], "labels": labels.get(lead.id, [])})
-        for lead in items
-    ]
-    return {"items": marked_items, "total": total, "skip": skip, "limit": limit}
+    marked_items = []
+    for lead in items:
+        item = SalesLeadResponse.model_validate(lead).model_dump()
+        item.update(markers[lead.id], labels=labels.get(lead.id, []))
+        if contacted_only:
+            item["last_communication"] = recent[lead.id]
+        marked_items.append(item)
+    result = {"items": marked_items, "total": total, "skip": skip, "limit": limit}
+    if contacted_only:
+        result["note_options"] = options
+    return result
 
 
 class SalesLeadMarkerUpdate(BaseModel):
@@ -2598,7 +2635,10 @@ async def record_supplemental_follow_up(
     await ensure_lead_contact_allowed(db, lead)
     ensure_enrichment_editable(lead)
     if lead.status not in {"contacted", "follow_up", "interested", "appointment"}:
-        raise HTTPException(status_code=400, detail="请先通过每日任务完成首次联系，再追加跟进")
+        # A matched official outbound call can precede the first saved CRM result.
+        # If today's task exists, use its normal completion path to preserve workload attribution.
+        if not await can_record_previously_dialed(db, lead, datetime.now(BUSINESS_TIMEZONE).date()):
+            raise HTTPException(status_code=400, detail="请先通过每日任务完成首次联系，再追加跟进")
 
     await _validate_manual_call_result(db, payload)
     dial_attempt = await _result_dial_attempt(db, lead, current_user, payload.dial_attempt_id)
